@@ -880,11 +880,11 @@ class Model {
           let fieldName = header[c];
           let fieldValue = row[c];
           if ((fieldTypes[fieldName] == "Date")
-            && dateFormatRegex.convertRegEx.source != "yyyy-MM-dd") {
+            && dateFormat != "yyyy-MM-dd") {
             fieldValue = this.convertDate(fieldValue, dateFormatRegex);
           } else if ((fieldTypes[fieldName] == "DateTime")
-            && datetimeFormatRegex.convertRegEx.source != "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"
-            && datetimeFormatRegex.convertRegEx.source != "yyyy-MM-ddTHH:mm:ss.SSSZ") {
+            && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"
+            && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSSZ") {
             fieldValue = this.convertDatetime(fieldValue, datetimeFormatRegex);
           }
           if (fieldName.startsWith("_")) {
@@ -944,11 +944,11 @@ class Model {
             } else if (columnName.length == 1) { // Our validation ensures there are always one or three elements in the array
               let [fieldName] = columnName;
               if ((fieldTypes[fieldName] == "date")
-                  && dateFormatRegex.convertRegEx.source != "yyyy-MM-dd") {
+                  && dateFormat != "yyyy-MM-dd") {
                 sobject[fieldName] = this.convertDate(row[c], dateFormatRegex);
               } else if ((fieldTypes[fieldName] == "datetime")
-                  && datetimeFormatRegex.convertRegEx.source != "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"
-                  && datetimeFormatRegex.convertRegEx.source != "yyyy-MM-ddTHH:mm:ss.SSSZ") {
+                  && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"
+                  && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSSZ") {
                 sobject[fieldName] = this.convertDatetime(row[c], datetimeFormatRegex);
               } else {
                 sobject[fieldName] = row[c];
