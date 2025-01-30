@@ -1288,7 +1288,7 @@ class LogViewer extends React.Component {
       //h("div", {className: "scrolled"}, style: {height: scrolledHeight, top: scrolledTop}},
       h("div", {className: "line-numbers", style: {lineHeight: rowHeight + "px"}},
         //Array(lastRowIdx - firstRowIdx).fill(null).map((e, i) => h("span", {key: "LineNumber" + i}, i + firstRowIdx))
-        model.lineNumbers.map((e) => h("span", {key: "LineNumber" + e}, e))
+        model.lineNumbers.map((e) => e + "\n")
       ),
       h("div", {id: "log-text", ref: "log", style: {lineHeight: rowHeight + "px"}},
         model.EnrichLog.map(this.renderNode)

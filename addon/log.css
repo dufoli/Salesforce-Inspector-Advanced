@@ -40,7 +40,7 @@
   }
   body {
     font-family: "Salesforce Sans", Arial, sans-serif;
-    font-size: .8125rem;
+    font-size: .875rem;
     overflow: hidden;
     margin: 0;
     height: 100%;
@@ -205,12 +205,11 @@
   .line-numbers {
     text-align: right;
     padding: 8px 10px;
-  }
-  
-  .line-numbers span {
-    font-size: .8125rem;
+    white-space: pre;
+    font-size: .875rem;
     display: block;
     color: #506882;
+    vertical-align: top;
   }
 
   .editor {
@@ -227,15 +226,20 @@
     width: 100%;
     resize: vertical;
     word-wrap: normal;
-    font-size: .8125rem;
+    font-size: .875rem;
     padding: 8px 10px;
     float: left;
     clear: left; /*or display: inline-block; */
     white-space: pre;
+    vertical-align: top;
   }
+  #log-text span{
+    vertical-align: top;
+  }
+
   .highlight {
     background: khaki;
-    vertical-align: baseline;
+    vertical-align: top;
   }
   .tree-icon {
     align-self: center;
