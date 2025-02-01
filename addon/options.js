@@ -114,6 +114,7 @@ class OptionsTabSelector extends React.Component {
           {option: Option, props: {type: "toggle", title: "Skip technical comlumns", key: "skipTechnicalColumns", default: true}},
           {option: Option, props: {type: "text", title: "Date format", key: "dateFormat", placeholder: "yyyy-MM-dd"}},
           {option: Option, props: {type: "text", title: "Date time format", key: "datetimeFormat", placeholder: "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"}},
+          {option: Option, props: {type: "option", title: "Decimal format", key: "decimalFormat", default: ".", values: [".", ","]}},
           {option: QueryTemplatesOption, props: {title: "Query Templates", key: "queryTemplates", placeholder: "SELECT..."}},
           {option: QueryTemplatesOption, props: {title: "Saved Query History", key: "insextSavedQueryHistory", node: "query", withName: true, defaultValue: "{\"useToolingApi\": false}", placeholder: "SELECT..."}}
         ]
