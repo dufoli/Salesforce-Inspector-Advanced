@@ -1692,6 +1692,7 @@ function RecordTable(vm) {
   let skipTechnicalColumns = localStorage.getItem("skipTechnicalColumns") !== "false";
   let dateFormat = localStorage.getItem("dateFormat");
   let datetimeFormat = localStorage.getItem("datetimeFormat");
+  let decimalFormat = localStorage.getItem("decimalFormat");
   // try to respect the right order of column by matching query column and record column
   function discoverQueryColumns(record, fields) {
     let sobjectDescribe = null;
@@ -1807,6 +1808,8 @@ function RecordTable(vm) {
         row[c] = convertDate(record[field], dateFormat);
       } else if (columnType.get(field) == "datetime" && datetimeFormat) {
         row[c] = convertDate(record[field], datetimeFormat);
+      } else if ((columnType.get(field) == "decimal" || columnType.get(field) == "currency") && decimalFormat && decimalFormat != ".") {
+        row[c] = record[field] ? record[field].toString().replace(".", decimalFormat) : record[field];
       } else {
         row[c] = record[field];
       }

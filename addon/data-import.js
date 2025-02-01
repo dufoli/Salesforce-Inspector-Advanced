@@ -833,6 +833,7 @@ class Model {
 
     let dateFormat = localStorage.getItem("dateFormat") || "yyyy-MM-dd";
     let datetimeFormat = localStorage.getItem("datetimeFormat") || "yyyy-MM-ddTHH:mm:ss.SSSZ";
+    let decimalFormat = localStorage.getItem("decimalFormat") || ".";
     let dateFormatRegex = this.calculateDateFormat(dateFormat);
     let datetimeFormatRegex = this.calculateDatetimeFormat(datetimeFormat);
     let batchRows = [];
@@ -879,13 +880,15 @@ class Model {
         for (let c = 0; c < row.length; c++) {
           let fieldName = header[c];
           let fieldValue = row[c];
-          if ((fieldTypes[fieldName] == "Date")
+          if ((fieldTypes[fieldName] == "Date" || fieldTypes[fieldName] == "xsd:date")
             && dateFormat != "yyyy-MM-dd") {
             fieldValue = this.convertDate(fieldValue, dateFormatRegex);
-          } else if ((fieldTypes[fieldName] == "DateTime")
+          } else if ((fieldTypes[fieldName] == "DateTime" || fieldTypes[fieldName] == "xsd:dateTime")
             && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"
             && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSSZ") {
             fieldValue = this.convertDatetime(fieldValue, datetimeFormatRegex);
+          } else if (fieldValue && (fieldTypes[fieldName] == "Double" || fieldTypes[fieldName] == "xsd:double") && decimalFormat != "."){
+            fieldValue = fieldValue.replace(decimalFormat, ".");
           }
           if (fieldName.startsWith("_")) {
             continue;
@@ -943,13 +946,15 @@ class Model {
               }
             } else if (columnName.length == 1) { // Our validation ensures there are always one or three elements in the array
               let [fieldName] = columnName;
-              if ((fieldTypes[fieldName] == "date")
+              if ((fieldTypes[fieldName] == "date" || fieldTypes[fieldName] == "xsd:date")
                   && dateFormat != "yyyy-MM-dd") {
                 sobject[fieldName] = this.convertDate(row[c], dateFormatRegex);
-              } else if ((fieldTypes[fieldName] == "datetime")
+              } else if ((fieldTypes[fieldName] == "datetime" || fieldTypes[fieldName] == "xsd:dateTime")
                   && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"
                   && datetimeFormat != "yyyy-MM-ddTHH:mm:ss.SSSZ") {
                 sobject[fieldName] = this.convertDatetime(row[c], datetimeFormatRegex);
+              } else if (row[c] && (fieldTypes[fieldName] == "double" || fieldTypes[fieldName] == "currency") && decimalFormat != "."){
+                sobject[fieldName] = row[c].replace(decimalFormat, ".");
               } else {
                 sobject[fieldName] = row[c];
               }
