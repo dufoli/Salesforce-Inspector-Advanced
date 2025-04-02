@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {FlameChartComponent} from "./flamechart/wrappers/react/flame-chart-component.js";
 /* global initButton */
 
 //documentation to implement profiler
@@ -534,7 +535,7 @@ class Model {
           }
           break;
         } case "HEAP_DEALLOCATE":
-        case "BULK_HEAP_ALLOCATE":{
+        case "BULK_HEAP_ALLOCATE":{//not interesting
           //TODO
           break;
         }
@@ -573,8 +574,8 @@ class Model {
           produceNode(l, dt, timestampNanos, {icon: "search", sosl: 1});
           break;
         }
-        case "CALLOUT_REQUEST": {
-          expected = "CALLOUT_RESPONSE";
+        case "CALLOUT_REQUEST": {//not interesting
+          expected = "CALLOUT_RESPONSE";//not interesting
           produceNode(l, dt, timestampNanos, {icon: "broadcast", callout: 1});
           break;
         }//TODO "futur", "queue",
@@ -683,6 +684,24 @@ class Model {
           */
           break;
         }
+        //missing node to parse
+        case "BULK_DML_RETRY":
+        case "CONSTRUCTOR_ENTRY":
+        case "CONSTRUCTOR_EXIT":
+        case "DUPLICATE_DETECTION_BEGIN":
+        case "DUPLICATE_DETECTION_MATCH_INVOCATION_DETAILS":
+        case "DUPLICATE_DETECTION_MATCH_INVOCATION_SUMMARY":
+        case "DUPLICATE_DETECTION_RULE_INVOCATION":
+        case "LIMIT_USAGE":
+        case "MATCH_ENGINE_BEGIN":
+        case "ORG_CACHE_GET_BEGIN":
+        case "ORG_CACHE_PUT_BEGIN":
+        case "ORG_CACHE_REMOVE_BEGIN":
+        case "SESSION_CACHE_GET_BEGIN":
+        case "SESSION_CACHE_PUT_BEGIN":
+        case "SESSION_CACHE_REMOVE_BEGIN":
+        case "VF_DESERIALIZE_CONTINUATION_STATE_BEGIN":
+        case "VF_SERIALIZE_CONTINUATION_STATE_BEGIN":
         case "NAMED_CREDENTIAL_REQUEST":
         case "NAMED_CREDENTIAL_RESPONSE":
         case "NAMED_CREDENTIAL_RESPONSE_DETAIL":
@@ -800,7 +819,7 @@ class Model {
         case "WF_EVAL_ENTRY_CRITERIA":
         case "WF_FIELD_UPDATE":
         case "WF_FLOW_ACTION_BEGIN":
-        case "WF_FLOW_ACTION_DETAILflow variables":
+        case "WF_FLOW_ACTION_DETAIL":
         case "WF_FLOW_ACTION_END":
         case "WF_FLOW_ACTION_ERROR":
         case "WF_FLOW_ACTION_ERROR_DETAIL":
@@ -1013,6 +1032,7 @@ class RawLog extends React.Component {
   componentDidMount() {
 
   }
+  //TODO instead of switch make a map to get node parser with inheritence from node name
   render() {
     let model = this.model;
     let keywordColor = new Map([["CODE_UNIT_STARTED", "violet"], ["CODE_UNIT_FINISHED", "violet"],
@@ -1054,7 +1074,7 @@ class LogTabNavigation extends React.Component {
         id: 3,
         tabTitle: "Tab3",
         title: "FlamGraph",
-        content: FlamGraph
+        content: NewFlameGraph
       }
     ];
     this.onTabSelect = this.onTabSelect.bind(this);
@@ -1341,55 +1361,7 @@ class FileUpload extends React.Component {
   }
 }
 
-
-class FlamGraphRect extends React.Component {
-  constructor(props) {
-    super(props);
-    this.height = 20;
-    this.fontSize = 12;
-  }
-
-  render() {
-    let {node, width, offsetHeight, offsetWidth} = this.props;
-    let nextChildOffsetWidth = offsetWidth;
-    let greenColor = 255 - (255 * width / 1000);
-    let nodeTitle = node.title;
-    nodeTitle = node.title;
-    if (nodeTitle.length > (width / this.fontSize)) {
-      nodeTitle = nodeTitle.substring(0, Math.floor(width / this.fontSize));
-    }
-    if (nodeTitle.length > (width / this.fontSize)) {
-      nodeTitle = nodeTitle.substring(0, Math.floor(width / this.fontSize));
-    }
-    return h("g", {},
-      h("rect", {width, height: this.height, style: {fill: "rgb(236," + greenColor + ",100)", strokeWidth: "3", stroke: "rgb(255," + greenColor + ",0)"}, x: offsetWidth, y: offsetHeight * this.height},
-        h("title", {}, node.title)
-      ),
-      h("text", {x: offsetWidth + (width / 2), y: (offsetHeight + 0.5) * this.height, fontSize: this.fontSize, textAnchor: "middle", fill: "white"}, nodeTitle),
-      node.child.map((c) => this.renderChild(c, node, width, nextChildOffsetWidth, offsetHeight))
-    );
-  }
-
-  renderChild(c, node, width, nextChildOffsetWidth, offsetHeight) {
-    let childWidth;
-    if (node[this.props.field]) {
-      childWidth = width * (c[this.props.field] / node[this.props.field]);
-    } else if (node[this.props.field] == 0){
-      childWidth = 0;
-    } else {
-      childWidth = width;
-    }
-    let offsetWidth = nextChildOffsetWidth;
-    nextChildOffsetWidth += childWidth;
-    if (childWidth == 0) {
-      return "";
-    }
-    return h(FlamGraphRect, {node: c, field: this.props.field, key: c.key, offsetHeight: offsetHeight + 1, width: childWidth, offsetWidth});
-  }
-}
-
-
-class FlamGraph extends React.Component {
+class NewFlameGraph extends React.Component {
   constructor(props) {
     super(props);
     this.model = props.model;
@@ -1446,16 +1418,31 @@ class FlamGraph extends React.Component {
     this.setState({filterBy: e.target.value});
     model.didUpdate();
   }
+  convert(node) {
+    return {
+      name: node.title,
+      start: node.startNano ? node.startNano / 1000000.0 : (node.Start ? node.start.getTime() : 0),
+      duration: node.duration,
+      type: node.icon,
+      children: node.child.map((c) => this.convert(c)),
+    };
+  }
   render() {
+    let data = [this.convert(this.rootNode)];
+    let settings = {
+      hotkeys: {
+        active: true, // enable navigation using arrow keys
+        scrollSpeed: 0.5, // scroll speed (ArrowLeft, ArrowRight)
+        zoomSpeed: 0.001, // zoom speed (ArrowUp, ArrowDown, -, +)
+        fastMultiplayer: 5, // speed multiplier when zooming and scrolling (activated by Shift key)
+      },
+      options: {
+        timeUnits: "ms",
+      },
+    };
+    let marks = [];
     return h("div", {style: {overflow: "scroll", height: "inherit"}}, //className: "slds-tree_container"},
-      h("div", {className: "button-group"},
-        h("select", {name: "log-filter", value: this.state.filterBy, onChange: this.onSelectFilterBy, className: "log-filter"},
-          this.availableFilters.map(q => h("option", {key: q.field, value: q.field}, q.title))
-        ),
-      ),
-      h("svg", {ref: "logFlameGraph", version: "1.1", baseProfile: "full", xmlns: "http://www.w3.org/2000/svg", width: "100%", height: "100%"},
-        h(FlamGraphRect, {node: this.rootNode, field: this.state.filterBy, key: this.rootNode.key, offsetHeight: 0, width: 1000, offsetWidth: 0})
-      )
+      h(FlameChartComponent, {data, marks, settings, className: "flameChart"})
     );
   }
 }

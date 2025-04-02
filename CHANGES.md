@@ -1,5 +1,8 @@
 # Release Notes
 
+## Version 1.31
+- flamechart: migrate to flamechart js from https://github.com/pyatyispyatil/flame-chart-js (MIT licence) and migrate it to work with salesforce inspector advanced
+
 ## Version 1.30.1
 - api explorer: mesure time, store small response in history, http header and body type support, add template : bulk api, chatter api, report api, platform event channel, platform event channel member. [issue 194](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/194)
 - update to 62 api version

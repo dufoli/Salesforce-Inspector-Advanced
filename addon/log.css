@@ -283,3 +283,10 @@
 #options-btn .icon {
   -webkit-mask-image: url(images/settings.svg);
 }
+.flameChart {
+  flex: 1;
+  margin-left: 8px;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--secondary-color);
+}
