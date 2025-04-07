@@ -5,6 +5,701 @@ import {FlameChartComponent} from "./flamechart/wrappers/react/flame-chart-compo
 
 //documentation to implement profiler
 //https://www.developerforce.com/guides/fr/apex_fr/Content/code_setting_debug_log_levels.htm
+class LogParser {
+  constructor() {
+    this.index = 0;//skip line 0 which contain version and log level for moment
+    this.lineCount = 1;
+    this.rootNode = null;
+    this.nodes = null;
+    this.nodeCount = 0;
+    this.lines = [];
+    this.lastTimestampNano = 0;
+  }
+  parseLog(data) {
+    this.lines = data.split("\n");
+    this.lineCount = this.lines.length;
+    let node = new RootNode(this);
+    this.parseLine(node, null);
+    this.aggregate(node);
+    this.rootNode = node;
+    let result = [];
+    [this.nodes, this.maxLvlNodes] = this.flatternNode(node.child, result, 1, 1);
+  }
+  flatternNode(child, result, lvl, maxLvlNodes) {
+    if (lvl > maxLvlNodes) {
+      maxLvlNodes = lvl;
+    }
+    for (let i = 0; i < child.length; i++) {
+      let c = child[i];
+      c.key = "node" + result.length;
+      c.level = lvl;
+      c.position = i + 1;
+      c.tabIndex = -1;
+      c.index = result.length;
+      result.push(c);
+      if (c.child && c.child.length > 0) {
+        maxLvlNodes = this.flatternNode(c.child, result, lvl + 1, maxLvlNodes)[1];
+      }
+    }
+    return [result, maxLvlNodes];
+  }
+  parseLine(node, expected){
+    this.index++;
+    let logLinePattern = /^[0-9]{2}:[0-9]{2}:[0-9]{2}/m;
+    for (; this.index < this.lineCount; this.index++) {
+      let line = this.lines[this.index];
+      while (this.index + 1 < this.lineCount && !logLinePattern.test(this.lines[this.index + 1])) {
+        line += "\n" + this.lines[this.index + 1];
+        this.index++;
+      }
+      let l = line.split("|");
+      if (l.length <= 1) {
+        continue;
+      }
+      //TODO l[2] =line number
+      //l[3] =log level
+      switch (l[1]) {
+        //EXECUTION_STARTED EXECUTION_FINISHED
+        case "CODE_UNIT_STARTED": {
+          new CodeUnitLogNode(l, this, node);
+          break;
+        } case "HEAP_ALLOCATE": {
+          if (l.length > 3 && l[3].startsWith("Bytes:")) {
+            let heap = Number(l[3].substring(6));
+            if (!isNaN(heap)) {
+              node.heap += heap;
+            }
+          }
+          break;
+        }
+        case "SYSTEM_METHOD_ENTRY" : {
+          new SystemMethodNode(l, this, node);
+          break;
+        }
+        case "METHOD_ENTRY" : {
+          new MethodNode(l, this, node);
+          break;
+        }
+        case "SYSTEM_CONSTRUCTOR_ENTRY" : {
+          new SystemConstructorNode(l, this, node);
+          break;
+        }
+        case "CONSTRUCTOR_ENTRY": {
+          new ConstructorNode(l, this, node);
+          break;
+        }
+        case "FLOW_START_INTERVIEW_BEGIN" : {
+          new FlowInterviewNode(l, this, node);
+          break;
+        }
+        case "VALIDATION_RULE":{
+          new ValidationRuleNode(l, this, node);
+          break;
+        }
+        case "SOQL_EXECUTE_BEGIN":{
+          new SOQLNode(l, this, node);
+          break;
+        }
+        case "SOSL_EXECUTE_BEGIN":{
+          new SOSLNode(l, this, node);
+          break;
+        }
+        case "CALLOUT_REQUEST": { //not interesting
+          new CalloutNode(l, this, node);
+          break;
+        }//TODO "futur", "queue",
+        case "FLOW_ELEMENT_BEGIN": {
+          new FlowElementNode(l, this, node);
+          break;
+        }
+        case "DML_BEGIN": {
+          new DMLNode(l, this, node);
+          break;
+        }
+        case "NAMED_CREDENTIAL_REQUEST":
+        {
+          new NamedCredentialNode(l, this, node);
+          break;
+        }
+        case "VF_APEX_CALL_START": {
+          new VFApexCallNode(l, this, node);
+          break;
+        }
+        case "VF_SERIALIZE_VIEWSTATE_BEGIN": {
+          new VFSerializeViewstateNode(l, this, node);
+          break;
+        }
+        case "VF_DESERIALIZE_VIEWSTATE_BEGIN": {
+          new VFDeserializeViewstateNode(l, this, node);
+          break;
+        }
+        case "VF_EVALUATE_FORMULA_BEGIN": {
+          new VFEvaluateFormulaNode(l, this, node);
+          break;
+        }
+        case "NBA_NODE_BEGIN": {
+          new NextBestActionNode(l, this, node);
+          break;
+        }
+        case "VF_SERIALIZE_VIEWSTATE_END":
+        case "VF_EVALUATE_FORMULA_END":
+        case "VF_DESERIALIZE_VIEWSTATE_END":
+        case "SYSTEM_METHOD_EXIT":
+        case "METHOD_EXIT":
+        case "SYSTEM_CONSTRUCTOR_EXIT":
+        case "CONSTRUCTOR_EXIT":
+        case "DML_END":
+        case "CALLOUT_RESPONSE":
+        case "FLOW_ELEMENT_DEFERRED":
+        case "FLOW_ELEMENT_END":
+        case "FLOW_ELEMENT_ERROR":
+        case "FLOW_INTERVIEW_FINISHED":
+        case "SOSL_EXECUTE_END":
+        case "SOQL_EXECUTE_END":
+        case "VALIDATION_FAIL":
+        case "VALIDATION_PASS":
+        case "NAMED_CREDENTIAL_RESPONSE":
+        case "VF_APEX_CALL_END":
+        case "CUMULATIVE_LIMIT_USAGE_END":
+        case "NBA_NODE_END":
+        case "WF_RULE_EVAL_END":
+        case "CODE_UNIT_FINISHED": {
+          if (Array.isArray(expected) && !expected.includes(l[1])) {
+            console.log("Expected " + expected.join(", ") + " but got " + l[1]);
+          } else if (!Array.isArray(expected) && expected != l[1]) {
+            console.log("Expected " + expected + " but got " + l[1]);
+          }
+          node.finished(l, this);
+          return;
+        }
+        case "SOQL_EXECUTE_EXPLAIN": {
+          if (!(node instanceof SOQLNode)) {
+            console.log("Expected SOQLNode but got " + node.constructor.name);
+          } else {
+            node.explain(l);
+          }
+          break;
+        }
+        case "CUMULATIVE_LIMIT_USAGE": {
+          new CumulativeLimitUsageNode(l, this, node);
+          break;
+        }
+        case "LIMIT_USAGE_FOR_NS": { //handle in CUMULATIVE_LIMIT_USAGE
+          node.setLimits(l);
+          break;
+        }
+        case "USER_DEBUG": {
+          node.attachDebugInfo(l.slice(4).join("|"));
+          break;
+        }
+        case "VALIDATION_FORMULA": {
+          node.addFormula(l);
+          break;
+        }
+        case "VALIDATION_ERROR": {
+          node.addError(l);
+          break;
+        }
+        case "WF_RULE_EVAL_BEGIN": {
+          new WFRuleEvalBeginNode(l, this, node);
+          break;
+        }
+        case "WF_CRITERIA_BEGIN": {
+          node.setCriteria(l);
+          break;
+        }
+        case "WF_FORMULA": {
+          node.setFormula(l);
+          break;
+        }
+        case "WF_FIELD_UPDATE": {
+          node.addFieldUpdate(l);
+          break;
+        }
+        //missing node to parse
+        case "BULK_DML_RETRY":
+        case "DUPLICATE_DETECTION_BEGIN":
+        case "DUPLICATE_DETECTION_MATCH_INVOCATION_DETAILS":
+        case "DUPLICATE_DETECTION_MATCH_INVOCATION_SUMMARY":
+        case "DUPLICATE_DETECTION_RULE_INVOCATION":
+        case "LIMIT_USAGE":
+        case "MATCH_ENGINE_BEGIN":
+        case "ORG_CACHE_GET_BEGIN":
+        case "ORG_CACHE_PUT_BEGIN":
+        case "ORG_CACHE_REMOVE_BEGIN":
+        case "SESSION_CACHE_GET_BEGIN":
+        case "SESSION_CACHE_PUT_BEGIN":
+        case "SESSION_CACHE_REMOVE_BEGIN":
+        case "VF_DESERIALIZE_CONTINUATION_STATE_BEGIN":
+        case "VF_SERIALIZE_CONTINUATION_STATE_BEGIN":
+        case "NAMED_CREDENTIAL_RESPONSE_DETAIL":
+        case "CUMULATIVE_PROFILING":
+        case "CUMULATIVE_PROFILING_BEGIN":
+        case "CUMULATIVE_PROFILING_END":
+        case "EMAIL_QUEUE":
+        case "ENTERING_MANAGED_PKG":
+        case "EVENT_SERVICE_PUB_BEGIN":
+        case "FLOW_ELEMENT_FAULT": {
+          //TODO
+          break;
+        }
+        case "HEAP_DEALLOCATE":
+        case "BULK_HEAP_ALLOCATE":
+        case "FLOW_CREATE_INTERVIEW_END":
+        case "FLOW_CREATE_INTERVIEW_BEGIN":
+        case "FLOW_START_INTERVIEW_END":
+        case "FLOW_START_INTERVIEWS_BEGIN":
+        case "FLOW_START_INTERVIEWS_END":
+        case "VARIABLE_SCOPE_BEGIN"://apex variable: nothing important
+        case "VARIABLE_ASSIGNMENT"://apex variable: nothing important
+        case "SYSTEM_MODE_ENTER":
+        case "SYSTEM_MODE_EXIT":
+        case "STATEMENT_EXECUTE"://apex statement: nothing important
+        case "EVENT_SERVICE_PUB_DETAIL":
+        case "EVENT_SERVICE_PUB_END":
+        case "EVENT_SERVICE_SUB_BEGIN":
+        case "EVENT_SERVICE_SUB_DETAIL":
+        case "EVENT_SERVICE_SUB_END":
+        case "EXCEPTION_THROWN":
+        case "EXECUTION_FINISHED":
+        case "EXECUTION_STARTED":
+        case "FATAL_ERROR":
+        case "FLOW_ACTIONCALL_DETAIL":
+        case "FLOW_ASSIGNMENT_DETAIL":
+        case "FLOW_BULK_ELEMENT_BEGIN":
+        case "FLOW_BULK_ELEMENT_DETAIL":
+        case "FLOW_BULK_ELEMENT_END":
+        case "FLOW_BULK_ELEMENT_LIMIT_USAGE":
+        case "FLOW_BULK_ELEMENT_NOT_SUPPORTED":
+        case "FLOW_CREATE_INTERVIEW_ERROR":
+        case "FLOW_ELEMENT_LIMIT_USAGE":
+        case "FLOW_INTERVIEW_FINISHED_LIMIT_USAGE":
+        case "FLOW_INTERVIEW_PAUSED":
+        case "FLOW_INTERVIEW_RESUMED":
+        case "FLOW_LOOP_DETAIL":
+        case "FLOW_RULE_DETAIL":
+        case "FLOW_START_INTERVIEW_LIMIT_USAGE":
+        case "FLOW_START_INTERVIEWS_ERROR":
+        case "FLOW_START_SCHEDULED_RECORDS":
+        case "FLOW_SUBFLOW_DETAIL":
+        case "FLOW_VALUE_ASSIGNMENT":
+        case "FLOW_WAIT_EVENT_RESUMING_DETAIL":
+        case "FLOW_WAIT_EVENT_WAITING_DETAIL":
+        case "FLOW_WAIT_RESUMING_DETAIL":
+        case "FLOW_WAIT_WAITING_DETAIL":
+        case "IDEAS_QUERY_EXECUTE":
+        case "NBA_NODE_DETAIL":
+        case "NBA_NODE_ERROR":
+        case "NBA_OFFER_INVALID":
+        case "NBA_STRATEGY_BEGIN":
+        case "NBA_STRATEGY_END":
+        case "NBA_STRATEGY_ERROR":
+        case "POP_TRACE_FLAGS":
+        case "PUSH_NOTIFICATION_INVALID_APP":
+        case "PUSH_NOTIFICATION_INVALID_CERTIFICATE":
+        case "PUSH_NOTIFICATION_INVALID_NOTIFICATION":
+        case "PUSH_NOTIFICATION_NO_DEVICES":
+        case "PUSH_NOTIFICATION_NOT_ENABLED":
+        case "PUSH_NOTIFICATION_SENT":
+        case "PUSH_TRACE_FLAGS":
+        case "QUERY_MORE_BEGIN":
+        case "QUERY_MORE_END":
+        case "QUERY_MORE_ITERATIONS":
+        case "SAVEPOINT_ROLLBACK":
+        case "SAVEPOINT_SET":
+        case "SLA_END":
+        case "SLA_EVAL_MILESTONE":
+        case "SLA_NULL_START_DATE":
+        case "SLA_PROCESS_CASE":
+        case "STACK_FRAME_VARIABLE_LIST":
+        case "STATIC_VARIABLE_LIST":
+        case "TESTING_LIMITS":
+        case "TOTAL_EMAIL_RECIPIENTS_QUEUED":
+        case "USER_INFO":
+        case "VARIABLE_SCOPE_END":
+        case "VF_PAGE_MESSAGE":
+        case "WF_ACTION":
+        case "WF_ACTION_TASK":
+        case "WF_ACTIONS_END":
+        case "WF_APPROVAL":
+        case "WF_APPROVAL_REMOVE":
+        case "WF_APPROVAL_SUBMIT":
+        case "WF_APPROVAL_SUBMITTER":
+        case "WF_ASSIGN":
+        case "WF_CRITERIA_END":
+        case "WF_EMAIL_ALERT":
+        case "WF_EMAIL_SENT":
+        case "WF_ENQUEUE_ACTIONS":
+        case "WF_ESCALATION_ACTION":
+        case "WF_ESCALATION_RULE":
+        case "WF_EVAL_ENTRY_CRITERIA":
+        case "WF_FLOW_ACTION_BEGIN":
+        case "WF_FLOW_ACTION_DETAIL":
+        case "WF_FLOW_ACTION_END":
+        case "WF_FLOW_ACTION_ERROR":
+        case "WF_FLOW_ACTION_ERROR_DETAIL":
+        case "WF_HARD_REJECT":
+        case "WF_NEXT_APPROVER":
+        case "WF_NO_PROCESS_FOUND":
+        case "WF_OUTBOUND_MSG":
+        case "WF_PROCESS_FOUND":
+        case "WF_PROCESS_NODE":
+        case "WF_REASSIGN_RECORD":
+        case "WF_RESPONSE_NOTIFY":
+        case "WF_RULE_ENTRY_ORDER":
+        case "WF_RULE_EVAL_VALUE":
+        case "WF_RULE_FILTER":
+        case "WF_RULE_INVOCATION":
+        case "WF_RULE_NOT_EVALUATED":
+        case "WF_SOFT_REJECT":
+        case "WF_SPOOL_ACTION_BEGIN":
+        case "WF_TIME_TRIGGER":
+        case "WF_TIME_TRIGGERS_BEGIN":
+        case "XDS_DETAIL":
+        case "XDS_RESPONSE":
+        case "XDS_RESPONSE_DETAIL":
+        case "XDS_RESPONSE_ERROR": {
+          //SKIP
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    node.finished(null, this);
+    return;
+  }
+  aggregate(node) {
+    node.heapTotal = node.heap;
+    //duration is done on each node so no aggregate
+    node.rowTotal = node.row || 0;
+    node.dmlRowCountTotal = node.dmlRowCount || 0;
+    node.dmlTotal = node.dml || 0;
+    node.soqlTotal = node.soql || 0;
+    node.soslTotal = node.sosl || 0;
+    node.calloutTotal = node.callout || 0;
+    //todo futur, queue
+    for (let i = 0; i < node.child.length; i++) {
+      let c = node.child[i];
+      this.aggregate(c);
+      node.heapTotal += c.heapTotal;
+      node.rowTotal += c.rowTotal;
+      node.dmlRowCountTotal += c.dmlRowCountTotal;
+      node.dmlTotal += c.dmlTotal;
+      node.soqlTotal += c.soqlTotal;
+      node.soslTotal += c.soslTotal;
+      node.calloutTotal += c.calloutTotal;
+    }
+  }
+}
+class BaseNode {
+  constructor(logParser) {
+    this.index = logParser.nodeCount;
+    logParser.nodeCount++;
+    this.child = [];
+    this.heap = 0;
+    this.expanded = true;
+    this.hidden = false;
+  }
+  attachDebugInfo(debugInfo) {
+    if (this.debug == null) {
+      this.debug = [];
+    }
+    this.debug.push(debugInfo);
+  }
+}
+class RootNode extends BaseNode {
+  constructor(logParser) {
+    super(logParser);
+    this.title = "Log";
+  }
+  finished(splittedLine, logParser){
+    //do nothing
+  }
+}
+class LogNode extends BaseNode {
+  constructor(splittedLine, logParser, node, expected) {
+    super(logParser);
+    this.begin(splittedLine, logParser);
+    this.title = splittedLine.slice(3).join(" ");
+    logParser.parseLine(this, expected);
+    node.child.push(this);
+  }
+  begin(splittedLine, logParser) {
+    [this.start, this.startNano] = this.parseDate(splittedLine);
+    if (this.startNano) {
+      logParser.lastTimestampNano = this.startNano;
+    }
+  }
+  parseDate(splittedLine) {
+    if (splittedLine.length == 0) {
+      return [null, null];
+    }
+    let datetimeTimestamp = splittedLine[0].split(/[:. ]/);
+    if (datetimeTimestamp.length == 5){
+      let rawHour = Number(datetimeTimestamp[0]);
+      let rawMin = Number(datetimeTimestamp[1]);
+      let rawSec = Number(datetimeTimestamp[2]);
+      let rawMil = Number(datetimeTimestamp[3]);
+      let rawNano = Number(datetimeTimestamp[4].substring(1, datetimeTimestamp[4].length - 1));
+      let dt = null;
+      if (!isNaN(rawHour) && !isNaN(rawMin) && !isNaN(rawSec) && !isNaN(rawMil)) {
+        dt = new Date();
+        dt.setHours(rawHour);
+        dt.setMinutes(rawMin);
+        dt.setSeconds(rawSec);
+        dt.setMilliseconds(rawMil * 100);
+      }
+      if (!isNaN(rawNano)) {
+        return [dt, rawNano];
+      }
+      return [dt, null];
+    }
+    return [null, null];
+  }
+  finished(splittedLine, logParser){
+    if (splittedLine == null) {
+      this.endNano = logParser.lastTimestampNano;
+    } else {
+      [this.end, this.endNano] = this.parseDate(splittedLine);
+      if (this.endNano != null){
+        logParser.lastTimestampNano = this.endNano;
+      }
+    }
+    if (this.startNano && this.endNano) {
+      this.duration = (this.endNano - this.startNano) / 1000000.0;
+    } else if (this.start && this.end) {
+      this.duration = (this.end.getTime() - this.start.getTime());
+    }
+  }
+}
+class CodeUnitLogNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "CODE_UNIT_FINISHED");
+    this.title = "code unit";
+  }
+}
+class ApexNode extends LogNode {
+  constructor(splittedLine, logParser, node, expected) {
+    super(splittedLine, logParser, node, expected);
+    this.lineNumber = splittedLine[2].substring(1, -1);
+  }
+}
+class SystemMethodNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SYSTEM_METHOD_EXIT");
+  }
+}
+class MethodNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "METHOD_EXIT");
+  }
+}
+class SystemConstructorNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SYSTEM_CONSTRUCTOR_EXIT");
+  }
+}
+class ConstructorNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "CONSTRUCTOR_EXIT");
+  }
+}
+class FlowInterviewNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "FLOW_INTERVIEW_FINISHED");
+    this.icon = "flow";
+  }
+}
+class ValidationRuleNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, ["VALIDATION_PASS", "VALIDATION_FAIL"]);
+    this.icon = "approval";
+  }
+  finished(l, logParser) {
+    super.finished(l, logParser);
+    if (l == null || l.length < 4) {
+      return;
+    }
+    this.status = l[1];
+  }
+  addFormula(l) {
+    if (l.length > 3) {
+      this.formula = l.slice(2).join("|");
+    }
+  }
+  addError(l) {
+    if (l.length > 3) {
+      this.error = l.slice(2).join("|");
+    }
+  }
+}
+class SOQLNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SOQL_EXECUTE_END");
+    this.icon = "table";
+    this.soql = 1;
+    if (splittedLine[3].startsWith("Aggregations:")) {
+      let agg = Number(splittedLine[3].substring(13));
+      if (!isNaN(agg)) {
+        this.aggregations = agg;
+      }
+    }
+  }
+  finished(l, logParser) {
+    super.finished(l, logParser);
+    if (l == null || l.length < 4) {
+      return;
+    }
+    //Rows:1
+    let row = Number(l[3].substring(5));
+    if (!isNaN(row)){
+      this.row = row;
+    }
+  }
+  explain(l) {
+    //Index on User : [Id], cardinality: 1, sobjectCardinality: 575, relativeCost 0.006
+    if (l.length > 3) {
+      let explaination = l[3].split("],");
+      let dbIndex = explaination[0].split(" : [");
+      this.SObjectName = dbIndex[0].substring(9);
+      this.fields = dbIndex[1].split(",");
+      explaination[1].split(",").map((p) => {
+        let pair = p.trim().split(/: /).filter(el => el);
+        if (pair.length > 2) {
+          let val = pair.pop();
+          pair = [pair.join(""), val];
+        }
+        if (pair[0] == "cardinality" || pair[0] == "sobjectCardinality" || pair[0] == "relativeCost") {
+          this[pair[0]] = Number(pair[1]);
+        } else {
+          this[pair[0]] = pair[1];
+        }
+      });
+    }
+  }
+}
+class SOSLNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SOSL_EXECUTE_END");
+    this.icon = "search";
+    this.sosl = 1;
+  }
+  finished(l, logParser) {
+    super.finished(l, logParser);
+    if (l == null || l.length < 4) {
+      return;
+    }
+    //Rows:1
+    let row = Number(l[3].substring(5));
+    if (!isNaN(row)){
+      this.row = row;
+    }
+  }
+}
+class CalloutNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "CALLOUT_RESPONSE");
+    this.icon = "broadcast";
+    this.callout = 1;
+  }
+  finished(l, logParser) {
+    super.finished(l, logParser);
+    if (l == null || l.length < 4) {
+      return;
+    }
+    //System.HttpResponse[Status=OK, StatusCode=200]
+    this.title += l[3].substring(19);
+  }
+}
+//TODO "futur", "queue",
+
+class FlowElementNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "FLOW_ELEMENT_");
+    this.icon = "flow";
+  }
+}
+class DMLNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "DML_END");
+    //DML_BEGIN|[71]|Op:Update|Type:Account|Rows:1
+    this.icon = "database";
+    this.title = "DML " + splittedLine[3].substring(3) + " " + splittedLine[4].substring(5);
+    this.dml = 1;
+    if (splittedLine.length > 4){
+      let dmlRowCount = Number(splittedLine[5].substring());
+      if (!isNaN(dmlRowCount)){
+        this.dmlRowCount = dmlRowCount;
+      }
+    }
+  }
+}
+
+class NamedCredentialNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "NAMED_CREDENTIAL_RESPONSE");
+    this.icon = "broadcast";
+  }
+}
+class VFApexCallNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "VF_APEX_CALL_END");
+  }
+}
+//TODO Visualforce type
+class VFSerializeViewstateNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "VF_SERIALIZE_VIEWSTATE_END");
+  }
+}
+class VFDeserializeViewstateNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "VF_DESERIALIZE_VIEWSTATE_END");
+  }
+}
+class VFEvaluateFormulaNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "VF_EVALUATE_FORMULA_END");
+  }
+}
+class CumulativeLimitUsageNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "CUMULATIVE_LIMIT_USAGE_END");
+  }
+  setLimits(l) {
+    let limits = l.slice(3).join("|").split("\n");
+    for (let i = 0; i < limits.length; i++) {
+      let pair = limits[i].split(": ");
+      this[pair[0].replace("Number of ", "").replace(" ", "_")] = pair[1];
+    }
+  }
+}
+
+class NextBestActionNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "NBA_NODE_END");
+    this.icon = "question_mark";
+  }
+}
+//WF_RULE_EVAL_BEGIN > WF_CRITERIA_BEGIN > WF_FORMULA + WF_FIELD_UPDATE then WF_CRITERIA_END
+class WFRuleEvalBeginNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "WF_RULE_EVAL_END");
+    this.icon = "flow";
+    this.fieldUpdates = [];
+  }
+  setCriteria(l) { //WF_CRITERIA_BEGIN|[ObjectName: RecordName RecordID]|WorkflowRuleName|WorkflowRuleNameID
+    this.criteria = l.slice(2).join("|");
+  }
+  setFormula(l) { //WF_FORMULA (multi line)
+    this.formula = l.slice(2).join("|");
+  }
+  addFieldUpdate(l) { //WF_FIELD_UPDATE|[ObjectName Record Name RecordID]|WorkflowRuleName|WorkflowRuleNameID
+    this.fieldUpdates.push(l.slice(2).join("|"));
+  }
+}
+
 
 
 class Model {
@@ -15,8 +710,8 @@ class Model {
     this.userInfo = "...";
     // URL parameters
     this.recordId = null;
-    this.lineCount = 1;
-    this.lineNumbers = Array.from(Array(this.lineCount).keys());
+    this.logParser = new LogParser();
+    this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
 
     //full log text data
     this.logData = "";
@@ -28,8 +723,7 @@ class Model {
     this.searchIndex = -1;
     this.winInnerHeight = 0;
     this.forceScroll = false;
-    this.nodes = null;
-    this.rootNode = null;
+
     this.resizeColumnIndex = null;
     this.resizeColumnpageX = null;
     this.resizeColumnWidth = null;
@@ -83,7 +777,7 @@ class Model {
       {
         id: 7,
         title: "DML rows",
-        field: "dmlRowTotal",
+        field: "dmlRowCountTotal",
         width: 70
       },
       {
@@ -157,7 +851,7 @@ class Model {
   recalculculSearch() {
     let searchIdx = 0;
     let lastSearchIdx = 0;
-    this.lineNumbers = Array.from(Array(this.lineCount).keys());
+    this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
     if (this.logSearch) {
       this.EnrichLog = [];
       searchIdx = this.logData.indexOf(this.logSearch);
@@ -193,7 +887,7 @@ class Model {
       }
     } else {
       this.EnrichLog = [{value: this.logData}];
-      this.lineNumbers = Array.from(Array(this.lineCount).keys());
+      this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
     }
   }
   setLogSearch(value) {
@@ -306,9 +1000,6 @@ class Model {
     }
     this.spinFor(
       sfConn.rest("/services/data/v" + apiVersion + "/tooling/sobjects/ApexLog/" + this.recordId + "/Body?_dc=1705483656182", {responseType: "text"}).then(data => {
-        this.logData = data;
-        this.EnrichLog = [{value: data}];
-
         //for test only
         /*+ Array(5000).fill(null).map(() => {
           let v = Math.floor(Math.random() * 30);
@@ -324,22 +1015,12 @@ class Model {
       )
     );
   }
-  parseLog(data) {
-    let lines = data.split("\n");
-    this.lineCount = lines.length;
-    this.lineNumbers = Array.from(Array(this.lineCount).keys());
-    let node = {index: 0, title: "Log", child: [], heap: 0};
-    this.parseLine(lines, node);
-    this.aggregate(node);
-    this.rootNode = node;
-    let result = [];
-    [this.nodes, this.maxLvlNodes] = this.flatternNode(node.child, result, 1, 1);
-  }
+
   hideNodesByFilter(filter) {
-    if (!this.rootNode) {
+    if (!this.logParser.rootNode) {
       return;
     }
-    this.rootNode.hidden = this.hideNodeByFilter(filter, this.rootNode);
+    this.logParser.rootNode.hidden = this.hideNodeByFilter(filter, this.logParser.rootNode);
     this.didUpdate();
   }
   hideNodeByFilter(filter, node) {
@@ -363,14 +1044,14 @@ class Model {
     return node.hidden;
   }
   hideNodesBySearch(searchTerm) {
-    if (!this.rootNode) {
+    if (!this.logParser.rootNode) {
       return;
     }
     let searchRegEx = null;
     if (searchTerm) {
       searchRegEx = new RegExp(searchTerm, "i");
     }
-    this.rootNode.hidden = this.hideNodeBySearch(searchRegEx, this.rootNode);
+    this.logParser.rootNode.hidden = this.hideNodeBySearch(searchRegEx, this.logParser.rootNode);
     this.didUpdate();
   }
   hideNodeBySearch(searchRegEx, node) {
@@ -411,7 +1092,7 @@ class Model {
     }
   }
   toggleExpand(i) {
-    let n = this.nodes[i];
+    let n = this.logParser.nodes[i];
     if (n.expanded) { //collapse
       for (let c = 0; c < n.child.length; c++){
         this.hideNode(n.child[c]);
@@ -423,475 +1104,12 @@ class Model {
     }
     n.expanded = n.expanded ? false : true;
   }
-  aggregate(node) {
-    node.heapTotal = node.heap;
-    //duration is done on each node so no aggregate
-    node.rowTotal = node.row || 0;
-    node.dmlRowTotal = node.dmlRow || 0;
-    node.dmlTotal = node.dml || 0;
-    node.soqlTotal = node.soql || 0;
-    node.soslTotal = node.sosl || 0;
-    node.calloutTotal = node.callout || 0;
-    //todo futur, queue
-    for (let i = 0; i < node.child.length; i++) {
-      let c = node.child[i];
-      this.aggregate(c);
-      node.heapTotal += c.heapTotal;
-      node.rowTotal += c.rowTotal;
-      node.dmlRowTotal += c.dmlRowTotal;
-      node.dmlTotal += c.dmlTotal;
-      node.soqlTotal += c.soqlTotal;
-      node.soslTotal += c.soslTotal;
-      node.calloutTotal += c.calloutTotal;
-    }
-  }
-  flatternNode(child, result, lvl, maxLvlNodes) {
-    if (lvl > maxLvlNodes) {
-      maxLvlNodes = lvl;
-    }
-    for (let i = 0; i < child.length; i++) {
-      let c = child[i];
-      c.key = "node" + result.length;
-      c.level = lvl;
-      c.position = i + 1;
-      c.tabIndex = -1;
-      c.index = result.length;
-      result.push(c);
-      if (c.child && c.child.length > 0) {
-        maxLvlNodes = this.flatternNode(c.child, result, lvl + 1, maxLvlNodes)[1];
-      }
-    }
-    return [result, maxLvlNodes];
-  }
 
-  parseLine(lines, node){
-    let expected = null;
-    let i = node.index + 1;
-    let self = this;
-    function produceNode(l, dt, timestampNanos, child) {
-      child.index = i;
-      child.title = l.length > 4 ? l[4] : (l.length > 3 ? l[3] : (child.title ? child.title : l[1]));
-      child.child = [];
-      child.start = dt;
-      child.startNano = timestampNanos;
-      child.heap = 0;
-      child.expanded = true;
-      child.hidden = false;
-      i = self.parseLine(lines, child);
-      node.child.push(child);
-    }
-    for (i = node.index + 1; i < lines.length; i++) {
-      let line = lines[i];
-      let l = line.split("|");
-      if (l.length <= 1) {
-        continue;
-      }
-      let datetimeTimestamp = l[0].split(/[:. ]/);
-      let dt = null;
-      let timestampNanos = null;
-      if (datetimeTimestamp.length == 5){
-        let rawHour = Number(datetimeTimestamp[0]);
-        let rawMin = Number(datetimeTimestamp[1]);
-        let rawSec = Number(datetimeTimestamp[2]);
-        let rawMil = Number(datetimeTimestamp[3]);
-        let rawNano = Number(datetimeTimestamp[4].substring(1, datetimeTimestamp[4].length - 1));
-        if (!isNaN(rawHour) && !isNaN(rawMin) && !isNaN(rawSec) && !isNaN(rawMil)) {
-          dt = new Date();
-          dt.setHours(rawHour);
-          dt.setMinutes(rawMin);
-          dt.setSeconds(rawSec);
-          dt.setMilliseconds(rawMil * 100);
-        }
-        if (!isNaN(rawNano)) {
-          timestampNanos = rawNano;
-        }
-      }
-      //TODO l[2] =line number
-      //l[3] =log level
-      switch (l[1]) {
-        //EXECUTION_STARTED EXECUTION_FINISHED
-        case "CODE_UNIT_STARTED": {
-          expected = "CODE_UNIT_FINISHED";
-          produceNode(l, dt, timestampNanos, {title: "code unit"});
-          break;
-        } case "CODE_UNIT_FINISHED": {
-          if (l[1] != expected) {
-            console.log("Expected " + expected + " but got " + l[1]);
-          }
-          node.end = dt;
-          node.endNano = timestampNanos;
-          if (node.startNano && timestampNanos) {
-            node.duration = (timestampNanos - node.startNano) / 1000000.0;
-          } else if (node.start && dt) {
-            node.duration = (dt.getTime() - node.start.getTime());
-          }
-          return i;
-        } case "HEAP_ALLOCATE": {
-          if (l.length > 3 && l[3].startsWith("Bytes:")) {
-            let heap = Number(l[3].substring(6));
-            if (!isNaN(heap)) {
-              node.heap += heap;
-            }
-          }
-          break;
-        } case "HEAP_DEALLOCATE":
-        case "BULK_HEAP_ALLOCATE":{//not interesting
-          //TODO
-          break;
-        }
-        case "SYSTEM_METHOD_ENTRY" : {
-          expected = "SYSTEM_METHOD_EXIT";
-          produceNode(l, dt, timestampNanos, {icon: "apex"});
-          break;
-        }
-        case "METHOD_ENTRY" : {
-          expected = "METHOD_EXIT";
-          produceNode(l, dt, timestampNanos, {icon: "apex"});
-          break;
-        }
-        case "SYSTEM_CONSTRUCTOR_ENTRY" : {
-          expected = "SYSTEM_CONSTRUCTOR_EXIT";
-          produceNode(l, dt, timestampNanos, {icon: "apex"});
-          break;
-        }
-        case "FLOW_START_INTERVIEW_BEGIN" : {
-          expected = "FLOW_INTERVIEW_FINISHED"; //"FLOW_START_INTERVIEW_END"; to get error
-          produceNode(l, dt, timestampNanos, {icon: "flow"});
-          break;
-        }
-        case "VALIDATION_RULE":{
-          expected = "VALIDATION_";
-          produceNode(l, dt, timestampNanos, {icon: "approval"});
-          break;
-        }
-        case "SOQL_EXECUTE_BEGIN":{
-          expected = "SOQL_EXECUTE_END";
-          produceNode(l, dt, timestampNanos, {icon: "table", soql: 1});
-          break;
-        }
-        case "SOSL_EXECUTE_BEGIN":{
-          expected = "SOSL_EXECUTE_END";
-          produceNode(l, dt, timestampNanos, {icon: "search", sosl: 1});
-          break;
-        }
-        case "CALLOUT_REQUEST": {//not interesting
-          expected = "CALLOUT_RESPONSE";//not interesting
-          produceNode(l, dt, timestampNanos, {icon: "broadcast", callout: 1});
-          break;
-        }//TODO "futur", "queue",
-        case "FLOW_ELEMENT_BEGIN": {
-          expected = "FLOW_ELEMENT_";
-          produceNode(l, dt, timestampNanos, {icon: "flow"});
-          break;
-        }
-        case "DML_BEGIN": {
-          //DML_BEGIN|[71]|Op:Update|Type:Account|Rows:1
-          expected = "DML_END";
-          let child = {icon: "database", title: "DML", dml: 1};
-          if (l.length > 4){
-            let dmlRow = Number(l[5].substring());
-            if (!isNaN(dmlRow)){
-              child.dmlRow = dmlRow;
-            }
-          }
-          produceNode(l, dt, timestampNanos, child);
-          break;
-        }
-        case "SYSTEM_METHOD_EXIT":
-        case "METHOD_EXIT":
-        case "SYSTEM_CONSTRUCTOR_EXIT":
-        case "DML_END":
-        case "CALLOUT_RESPONSE":
-        case "FLOW_ELEMENT_DEFERRED":
-        case "FLOW_ELEMENT_END":
-        case "FLOW_ELEMENT_ERROR":
-        case "FLOW_INTERVIEW_FINISHED": {
-          if (!l[1].startsWith(expected)) {
-            console.log("Expected " + expected + " but got " + l[1]);
-          }
-          node.end = dt;
-          node.endNano = timestampNanos;
-          if (node.startNano && timestampNanos) {
-            node.duration = (timestampNanos - node.startNano) / 1000000.0;
-          } else if (node.start && dt) {
-            node.duration = (dt.getTime() - node.start.getTime());
-          }
-          return i;
-        } case "SOSL_EXECUTE_END":
-        case "SOQL_EXECUTE_END": {
-          if (l[1] != expected) {
-            console.log("Expected " + expected + " but got " + l[1]);
-          }
-          node.end = dt;
-          node.endNano = timestampNanos;
-          if (node.startNano && timestampNanos) {
-            node.duration = (timestampNanos - node.startNano) / 1000000.0;
-          } else if (node.start && dt) {
-            node.duration = (dt.getTime() - node.start.getTime());
-          }
-          //Rows:1
-          let row = Number(l[3].substring(5));
-          if (!isNaN(row)){
-            node.row = row;
-          }
-          return i;
-        } case "VALIDATION_ERROR":
-        case "VALIDATION_FAIL":
-        case "VALIDATION_PASS": {
-          if (!l[1].startsWith(expected)) {
-            console.log("Expected " + expected + " but got " + l[1]);
-          }
-          node.end = dt;
-          node.endNano = timestampNanos;
-          if (node.startNano && timestampNanos) {
-            node.duration = (timestampNanos - node.startNano) / 1000000.0;
-          } else if (node.start && dt) {
-            node.duration = (dt.getTime() - node.start.getTime());
-          }
-          node.status = l[1];
-          return i;
-        }
-        case "SOQL_EXECUTE_EXPLAIN": {
-          //Index on User : [Id], cardinality: 1, sobjectCardinality: 575, relativeCost 0.006
-          if (l.length > 3) {
-            l[3].split(",").map((p) => {
-              let pair = p.trim().split(/: /).filter(el => el);
-              if (pair.length > 2) {
-                let val = pair.pop();
-                pair = [pair.join(""), val];
-              }
-              node[pair[0]] = pair[1];
-            });
-          }
-          break;
-        } case "LIMIT_USAGE_FOR_NS": {
-          //for human read only
-          /*
-          LIMIT_USAGE_FOR_NS|(default)|
-            Number of SOQL queries: 0 out of 100
-            Number of query rows: 0 out of 50000
-            Number of SOSL queries: 0 out of 20
-            Number of DML statements: 0 out of 150
-            Number of Publish Immediate DML: 0 out of 150
-            Number of DML rows: 0 out of 10000
-            Maximum CPU time: 0 out of 10000
-            Maximum heap size: 0 out of 6000000
-            Number of callouts: 0 out of 100
-            Number of Email Invocations: 0 out of 10
-            Number of future calls: 0 out of 50
-            Number of queueable jobs added to the queue: 0 out of 50
-            Number of Mobile Apex push calls: 0 out of 10
-          */
-          break;
-        }
-        //missing node to parse
-        case "BULK_DML_RETRY":
-        case "CONSTRUCTOR_ENTRY":
-        case "CONSTRUCTOR_EXIT":
-        case "DUPLICATE_DETECTION_BEGIN":
-        case "DUPLICATE_DETECTION_MATCH_INVOCATION_DETAILS":
-        case "DUPLICATE_DETECTION_MATCH_INVOCATION_SUMMARY":
-        case "DUPLICATE_DETECTION_RULE_INVOCATION":
-        case "LIMIT_USAGE":
-        case "MATCH_ENGINE_BEGIN":
-        case "ORG_CACHE_GET_BEGIN":
-        case "ORG_CACHE_PUT_BEGIN":
-        case "ORG_CACHE_REMOVE_BEGIN":
-        case "SESSION_CACHE_GET_BEGIN":
-        case "SESSION_CACHE_PUT_BEGIN":
-        case "SESSION_CACHE_REMOVE_BEGIN":
-        case "VF_DESERIALIZE_CONTINUATION_STATE_BEGIN":
-        case "VF_SERIALIZE_CONTINUATION_STATE_BEGIN":
-        case "NAMED_CREDENTIAL_REQUEST":
-        case "NAMED_CREDENTIAL_RESPONSE":
-        case "NAMED_CREDENTIAL_RESPONSE_DETAIL":
-        case "CUMULATIVE_PROFILING":
-        case "CUMULATIVE_PROFILING_BEGIN":
-        case "CUMULATIVE_PROFILING_END":
-        case "EMAIL_QUEUE":
-        case "ENTERING_MANAGED_PKG":
-        case "EVENT_SERVICE_PUB_BEGIN":
-        case "FLOW_ELEMENT_FAULT": {
-          //TODO
-          break;
-        }
-        case "CUMULATIVE_LIMIT_USAGE":
-        case "CUMULATIVE_LIMIT_USAGE_END":
-        case "FLOW_CREATE_INTERVIEW_END":
-        case "FLOW_START_INTERVIEW_END":
-        case "FLOW_START_INTERVIEWS_BEGIN":
-        case "FLOW_START_INTERVIEWS_END":
-        case "VARIABLE_SCOPE_BEGIN":
-        case "VARIABLE_ASSIGNMENT":
-        case "USER_DEBUG":
-        case "SYSTEM_MODE_ENTER":
-        case "SYSTEM_MODE_EXIT":
-        case "STATEMENT_EXECUTE":
-        case "VALIDATION_FORMULA":
-        case "EVENT_SERVICE_PUB_DETAIL":
-        case "EVENT_SERVICE_PUB_END":
-        case "EVENT_SERVICE_SUB_BEGIN":
-        case "EVENT_SERVICE_SUB_DETAIL":
-        case "EVENT_SERVICE_SUB_END":
-        case "EXCEPTION_THROWN":
-        case "EXECUTION_FINISHED":
-        case "EXECUTION_STARTED":
-        case "FATAL_ERROR":
-        case "FLOW_ACTIONCALL_DETAIL":
-        case "FLOW_ASSIGNMENT_DETAIL":
-        case "FLOW_BULK_ELEMENT_BEGIN":
-        case "FLOW_BULK_ELEMENT_DETAIL":
-        case "FLOW_BULK_ELEMENT_END":
-        case "FLOW_BULK_ELEMENT_LIMIT_USAGE":
-        case "FLOW_BULK_ELEMENT_NOT_SUPPORTED":
-        case "FLOW_CREATE_INTERVIEW_ERROR":
-        case "FLOW_ELEMENT_LIMIT_USAGE":
-        case "FLOW_INTERVIEW_FINISHED_LIMIT_USAGE":
-        case "FLOW_INTERVIEW_PAUSED":
-        case "FLOW_INTERVIEW_RESUMED":
-        case "FLOW_LOOP_DETAIL":
-        case "FLOW_RULE_DETAIL":
-        case "FLOW_START_INTERVIEW_LIMIT_USAGE":
-        case "FLOW_START_INTERVIEWS_ERROR":
-        case "FLOW_START_SCHEDULED_RECORDS":
-        case "FLOW_SUBFLOW_DETAIL":
-        case "FLOW_VALUE_ASSIGNMENT":
-        case "FLOW_WAIT_EVENT_RESUMING_DETAIL":
-        case "FLOW_WAIT_EVENT_WAITING_DETAIL":
-        case "FLOW_WAIT_RESUMING_DETAIL":
-        case "FLOW_WAIT_WAITING_DETAIL":
-        case "IDEAS_QUERY_EXECUTE":
-        case "NBA_NODE_BEGIN":
-        case "NBA_NODE_DETAIL":
-        case "NBA_NODE_END":
-        case "NBA_NODE_ERROR":
-        case "NBA_OFFER_INVALID":
-        case "NBA_STRATEGY_BEGIN":
-        case "NBA_STRATEGY_END":
-        case "NBA_STRATEGY_ERROR":
-        case "POP_TRACE_FLAGS":
-        case "PUSH_NOTIFICATION_INVALID_APP":
-        case "PUSH_NOTIFICATION_INVALID_CERTIFICATE":
-        case "PUSH_NOTIFICATION_INVALID_NOTIFICATION":
-        case "PUSH_NOTIFICATION_NO_DEVICES":
-        case "PUSH_NOTIFICATION_NOT_ENABLED":
-        case "PUSH_NOTIFICATION_SENT":
-        case "PUSH_TRACE_FLAGS":
-        case "QUERY_MORE_BEGIN":
-        case "QUERY_MORE_END":
-        case "QUERY_MORE_ITERATIONS":
-        case "SAVEPOINT_ROLLBACK":
-        case "SAVEPOINT_SET":
-        case "SLA_END":
-        case "SLA_EVAL_MILESTONE":
-        case "SLA_NULL_START_DATE":
-        case "SLA_PROCESS_CASE":
-        case "STACK_FRAME_VARIABLE_LIST":
-        case "STATIC_VARIABLE_LIST":
-        case "TESTING_LIMITS":
-        case "TOTAL_EMAIL_RECIPIENTS_QUEUED":
-        case "USER_INFO":
-        case "VARIABLE_SCOPE_END":
-        case "VF_APEX_CALL_END":
-        case "VF_APEX_CALL_START":
-        case "VF_DESERIALIZE_VIEWSTATE_BEGIN":
-        case "VF_DESERIALIZE_VIEWSTATE_END":
-        case "VF_EVALUATE_FORMULA_BEGIN":
-        case "VF_EVALUATE_FORMULA_END":
-        case "VF_PAGE_MESSAGE":
-        case "VF_SERIALIZE_VIEWSTATE_BEGIN":
-        case "VF_SERIALIZE_VIEWSTATE_END":
-        case "WF_ACTION":
-        case "WF_ACTION_TASK":
-        case "WF_ACTIONS_END":
-        case "WF_APPROVAL":
-        case "WF_APPROVAL_REMOVE":
-        case "WF_APPROVAL_SUBMIT":
-        case "WF_APPROVAL_SUBMITTER":
-        case "WF_ASSIGN":
-        case "WF_CRITERIA_BEGIN":
-        case "WF_CRITERIA_END":
-        case "WF_EMAIL_ALERT":
-        case "WF_EMAIL_SENT":
-        case "WF_ENQUEUE_ACTIONS":
-        case "WF_ESCALATION_ACTION":
-        case "WF_ESCALATION_RULE":
-        case "WF_EVAL_ENTRY_CRITERIA":
-        case "WF_FIELD_UPDATE":
-        case "WF_FLOW_ACTION_BEGIN":
-        case "WF_FLOW_ACTION_DETAIL":
-        case "WF_FLOW_ACTION_END":
-        case "WF_FLOW_ACTION_ERROR":
-        case "WF_FLOW_ACTION_ERROR_DETAIL":
-        case "WF_FORMULA":
-        case "WF_HARD_REJECT":
-        case "WF_NEXT_APPROVER":
-        case "WF_NO_PROCESS_FOUND":
-        case "WF_OUTBOUND_MSG":
-        case "WF_PROCESS_FOUND":
-        case "WF_PROCESS_NODE":
-        case "WF_REASSIGN_RECORD":
-        case "WF_RESPONSE_NOTIFY":
-        case "WF_RULE_ENTRY_ORDER":
-        case "WF_RULE_EVAL_BEGIN":
-        case "WF_RULE_EVAL_END":
-        case "WF_RULE_EVAL_VALUE":
-        case "WF_RULE_FILTER":
-        case "WF_RULE_INVOCATION":
-        case "WF_RULE_NOT_EVALUATED":
-        case "WF_SOFT_REJECT":
-        case "WF_SPOOL_ACTION_BEGIN":
-        case "WF_TIME_TRIGGER":
-        case "WF_TIME_TRIGGERS_BEGIN":
-        case "XDS_DETAIL":
-        case "XDS_RESPONSE":
-        case "XDS_RESPONSE_DETAIL":
-        case "XDS_RESPONSE_ERROR": {
-          //SKIP
-          break;
-        }
-        default:
-          break;
-      }
-
-    }
-    i = lines.length - 1;
-    let line = lines[i];
-    let l = line.split("|");
-    while (l.length <= 1 && i >= 0) {
-      i--;
-      line = lines[i];
-      l = line.split("|");
-    }
-    let datetimeTimestamp = l[0].split(/[:. ]/);
-    let dt = null;
-    let timestampNanos = null;
-    if (datetimeTimestamp.length == 5){
-      let rawHour = Number(datetimeTimestamp[0]);
-      let rawMin = Number(datetimeTimestamp[1]);
-      let rawSec = Number(datetimeTimestamp[2]);
-      let rawMil = Number(datetimeTimestamp[3]);
-      let rawNano = Number(datetimeTimestamp[4].substring(1, datetimeTimestamp[4].length - 1));
-      if (!isNaN(rawHour) && !isNaN(rawMin) && !isNaN(rawSec) && !isNaN(rawMil)) {
-        dt = new Date();
-        dt.setHours(rawHour);
-        dt.setMinutes(rawMin);
-        dt.setSeconds(rawSec);
-        dt.setMilliseconds(rawMil * 100);
-      }
-      if (!isNaN(rawNano)) {
-        timestampNanos = rawNano;
-      }
-    }
-    node.end = dt;
-    node.endNano = timestampNanos;
-    if (node.startNano && timestampNanos) {
-      node.duration = (timestampNanos - node.startNano) / 1000000.0;
-    } else if (node.start && dt) {
-      node.duration = (dt.getTime() - node.start.getTime());
-    }
-    node.status = l[1];
-    return lines.length;
+  parseLog(data) {
+    this.logData = data;
+    this.EnrichLog = [{value: data}];
+    this.logParser.parseLog(data);
+    this.lineNumbers = Array.from(Array(this.lineCount).keys());
   }
 }
 
@@ -1158,7 +1376,7 @@ class Profiler extends React.Component {
     super(props);
     this.model = props.model;
     this.column = props.model.column;
-    this.nodes = this.model.nodes;
+    this.nodes = this.model.logParser.nodes;
     this.onMouseDown = this.onMouseDown.bind(this);
   }
   onMouseDown(e, id) {
@@ -1240,7 +1458,7 @@ class LogViewer extends React.Component {
     let currentSearchIdx = model.searchIndex;
     let rowHeight = 14;
     let scrollerOffsetHeight = 0;
-    let totalHeight = model.lineCount * rowHeight;
+    let totalHeight = model.logParser.lineCount * rowHeight;
 
     if (this.scroller != null) {
       scrollerOffsetHeight = this.scroller.offsetHeight;
@@ -1342,9 +1560,7 @@ class FileUpload extends React.Component {
 
     const reader = new FileReader();
     reader.addEventListener("load", (event) => {
-      model.logData = event.target.result;
-      model.EnrichLog = [{value: model.logData}];
-      model.parseLog(model.logData);
+      model.parseLog(event.target.result);
       model.didUpdate();
     });
     reader.readAsText(this.state.logFile);
@@ -1366,7 +1582,7 @@ class NewFlameGraph extends React.Component {
     super(props);
     this.model = props.model;
     this.column = props.model.column;
-    this.rootNode = this.model.rootNode;
+    this.rootNode = this.model.logParser.rootNode;
     this.availableFilters = [{
       title: "Duration",
       field: "duration"
@@ -1393,7 +1609,7 @@ class NewFlameGraph extends React.Component {
     },
     {
       title: "DML rows",
-      field: "dmlRowTotal",
+      field: "dmlRowCountTotal",
     },
     {
       title: "Callouts",
