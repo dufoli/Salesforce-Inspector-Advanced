@@ -14,6 +14,7 @@ class LogParser {
     this.nodeCount = 0;
     this.lines = [];
     this.lastTimestampNano = 0;
+    this.logLinePattern = /^[0-9]{2}:[0-9]{2}:[0-9]{2}/m;
   }
   parseLog(data) {
     this.lines = data.split("\n");
@@ -45,18 +46,19 @@ class LogParser {
   }
   parseLine(node, expected){
     this.index++;
-    let logLinePattern = /^[0-9]{2}:[0-9]{2}:[0-9]{2}/m;
+
     for (; this.index < this.lineCount; this.index++) {
       let line = this.lines[this.index];
-      while (this.index + 1 < this.lineCount && !logLinePattern.test(this.lines[this.index + 1])) {
-        line += "\n" + this.lines[this.index + 1];
+      while (this.index + 1 < this.lineCount && !this.logLinePattern.test(this.lines[this.index + 1])) {
+        if (this.lines[this.index + 1]){
+          line += "\n" + this.lines[this.index + 1];
+        }
         this.index++;
       }
       let l = line.split("|");
       if (l.length <= 1) {
         continue;
       }
-      //TODO l[2] =line number
       //l[3] =log level
       switch (l[1]) {
         //EXECUTION_STARTED EXECUTION_FINISHED
@@ -107,7 +109,7 @@ class LogParser {
         case "CALLOUT_REQUEST": { //not interesting
           new CalloutNode(l, this, node);
           break;
-        }//TODO "futur", "queue",
+        }
         case "FLOW_ELEMENT_BEGIN": {
           new FlowElementNode(l, this, node);
           break;
@@ -141,29 +143,43 @@ class LogParser {
           new NextBestActionNode(l, this, node);
           break;
         }
-        case "VF_SERIALIZE_VIEWSTATE_END":
-        case "VF_EVALUATE_FORMULA_END":
-        case "VF_DESERIALIZE_VIEWSTATE_END":
-        case "SYSTEM_METHOD_EXIT":
-        case "METHOD_EXIT":
-        case "SYSTEM_CONSTRUCTOR_EXIT":
-        case "CONSTRUCTOR_EXIT":
-        case "DML_END":
         case "CALLOUT_RESPONSE":
+        case "CODE_UNIT_FINISHED":
+        case "CONSTRUCTOR_EXIT":
+        case "CUMULATIVE_LIMIT_USAGE_END":
+        case "DML_END":
+        case "DUPLICATE_DETECTION_END" :
+        case "FLOW_BULK_ELEMENT_END":
         case "FLOW_ELEMENT_DEFERRED":
         case "FLOW_ELEMENT_END":
         case "FLOW_ELEMENT_ERROR":
-        case "FLOW_INTERVIEW_FINISHED":
-        case "SOSL_EXECUTE_END":
+        case "FLOW_START_INTERVIEW_END":
+        case "MATCH_ENGINE_END" :
+        case "METHOD_EXIT":
+        case "NAMED_CREDENTIAL_RESPONSE":
+        case "NBA_NODE_END":
+        case "ORG_CACHE_GET_END" :
+        case "ORG_CACHE_PUT_END" :
+        case "ORG_CACHE_REMOVE_END" :
+        case "SESSION_CACHE_GET_END" :
+        case "SESSION_CACHE_PUT_END" :
+        case "SESSION_CACHE_REMOVE_END" :
         case "SOQL_EXECUTE_END":
+        case "SOSL_EXECUTE_END":
+        case "SYSTEM_CONSTRUCTOR_EXIT":
+        case "SYSTEM_METHOD_EXIT":
         case "VALIDATION_FAIL":
         case "VALIDATION_PASS":
-        case "NAMED_CREDENTIAL_RESPONSE":
         case "VF_APEX_CALL_END":
-        case "CUMULATIVE_LIMIT_USAGE_END":
-        case "NBA_NODE_END":
-        case "WF_RULE_EVAL_END":
-        case "CODE_UNIT_FINISHED": {
+        case "VF_DESERIALIZE_VIEWSTATE_END":
+        case "VF_EVALUATE_FORMULA_END":
+        case "VF_SERIALIZE_VIEWSTATE_END":
+        case "WF_EMAIL_SENT" :
+        case "VF_DESERIALIZE_CONTINUATION_STATE_END" :
+        case "VF_SERIALIZE_CONTINUATION_STATE_END" :
+        case "QUERY_MORE_END":
+        case "CUMULATIVE_PROFILING_END":
+        case "WF_RULE_EVAL_END": {
           if (Array.isArray(expected) && !expected.includes(l[1])) {
             console.log("Expected " + expected.join(", ") + " but got " + l[1]);
           } else if (!Array.isArray(expected) && expected != l[1]) {
@@ -201,60 +217,144 @@ class LogParser {
           break;
         }
         case "WF_RULE_EVAL_BEGIN": {
-          new WFRuleEvalBeginNode(l, this, node);
+          new WFRuleEvalNode(l, this, node);
           break;
         }
         case "WF_CRITERIA_BEGIN": {
-          node.setCriteria(l);
+          if (node.child.length > 0 && node.child[node.child.length - 1] instanceof WFRuleInvocationNode) {
+            node.child[node.child.length - 1].setCriteria(l, this);
+          } else if (node instanceof WFRuleEvalNode) {
+            node.setCriteria(l, this);
+          }
           break;
         }
         case "WF_FORMULA": {
-          node.setFormula(l);
+          if (node.child.length > 0 && node.child[node.child.length - 1] instanceof WFRuleInvocationNode) {
+            node.child[node.child.length - 1].setFormula(l, this);
+          } else if (node instanceof WFRuleEvalNode) {
+            node.setFormula(l, this);
+          }
           break;
         }
         case "WF_FIELD_UPDATE": {
-          node.addFieldUpdate(l);
+          if (node.child.length > 0 && node.child[node.child.length - 1] instanceof WFRuleInvocationNode) {
+            node.child[node.child.length - 1].addFieldUpdate(l, this);
+          } else if (node instanceof WFRuleEvalNode) {
+            node.addFieldUpdate(l, this);
+          }
           break;
         }
+        case "WF_APPROVAL": {
+          new WFApprovalNode(l, this, node);
+          break;
+        }
+        case "WF_SPOOL_ACTION_BEGIN": {
+          new WFSpoolActionBeginNode(l, this, node);
+          break;
+        }
+        case "WF_APPROVAL_SUBMIT": {
+          new WFApprovalSubmitNode(l, this, node);
+          break;
+        }
+        case "WF_EMAIL_ALERT": {
+          new WFEmailAlertNode(l, this, node);
+          break;
+        }
+        case "WF_EVAL_ENTRY_CRITERIA": {
+          new WFEvalEntryCriteriaNode(l, this, node);
+          break;
+        }
+        case "WF_NEXT_APPROVER": {
+          new WFNextApproverNode(l, this, node);
+          break;
+        }
+        case "WF_PROCESS_FOUND": {
+          new WFProcessFoundNode(l, this, node);
+          break;
+        }
+        case "WF_PROCESS_NODE": {
+          new WFProcessNodeNode(l, this, node);
+          break;
+        }
+        case "MATCH_ENGINE_BEGIN": {
+          new MatchEngineNode(l, this, node);
+          break;
+        }
+        case "DUPLICATE_DETECTION_BEGIN": {
+          new DuplicationDetectionNode(l, this, node);
+          break;
+        }
+        case "ORG_CACHE_GET_BEGIN": {
+          new OrgCacheGetNode(l, this, node);
+          break;
+        }
+        case "ORG_CACHE_PUT_BEGIN": {
+          new OrgCachePutNode(l, this, node);
+          break;
+        }
+        case "ORG_CACHE_REMOVE_BEGIN": {
+          new OrgCacheRemoveNode(l, this, node);
+          break;
+        }
+        case "SESSION_CACHE_GET_BEGIN": {
+          new SessionCacheGetNode(l, this, node);
+          break;
+        }
+        case "SESSION_CACHE_PUT_BEGIN": {
+          new SessionCachePutNode(l, this, node);
+          break;
+        }
+        case "SESSION_CACHE_REMOVE_BEGIN": {
+          new SessionCacheRemoveNode(l, this, node);
+          break;
+        }
+        case "FLOW_BULK_ELEMENT_BEGIN": {
+          new FlowBulkElementNode(l, this, node);
+          break;
+        }
+        case "VF_DESERIALIZE_CONTINUATION_STATE_BEGIN": {
+          new VFDeserializeContinuationStateNode(l, this, node);
+          break;
+        }
+        case "VF_SERIALIZE_CONTINUATION_STATE_BEGIN":
+        {
+          new VFSerializeContinuationStateNode(l, this, node);
+          break;
+        }
+        case "QUERY_MORE_BEGIN": {
+          new QueryMoreNode(l, this, node);
+          break;
+        }
+        case "CUMULATIVE_PROFILING_BEGIN": {
+          new CumulativeProfilingNode(l, this, node);
+          break;
+        }
+
+        case "CUMULATIVE_PROFILING": {
+          if (node instanceof CumulativeProfilingNode) {
+            node.addInfo(l);
+          }
+          break;
+        }
+
         //missing node to parse
+        case "APP_CONTAINER_INITIATED" :
+        case "ASSET_DIFF_DETAIL" :
+        case "ASSET_DIFF_SUMMARY" :
+        case "BULK_COUNTABLE_STATEMENT_EXECUTE" :
         case "BULK_DML_RETRY":
-        case "DUPLICATE_DETECTION_BEGIN":
+        case "BULK_HEAP_ALLOCATE":
+        case "CALLOUT_REQUEST_FINALIZE" :
+        case "CALLOUT_REQUEST_PREPARE" :
         case "DUPLICATE_DETECTION_MATCH_INVOCATION_DETAILS":
         case "DUPLICATE_DETECTION_MATCH_INVOCATION_SUMMARY":
         case "DUPLICATE_DETECTION_RULE_INVOCATION":
-        case "LIMIT_USAGE":
-        case "MATCH_ENGINE_BEGIN":
-        case "ORG_CACHE_GET_BEGIN":
-        case "ORG_CACHE_PUT_BEGIN":
-        case "ORG_CACHE_REMOVE_BEGIN":
-        case "SESSION_CACHE_GET_BEGIN":
-        case "SESSION_CACHE_PUT_BEGIN":
-        case "SESSION_CACHE_REMOVE_BEGIN":
-        case "VF_DESERIALIZE_CONTINUATION_STATE_BEGIN":
-        case "VF_SERIALIZE_CONTINUATION_STATE_BEGIN":
-        case "NAMED_CREDENTIAL_RESPONSE_DETAIL":
-        case "CUMULATIVE_PROFILING":
-        case "CUMULATIVE_PROFILING_BEGIN":
-        case "CUMULATIVE_PROFILING_END":
+        case "DUPLICATE_RULE_FILTER_RESULT" :
+        case "DUPLICATE_RULE_FILTER_VALUE" :
+        case "DUPLICATE_RULE_FILTER" :
         case "EMAIL_QUEUE":
         case "ENTERING_MANAGED_PKG":
         case "EVENT_SERVICE_PUB_BEGIN":
-        case "FLOW_ELEMENT_FAULT": {
-          //TODO
-          break;
-        }
-        case "HEAP_DEALLOCATE":
-        case "BULK_HEAP_ALLOCATE":
-        case "FLOW_CREATE_INTERVIEW_END":
-        case "FLOW_CREATE_INTERVIEW_BEGIN":
-        case "FLOW_START_INTERVIEW_END":
-        case "FLOW_START_INTERVIEWS_BEGIN":
-        case "FLOW_START_INTERVIEWS_END":
-        case "VARIABLE_SCOPE_BEGIN"://apex variable: nothing important
-        case "VARIABLE_ASSIGNMENT"://apex variable: nothing important
-        case "SYSTEM_MODE_ENTER":
-        case "SYSTEM_MODE_EXIT":
-        case "STATEMENT_EXECUTE"://apex statement: nothing important
         case "EVENT_SERVICE_PUB_DETAIL":
         case "EVENT_SERVICE_PUB_END":
         case "EVENT_SERVICE_SUB_BEGIN":
@@ -266,19 +366,23 @@ class LogParser {
         case "FATAL_ERROR":
         case "FLOW_ACTIONCALL_DETAIL":
         case "FLOW_ASSIGNMENT_DETAIL":
-        case "FLOW_BULK_ELEMENT_BEGIN":
         case "FLOW_BULK_ELEMENT_DETAIL":
-        case "FLOW_BULK_ELEMENT_END":
         case "FLOW_BULK_ELEMENT_LIMIT_USAGE":
         case "FLOW_BULK_ELEMENT_NOT_SUPPORTED":
+        case "FLOW_CREATE_INTERVIEW_BEGIN":
+        case "FLOW_CREATE_INTERVIEW_END":
         case "FLOW_CREATE_INTERVIEW_ERROR":
+        case "FLOW_ELEMENT_FAULT":
         case "FLOW_ELEMENT_LIMIT_USAGE":
         case "FLOW_INTERVIEW_FINISHED_LIMIT_USAGE":
+        case "FLOW_INTERVIEW_FINISHED":
         case "FLOW_INTERVIEW_PAUSED":
         case "FLOW_INTERVIEW_RESUMED":
         case "FLOW_LOOP_DETAIL":
         case "FLOW_RULE_DETAIL":
         case "FLOW_START_INTERVIEW_LIMIT_USAGE":
+        case "FLOW_START_INTERVIEWS_BEGIN":
+        case "FLOW_START_INTERVIEWS_END":
         case "FLOW_START_INTERVIEWS_ERROR":
         case "FLOW_START_SCHEDULED_RECORDS":
         case "FLOW_SUBFLOW_DETAIL":
@@ -287,13 +391,23 @@ class LogParser {
         case "FLOW_WAIT_EVENT_WAITING_DETAIL":
         case "FLOW_WAIT_RESUMING_DETAIL":
         case "FLOW_WAIT_WAITING_DETAIL":
+        case "HEAP_DEALLOCATE":
+        case "HEAP_DUMP" :
         case "IDEAS_QUERY_EXECUTE":
+        case "INVOCABLE_ACTION_DETAIL" :
+        case "INVOCABLE_ACTION_ERROR" :
+        case "JSON_DIFF_DETAIL" :
+        case "JSON_DIFF_SUMMARY" :
+        case "LIMIT_USAGE":
+        case "MATCH_ENGINE_INVOCATION" :
+        case "NAMED_CREDENTIAL_RESPONSE_DETAIL":
         case "NBA_NODE_DETAIL":
         case "NBA_NODE_ERROR":
         case "NBA_OFFER_INVALID":
         case "NBA_STRATEGY_BEGIN":
         case "NBA_STRATEGY_END":
         case "NBA_STRATEGY_ERROR":
+        case "ORG_CACHE_MEMORY_USAGE" :
         case "POP_TRACE_FLAGS":
         case "PUSH_NOTIFICATION_INVALID_APP":
         case "PUSH_NOTIFICATION_INVALID_CERTIFICATE":
@@ -302,48 +416,64 @@ class LogParser {
         case "PUSH_NOTIFICATION_NOT_ENABLED":
         case "PUSH_NOTIFICATION_SENT":
         case "PUSH_TRACE_FLAGS":
-        case "QUERY_MORE_BEGIN":
-        case "QUERY_MORE_END":
         case "QUERY_MORE_ITERATIONS":
+        case "REFERENCED_OBJECT_LIST" :
+        case "RULES_EXECUTION_DETAIL" :
+        case "RULES_EXECUTION_SUMMARY" :
         case "SAVEPOINT_ROLLBACK":
         case "SAVEPOINT_SET":
+        case "SCRIPT_EXECUTION" :
+        case "SESSION_CACHE_MEMORY_USAGE" :
         case "SLA_END":
         case "SLA_EVAL_MILESTONE":
         case "SLA_NULL_START_DATE":
         case "SLA_PROCESS_CASE":
         case "STACK_FRAME_VARIABLE_LIST":
+        case "STATEMENT_EXECUTE"://apex statement: nothing important
         case "STATIC_VARIABLE_LIST":
+        case "SYSTEM_MODE_ENTER":
+        case "SYSTEM_MODE_EXIT":
+        case "TEMPLATE_PROCESSING_ERROR" :
+        case "TEMPLATED_ASSET" :
         case "TESTING_LIMITS":
         case "TOTAL_EMAIL_RECIPIENTS_QUEUED":
+        case "TRANSFORMATION_SUMMARY" :
+        case "USER_DEBUG_DEBUG" :
+        case "USER_DEBUG_ERROR" :
+        case "USER_DEBUG_FINE" :
+        case "USER_DEBUG_FINER" :
+        case "USER_DEBUG_FINEST" :
+        case "USER_DEBUG_INFO" :
+        case "USER_DEBUG_WARN" :
         case "USER_INFO":
+        case "VARIABLE_ASSIGNMENT"://apex variable: nothing important
+        case "VARIABLE_SCOPE_BEGIN"://apex variable: nothing important
         case "VARIABLE_SCOPE_END":
+        case "VF_APEX_CALL" :
         case "VF_PAGE_MESSAGE":
-        case "WF_ACTION":
+        case "WAVE_APP_LIFECYCLE" :
         case "WF_ACTION_TASK":
+        case "WF_ACTION":
         case "WF_ACTIONS_END":
-        case "WF_APPROVAL":
+        case "WF_APEX_ACTION" :
         case "WF_APPROVAL_REMOVE":
-        case "WF_APPROVAL_SUBMIT":
         case "WF_APPROVAL_SUBMITTER":
         case "WF_ASSIGN":
+        case "WF_CHATTER_POST" :
         case "WF_CRITERIA_END":
-        case "WF_EMAIL_ALERT":
-        case "WF_EMAIL_SENT":
         case "WF_ENQUEUE_ACTIONS":
         case "WF_ESCALATION_ACTION":
         case "WF_ESCALATION_RULE":
-        case "WF_EVAL_ENTRY_CRITERIA":
         case "WF_FLOW_ACTION_BEGIN":
         case "WF_FLOW_ACTION_DETAIL":
         case "WF_FLOW_ACTION_END":
-        case "WF_FLOW_ACTION_ERROR":
         case "WF_FLOW_ACTION_ERROR_DETAIL":
+        case "WF_FLOW_ACTION_ERROR":
         case "WF_HARD_REJECT":
-        case "WF_NEXT_APPROVER":
+        case "WF_KNOWLEDGE_ACTION" :
         case "WF_NO_PROCESS_FOUND":
         case "WF_OUTBOUND_MSG":
-        case "WF_PROCESS_FOUND":
-        case "WF_PROCESS_NODE":
+        case "WF_QUICK_CREATE" :
         case "WF_REASSIGN_RECORD":
         case "WF_RESPONSE_NOTIFY":
         case "WF_RULE_ENTRY_ORDER":
@@ -351,14 +481,15 @@ class LogParser {
         case "WF_RULE_FILTER":
         case "WF_RULE_INVOCATION":
         case "WF_RULE_NOT_EVALUATED":
+        case "WF_SEND_ACTION" :
         case "WF_SOFT_REJECT":
-        case "WF_SPOOL_ACTION_BEGIN":
         case "WF_TIME_TRIGGER":
         case "WF_TIME_TRIGGERS_BEGIN":
         case "XDS_DETAIL":
-        case "XDS_RESPONSE":
+        case "XDS_REQUEST_DETAIL" :
         case "XDS_RESPONSE_DETAIL":
-        case "XDS_RESPONSE_ERROR": {
+        case "XDS_RESPONSE_ERROR":
+        case "XDS_RESPONSE": {
           //SKIP
           break;
         }
@@ -418,12 +549,25 @@ class RootNode extends BaseNode {
   }
 }
 class LogNode extends BaseNode {
-  constructor(splittedLine, logParser, node, expected) {
+  constructor(splittedLine, logParser, node, expected, autoclose) {
     super(logParser);
     this.begin(splittedLine, logParser);
     this.title = splittedLine.slice(3).join(" ");
-    logParser.parseLine(this, expected);
     node.child.push(this);
+    if (autoclose) {
+      let i = 1;
+      while (logParser.index + i < logParser.lineCount) {
+        if (logParser.lines[logParser.index + i] && logParser.logLinePattern.test(logParser.lines[logParser.index + i])){
+          let l = logParser.lines[logParser.index + i].split("|");
+          this.finished(l, logParser);
+          return;
+        }
+        i++;
+      }
+      this.finished(splittedLine, logParser);
+    } else {
+      logParser.parseLine(this, expected);
+    }
   }
   begin(splittedLine, logParser) {
     [this.start, this.startNano] = this.parseDate(splittedLine);
@@ -471,6 +615,9 @@ class LogNode extends BaseNode {
     } else if (this.start && this.end) {
       this.duration = (this.end.getTime() - this.start.getTime());
     }
+    if (this.duration == 0) { //force minimum size to display on flamechart
+      this.duration = 1;
+    }
   }
 }
 class CodeUnitLogNode extends LogNode {
@@ -507,7 +654,7 @@ class ConstructorNode extends ApexNode {
 }
 class FlowInterviewNode extends LogNode {
   constructor(splittedLine, logParser, node) {
-    super(splittedLine, logParser, node, "FLOW_INTERVIEW_FINISHED");
+    super(splittedLine, logParser, node, "FLOW_START_INTERVIEW_END");
     this.icon = "flow";
   }
 }
@@ -647,7 +794,7 @@ class VFApexCallNode extends ApexNode {
     super(splittedLine, logParser, node, "VF_APEX_CALL_END");
   }
 }
-//TODO Visualforce type
+
 class VFSerializeViewstateNode extends ApexNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "VF_SERIALIZE_VIEWSTATE_END");
@@ -656,6 +803,16 @@ class VFSerializeViewstateNode extends ApexNode {
 class VFDeserializeViewstateNode extends ApexNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "VF_DESERIALIZE_VIEWSTATE_END");
+  }
+}
+class VFSerializeContinuationStateNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "VF_SERIALIZE_CONTINUATION_STATE_END");
+  }
+}
+class VFDeserializeContinuationStateNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "VF_DESERIALIZE_CONTINUATION_STATE_END");
   }
 }
 class VFEvaluateFormulaNode extends ApexNode {
@@ -670,8 +827,11 @@ class CumulativeLimitUsageNode extends LogNode {
   setLimits(l) {
     let limits = l.slice(3).join("|").split("\n");
     for (let i = 0; i < limits.length; i++) {
+      if (!limits[i]) {
+        continue;
+      }
       let pair = limits[i].split(": ");
-      this[pair[0].replace("Number of ", "").replace(" ", "_")] = pair[1];
+      this[pair[0].replace("Number of ", "").trim().replace(" ", "_")] = pair[1];
     }
   }
 }
@@ -679,28 +839,177 @@ class CumulativeLimitUsageNode extends LogNode {
 class NextBestActionNode extends ApexNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "NBA_NODE_END");
-    this.icon = "question_mark";
+    this.icon = "question";
   }
 }
-//WF_RULE_EVAL_BEGIN > WF_CRITERIA_BEGIN > WF_FORMULA + WF_FIELD_UPDATE then WF_CRITERIA_END
-class WFRuleEvalBeginNode extends ApexNode {
-  constructor(splittedLine, logParser, node) {
-    super(splittedLine, logParser, node, "WF_RULE_EVAL_END");
+
+class WFNode extends LogNode {
+  constructor(splittedLine, logParser, node, expected, autoclose) {
+    super(splittedLine, logParser, node, expected, autoclose);
     this.icon = "flow";
     this.fieldUpdates = [];
   }
-  setCriteria(l) { //WF_CRITERIA_BEGIN|[ObjectName: RecordName RecordID]|WorkflowRuleName|WorkflowRuleNameID
+  setCriteria(l, logParser) { //WF_CRITERIA_BEGIN|[ObjectName: RecordName RecordID]|WorkflowRuleName|WorkflowRuleNameID
     this.criteria = l.slice(2).join("|");
   }
-  setFormula(l) { //WF_FORMULA (multi line)
+  setFormula(l, logParser) { //WF_FORMULA (multi line)
     this.formula = l.slice(2).join("|");
   }
-  addFieldUpdate(l) { //WF_FIELD_UPDATE|[ObjectName Record Name RecordID]|WorkflowRuleName|WorkflowRuleNameID
+  addFieldUpdate(l, logParser) { //WF_FIELD_UPDATE|[ObjectName Record Name RecordID]|WorkflowRuleName|WorkflowRuleNameID
     this.fieldUpdates.push(l.slice(2).join("|"));
   }
 }
 
+class WFRuleEvalNode extends WFNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "WF_RULE_EVAL_END");
+  }
+}
+class WFRuleInvocationNode extends WFNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+  }
+  setCriteria(l, logParser) {
+    super.setCriteria(l, logParser);
+    this.finished(l, logParser);
+  }
+  setFormula(l, logParser) { //WF_FORMULA (multi line)
+    this.formula = l.slice(2).join("|");
+    this.finished(l, logParser);
+  }
+  addFieldUpdate(l, logParser) { //WF_FIELD_UPDATE|[ObjectName Record Name RecordID]|WorkflowRuleName|WorkflowRuleNameID
+    this.fieldUpdates.push(l.slice(2).join("|"));
+    this.finished(l, logParser);
+  }
+}
 
+class WFApprovalNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "approval";
+    this.status = splittedLine[2];
+    this.step = splittedLine[4];
+  }
+}
+class WFSpoolActionBeginNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "approval";
+    this.status = splittedLine[2];
+  }
+}
+class WFApprovalSubmitNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "approval";
+  }
+}
+
+class WFEmailAlertNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "WF_EMAIL_SENT");
+    this.icon = "email";
+  }
+}
+
+class WFEvalEntryCriteriaNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "flow";
+  }
+}
+class WFNextApproverNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "flow";
+  }
+}
+class WFProcessFoundNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "flow";
+  }
+}
+class WFProcessNodeNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "flow";
+  }
+}
+class MatchEngineNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "MATCH_ENGINE_END");
+    this.icon = "groups";
+  }
+}
+
+class DuplicationDetectionNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "DUPLICATE_DETECTION_END");
+    this.icon = "groups";
+  }
+}
+
+class OrgCacheRemoveNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "ORG_CACHE_REMOVE_END");
+    this.icon = "offline_cached";
+  }
+}
+class OrgCacheGetNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "ORG_CACHE_GET_END");
+    this.icon = "offline_cached";
+  }
+}
+class OrgCachePutNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "ORG_CACHE_PUT_END");
+    this.icon = "offline_cached";
+  }
+}
+class SessionCacheRemoveNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SESSION_CACHE_REMOVE_END");
+    this.icon = "offline_cached";
+  }
+}
+class SessionCacheGetNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SESSION_CACHE_GET_END");
+    this.icon = "offline_cached";
+  }
+}
+class SessionCachePutNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "SESSION_CACHE_PUT_END");
+    this.icon = "offline_cached";
+  }
+}
+class FlowBulkElementNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "FLOW_BULK_ELEMENT_END");
+    this.icon = "flow";
+  }
+}
+class QueryMoreNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "QUERY_MORE_END");
+    this.icon = "database";
+  }
+}
+class CumulativeProfilingNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, "CUMULATIVE_PROFILING_END");
+    this.icon = "database";
+    this.infos = [];
+  }
+  addInfo(l) {
+    if (l.length > 3) {
+      this.infos.push(l.slice(2).join("|"));
+    }
+  }
+}
 
 class Model {
 
@@ -1255,7 +1564,7 @@ class RawLog extends React.Component {
     let model = this.model;
     let keywordColor = new Map([["CODE_UNIT_STARTED", "violet"], ["CODE_UNIT_FINISHED", "violet"],
       ["SYSTEM_METHOD_ENTRY", "violet"], ["METHOD_ENTRY", "violet"], ["SYSTEM_CONSTRUCTOR_ENTRY", "violet"], ["FLOW_START_INTERVIEW_BEGIN", "green"],
-      ["SYSTEM_METHOD_EXIT", "violet"], ["METHOD_EXIT", "violet"], ["SYSTEM_CONSTRUCTOR_EXIT", "violet"], ["FLOW_INTERVIEW_FINISHED", "green"],
+      ["SYSTEM_METHOD_EXIT", "violet"], ["METHOD_EXIT", "violet"], ["SYSTEM_CONSTRUCTOR_EXIT", "violet"], ["FLOW_START_INTERVIEW_END", "green"],
       ["DML_BEGIN", "pink"], ["DML_END", "pink"],
       ["VALIDATION_RULE", "blue"], ["VALIDATION_PASS", "blue"],
       ["SOQL_EXECUTE_BEGIN", "navy"], ["SOSL_EXECUTE_BEGIN", "navy"], ["CALLOUT_REQUEST", "brown"], ["FLOW_ELEMENT_BEGIN", "green"],
