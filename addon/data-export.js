@@ -1716,9 +1716,9 @@ function RecordTable(vm) {
               .filter(sobjField => sobjField.relationshipName && sobjField.relationshipName.toLowerCase() == currentFieldName.toLowerCase())
               .map(sobjField => (sobjField));
             if (arr.length > 0) {
-              if (arr[0].ReferenceTo) {
-                //only take first ReferenceTo
-                currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].ReferenceTo[0]).sobjectDescribe;
+              if (arr[0].referenceTo) {
+                //only take first referenceTo
+                currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0]).sobjectDescribe;
                 fieldName = fieldName ? fieldName + "." + arr[0].relationshipName : arr[0].relationshipName;
                 continue;
               }
