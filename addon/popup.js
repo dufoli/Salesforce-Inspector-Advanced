@@ -132,6 +132,8 @@ class App extends React.PureComponent {
     this.onChangeApi = this.onChangeApi.bind(this);
     this.onContextRecordChange = this.onContextRecordChange.bind(this);
     this.updateReleaseNotesViewed = this.updateReleaseNotesViewed.bind(this);
+    this.onCloseBanner = this.onCloseBanner.bind(this);
+    this.clearOlderFlows = this.clearOlderFlows.bind(this);
   }
   onContextRecordChange(e) {
     let {sfHost} = this.props;
@@ -341,6 +343,12 @@ class App extends React.PureComponent {
   setButtonTooltip(tooltip) {
     this.setState({buttonTooltip: tooltip});
   }
+  onCloseBanner() {
+    const containerToShow = document.getElementById("invalidTokenBanner");
+    if (containerToShow) { containerToShow.classList.add("hide"); }
+    const containerToMask = document.getElementById("mainTabs");
+    if (containerToMask) { containerToMask.classList.remove("mask"); }
+  }
   render() {
     let {
       sfHost,
@@ -408,6 +416,26 @@ class App extends React.PureComponent {
           }
         }),
         h("div", {id: "invalidTokenBanner", className: "hide"},
+          h("button", {className: "slds-button slds-button_icon slds-button_icon-small", title: "Close", onClick: this.onCloseBanner},
+            h("svg", {className: "slds-button__icon", viewBox: "0 0 52 52"},
+              h("use", {xlinkHref: "symbols.svg#close"})
+            ),
+            h("span", {className: "slds-assistive-text"}, "Close"),
+          ),
+          h(AlertBanner, {type: "warning",
+            bannerText: "Login back to Salesforce if",
+            iconName: "warning",
+            iconTitle: "Warning",
+            assistiveTest: "Login back to Salesforce if",
+            onClose: null,
+            link: {
+              text: sfHost,
+              props: {
+                href: `https://${sfHost}`,
+                target: "_blank"
+              }
+            }
+          }),
           h(AlertBanner, {type: "warning",
             bannerText: bannerUrlAction.text,
             iconName: "warning",
