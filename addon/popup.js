@@ -1465,6 +1465,7 @@ class UserDetails extends React.PureComponent {
     super(props);
     this.sfHost = props.sfHost;
     this.enableDebugLog = this.enableDebugLog.bind(this);
+    this.clickLoginIncognito = this.clickLoginIncognito.bind(this);
   }
 
   async enableDebugLog() {
@@ -1619,6 +1620,11 @@ class UserDetails extends React.PureComponent {
     args.set("recordId", userId);
     return "inspect.html?" + args;
   }
+  clickLoginIncognito() {
+    let {sfHost, user} = this.props;
+    const url = "https://" + sfHost + "/secur/frontdoor.jsp?sid=" + sfConn.sessionId + "&retURL=" + encodeURIComponent(this.getLoginAsLink(user.Id));
+    chrome.runtime.sendMessage({message: "incognito", url});
+  }
 
   render() {
     let {user, linkTarget} = this.props;
@@ -1678,6 +1684,7 @@ class UserDetails extends React.PureComponent {
         h("div", {ref: "userButtons", className: "user-buttons center small-font top-space"},
           this.doSupportLoginAs(user) ? h("a", {href: this.getLoginAsLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral"}, "Try login as") : null,
           this.canLoginAsPortal(user) ? h("a", {href: this.getLoginAsPortalLink(user), target: linkTarget, className: "slds-button slds-button_neutral"}, "Login to Experience") : null,
+          this.doSupportLoginAs(user) ? h("a", {onClick: this.clickLoginIncognito, target: linkTarget, className: "slds-button slds-button_neutral"}, "Login as Incognito") : null,
         )
       )
     );

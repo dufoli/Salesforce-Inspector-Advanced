@@ -70,6 +70,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Tell Chrome that we want to call sendResponse asynchronously.
   }
+  if (request.message == "incognito") {
+    if (typeof chrome !== "undefined") {
+      chrome.windows.create({url: request.url, incognito: true});
+    } else if (typeof browser !== "undefined") { //Firefox
+      browser.windows.create({url: request.url, incognito: true});
+    } else {
+      console.error("No browser object found");
+    }
+  }
   return false;
 });
 chrome.runtime.onInstalled.addListener(({reason}) => {
