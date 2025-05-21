@@ -2,6 +2,10 @@
 
 ## Version 1.31
 - flamechart: migrate to flamechart js from https://github.com/pyatyispyatil/flame-chart-js (MIT licence) and migrate it to work with salesforce inspector advanced
+- login as incognito [issue 209](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/209) and [issue 202](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/202)
+- SOQL remove duplicate column and technical column fully [issue 201](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/201)
+- delete button only forward Id to avoid to skip unneeded columns [issue 205](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/205)
+- access to flow trigger explorer in shortbut [issue 208](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/208)
 
 ## Version 1.30.1
 - api explorer: mesure time, store small response in history, http header and body type support, add template : bulk api, chatter api, report api, platform event channel, platform event channel member. [issue 194](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/194)
