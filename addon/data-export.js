@@ -286,8 +286,7 @@ class Model {
     copyToClipboard(JSON.stringify(this.exportedData.records, null, "  "));
   }
   deleteRecords(e) {
-    let separator = getSeparator();
-    let data = this.exportedData.csvSerialize(separator);
+    let data = this.exportedData.csvIdSerialize();
     let encodedData = window.btoa(data);
 
     let args = new URLSearchParams();
@@ -1889,6 +1888,10 @@ function RecordTable(vm) {
       }
     },
     csvSerialize: separator => rt.getVisibleTable().map(row => row.map(cell => "\"" + cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n"),
+    csvIdSerialize() {
+      let idIdx = rt.table[0].findIndex(header => header.toLowerCase() === "id");
+      return rt.getVisibleTable().map(row => "\"" + cellToString(row[idIdx]).split("\"").join("\"\"") + "\"").join("\r\n");
+    },
     updateVisibility() {
       let filter = vm.resultsFilter;
       let countOfVisibleRecords = 0;
