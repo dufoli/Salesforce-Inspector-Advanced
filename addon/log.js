@@ -1965,9 +1965,20 @@ class NewFlameGraph extends React.Component {
         timeUnits: "ms",
       },
     };
-    let marks = [];
+    let colors = {
+      "flow": "#92d1d1",
+      "approval": "#92b2d1",
+      "broadcast": "#9292d1",
+      "database": "#b292d1",
+      "email": "#d192d1",
+      "groups": "#d192b2",
+      "offline_cached": "#82bfec",
+      "question": "#e492c3",
+      "search": "#f899a5",
+      "table": "#e9bd87",
+    };
     return h("div", {style: {overflow: "scroll", height: "inherit"}}, //className: "slds-tree_container"},
-      h(FlameChartComponent, {data, marks, settings, className: "flameChart"})
+      h(FlameChartComponent, {data, settings, colors, className: "flameChart"})
     );
   }
 }
