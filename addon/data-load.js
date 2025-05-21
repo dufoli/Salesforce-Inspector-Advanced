@@ -100,7 +100,7 @@ export function DescribeInfo(spinFor, didUpdate) {
     //    "loadfailed": Downloading of describe info for the object failed
     //    "ready": Describe info is available
     // - sobjectDescribe: contains a DescribeSObjectResult if the object exists and has been loaded
-    describeSobject(useToolingApi, sobjectName) {
+    describeSobject(useToolingApi, sobjectName, onUpdate) {
       let apiDescribes = getGlobal(useToolingApi);
       if (!apiDescribes.sobjects) {
         return {sobjectStatus: apiDescribes.global.globalStatus, sobjectDescribe: null};
@@ -115,10 +115,18 @@ export function DescribeInfo(spinFor, didUpdate) {
           sobjectInfo.sobject.sobjectStatus = "ready";
           sobjectInfo.sobject.sobjectDescribe = res;
           didUpdate();
+          if (onUpdate) {
+            onUpdate(sobjectInfo.sobject.sobjectDescribe);
+          }
         }, () => {
           sobjectInfo.sobject.sobjectStatus = "loadfailed";
           didUpdate();
+          if (onUpdate){
+            onUpdate(null);
+          }
         }));
+      } else if (onUpdate){
+        onUpdate(sobjectInfo.sobject.sobjectDescribe);
       }
       return sobjectInfo.sobject;
     },

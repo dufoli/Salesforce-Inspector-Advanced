@@ -1539,11 +1539,11 @@ class Model {
           return {records: [], done: true, totalSize: -1};
         }
         throw err;
-      }).then(data => {
+      }).then(async data => {
         let total;
         let recs;
         if (vm.isSearchMode()) {
-          exportedData.addToTable(data.searchRecords);
+          await exportedData.addToTable(data.searchRecords);
           recs = exportedData.records.length;
           total = exportedData.totalSize;
         } else if (vm.isGraphMode()) {
@@ -1561,11 +1561,11 @@ class Model {
               records.push(result);
             });
           }
-          exportedData.addToTable(records);
+          await exportedData.addToTable(records);
           recs = exportedData.records.length;
           total = exportedData.totalSize;
         } else {
-          exportedData.addToTable(data.records);
+          await exportedData.addToTable(data.records);
           recs = exportedData.records.length;
           total = exportedData.totalSize;
           if (data.totalSize != -1) {
@@ -1660,8 +1660,8 @@ class Model {
     let vm = this; // eslint-disable-line consistent-this
     let exportedData = new RecordTable(vm);
 
-    vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?explain=" + encodeURIComponent(vm.editor.value)).then(res => {
-      exportedData.addToTable(res.plans);
+    vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?explain=" + encodeURIComponent(vm.editor.value)).then(async res => {
+      await exportedData.addToTable(res.plans);
       vm.exportStatus = "";
       vm.performancePoints = [];
       vm.exportedData = exportedData;
@@ -1693,7 +1693,7 @@ function RecordTable(vm) {
   let datetimeFormat = localStorage.getItem("datetimeFormat");
   let decimalFormat = localStorage.getItem("decimalFormat");
   // try to respect the right order of column by matching query column and record column
-  function discoverQueryColumns(record, fields) {
+  async function discoverQueryColumns(record, fields) {
     let sobjectDescribe = null;
     //TODO we will need parent model of rt maybe
     if (record.attributes && record.attributes.type) {
@@ -1718,7 +1718,10 @@ function RecordTable(vm) {
             if (arr.length > 0) {
               if (arr[0].referenceTo) {
                 //only take first referenceTo
-                currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0]).sobjectDescribe;
+                currentSobjectDescribe = await new Promise(resolve =>
+                  vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0], resolve));
+
+                //currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0]).sobjectDescribe;
                 fieldName = fieldName ? fieldName + "." + arr[0].relationshipName : arr[0].relationshipName;
                 continue;
               }
@@ -1789,6 +1792,9 @@ function RecordTable(vm) {
       }
       if (Array.isArray(record[field])) {
         discoverColumns(record[field], column + ".", row);
+        continue;
+      }
+      if (typeof record[field] == "object" && record[field] == null && skipTechnicalColumns) {
         continue;
       }
       let c;
@@ -1871,7 +1877,7 @@ function RecordTable(vm) {
     countOfVisibleRecords: null,
     isTooling: false,
     totalSize: -1,
-    addToTable(expRecords) {
+    async addToTable(expRecords) {
       rt.records = rt.records.concat(expRecords);
       if (rt.table.length == 0 && expRecords.length > 0) {
         rt.table.push(header);
@@ -1883,7 +1889,7 @@ function RecordTable(vm) {
         row[0] = record;
         rt.table.push(row);
         rt.rowVisibilities.push(isVisible(row, filter));
-        discoverQueryColumns(record, vm.columnIndex.fields);
+        await discoverQueryColumns(record, vm.columnIndex.fields);
         discoverColumns(record, "", row);
       }
     },
