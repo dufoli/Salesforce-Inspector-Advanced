@@ -1,4 +1,4 @@
-let lastApiVersion = "62.0";
+let lastApiVersion = "63.0";
 if (localStorage.getItem("apiVersion") == lastApiVersion) {
   localStorage.removeItem("apiVersion");
   //do not keep if last version is selected in order to update to last vrsion on update of SFI.
@@ -30,7 +30,8 @@ export let sfConn = {
       if (message) {
         this.instanceHostname = getMyDomain(message.hostname);
         this.sessionId = message.key;
-        localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, message.key);
+        //only set localstorage with oauth flow
+        //localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, message.key);
       }
     }
     const IS_SANDBOX = "isSandbox";
@@ -42,7 +43,7 @@ export let sfConn = {
     }
   },
 
-  async rest(url, {logErrors = true, method = "GET", api = "normal", body = undefined, bodyType = "json", responseType = "json", headers = {}, progressHandler = null, withoutCache = false, badToken= []} = {}) {
+  async rest(url, {logErrors = true, method = "GET", api = "normal", body = undefined, bodyType = "json", responseType = "json", headers = {}, progressHandler = null, withoutCache = false} = {}) {
     if (!this.instanceHostname) {
       throw new Error("Instance Hostname not found");
     }
@@ -116,25 +117,19 @@ export let sfConn = {
       const ACCESS_TOKEN = "_access_token";
       let oldToken = localStorage.getItem(this.instanceHostname + ACCESS_TOKEN);
       if (oldToken){
-        sessionError = error;
-        badToken.push(oldToken);
-        let cookies = await new Promise(resolve =>
-          chrome.runtime.sendMessage({message: "getAllSessions", sfHost: this.instanceHostname}, resolve));
-        if (cookies && cookies.length > 0) {
-          let message = cookies.find(c => c.key && !badToken.includes(c.key));
-          if (message) {
-            this.instanceHostname = getMyDomain(message.hostname);
-            this.sessionId = message.key;
-            localStorage.setItem(this.instanceHostname + ACCESS_TOKEN, message.key);
-            return await this.rest(url, {logErrors, method, api, body, bodyType, responseType, headers, progressHandler, withoutCache: true, badToken});
-          }
+        let fixTokenOneTime = localStorage.getItem(this.instanceHostname + "_fixToken");
+        //remove access token create by mistake for SFI without connecteed app
+        if (!fixTokenOneTime) {
+          localStorage.setItem(this.instanceHostname + "_fixToken", "true");
+          localStorage.removeItem(this.instanceHostname + "_access_token");
         }
+        sessionError = error;
         showInvalidTokenBanner();
-        let err = new Error();
-        err.name = "Unauthorized";
-        err.message = error;
-        throw err;
       }
+      let err = new Error();
+      err.name = "Unauthorized";
+      err.message = error;
+      throw err;
     } else if (xhr.status == 431) {
       let err = new Error();
       err.name = "Bad Message";
