@@ -775,12 +775,7 @@ class Model {
   }
 
   async pollLogs(vm) {
-    let logs = new RecordTable();
-    logs.describeInfo = vm.describeInfo;
-    logs.sfHost = vm.sfHost;
-    let jobs = new RecordTable();
-    jobs.describeInfo = vm.describeInfo;
-    jobs.sfHost = vm.sfHost;
+    await this.queryLogsAndJobs(vm);
     let pollId = 1;
     let handshake = await sfConn.rest("/cometd/" + apiVersion, {
       method: "POST",
@@ -860,41 +855,7 @@ class Model {
         advice = arsp.advice;
       }
       if (response.find(rsp => rsp != null && rsp.data != null && rsp.channel == "/systemTopic/Logging")) {
-        let queryLogs = "SELECT Id, Application, Status, Operation, StartTime, LogLength, LogUser.Name FROM ApexLog ORDER BY StartTime DESC LIMIT 100";
-        let queryJobs = "SELECT Id, JobType, ApexClass.Name, CompletedDate, CreatedBy.Name, CreatedDate, ExtendedStatus, TotalJobItems , JobItemsProcessed, NumberOfErrors, Status FROM AsyncApexJob WHERE JobType in ('BatchApex', 'Queueable') ORDER BY CreatedDate desc LIMIT 100";
-        //logs.resetTable();
-        this.logs = null;
-        vm.updatedLogs();
-        this.jobs = null;
-        vm.updatedJobs();
-        logs = new RecordTable();
-        logs.describeInfo = vm.describeInfo;
-        logs.sfHost = vm.sfHost;
-        jobs = new RecordTable();
-        jobs.describeInfo = vm.describeInfo;
-        jobs.sfHost = vm.sfHost;
-        await vm.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryLogs), {}), vm, logs, () => {
-          vm.logs = logs;
-          vm.updatedLogs();
-        })
-          .catch(error => {
-            console.error(error);
-            vm.isWorking = false;
-            vm.executeStatus = "Error";
-            vm.executeError = "UNEXPECTED EXCEPTION:" + error;
-            vm.logs = null;
-          });
-        await vm.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryJobs), {}), vm, jobs, () => {
-          vm.jobs = jobs;
-          vm.updatedJobs();
-        })
-          .catch(error => {
-            console.error(error);
-            vm.isWorking = false;
-            vm.executeStatus = "Error";
-            vm.executeError = "UNEXPECTED EXCEPTION:" + error;
-            vm.logs = null;
-          });
+        await this.queryLogsAndJobs(vm);
       }
 
       //TODO table to query job in run
@@ -902,6 +863,44 @@ class Model {
 
     }
   }
+  async queryLogsAndJobs(vm) {
+    let logs = new RecordTable();
+    logs.describeInfo = vm.describeInfo;
+    logs.sfHost = vm.sfHost;
+    let jobs = new RecordTable();
+    jobs.describeInfo = vm.describeInfo;
+    jobs.sfHost = vm.sfHost;
+    let queryLogs = "SELECT Id, Application, Status, Operation, StartTime, LogLength, LogUser.Name FROM ApexLog ORDER BY StartTime DESC LIMIT 100";
+    let queryJobs = "SELECT Id, JobType, ApexClass.Name, CompletedDate, CreatedBy.Name, CreatedDate, ExtendedStatus, TotalJobItems , JobItemsProcessed, NumberOfErrors, Status FROM AsyncApexJob WHERE JobType in ('BatchApex', 'Queueable') ORDER BY CreatedDate desc LIMIT 100";
+    //logs.resetTable();
+    this.logs = null;
+    vm.updatedLogs();
+    this.jobs = null;
+    vm.updatedJobs();
+    await vm.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryLogs), {}), vm, logs, () => {
+      vm.logs = logs;
+      vm.updatedLogs();
+    })
+      .catch(error => {
+        console.error(error);
+        vm.isWorking = false;
+        vm.executeStatus = "Error";
+        vm.executeError = "UNEXPECTED EXCEPTION:" + error;
+        vm.logs = null;
+      });
+    await vm.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryJobs), {}), vm, jobs, () => {
+      vm.jobs = jobs;
+      vm.updatedJobs();
+    })
+      .catch(error => {
+        console.error(error);
+        vm.isWorking = false;
+        vm.executeStatus = "Error";
+        vm.executeError = "UNEXPECTED EXCEPTION:" + error;
+        vm.logs = null;
+      });
+  }
+
   recalculateSize() {
     // Investigate if we can use the IntersectionObserver API here instead, once it is available.
     this.tableModel.viewportChange();
