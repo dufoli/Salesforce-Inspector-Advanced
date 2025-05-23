@@ -1723,6 +1723,9 @@ function RecordTable(vm) {
 
                 //currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0]).sobjectDescribe;
                 fieldName = fieldName ? fieldName + "." + arr[0].relationshipName : arr[0].relationshipName;
+                if (!columnType.has(fieldName)) {
+                  columnType.set(fieldName, arr[0].type);
+                }
                 continue;
               }
             }
@@ -1794,7 +1797,9 @@ function RecordTable(vm) {
         discoverColumns(record[field], column + ".", row);
         continue;
       }
-      if (typeof record[field] == "object" && record[field] == null && skipTechnicalColumns) {
+      if (typeof record[field] == "object" && columnType.get(column) == "reference" && record[field] == null && skipTechnicalColumns) {
+        console.log("skip column " + column);
+        console.log(columnType.get(column));
         continue;
       }
       let c;
@@ -1894,9 +1899,9 @@ function RecordTable(vm) {
       }
     },
     csvSerialize: separator => rt.getVisibleTable().map(row => row.map(cell => "\"" + cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n"),
-    csvIdSerialize() {
+    csvIdSerialize(separator) {
       let idIdx = rt.table[0].findIndex(header => header.toLowerCase() === "id");
-      return rt.getVisibleTable().map(row => "\"" + cellToString(row[idIdx]).split("\"").join("\"\"") + "\"").join("\r\n");
+      return rt.getVisibleTable().map(row => row.filter((c, i) => (i == 0 || i == idIdx)).map(cell => "\"" + cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
     },
     updateVisibility() {
       let filter = vm.resultsFilter;
