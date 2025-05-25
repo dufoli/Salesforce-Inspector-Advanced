@@ -2,7 +2,8 @@
 
 ## Version 1.31
 > [!IMPORTANT]
-- Fix :bug: long-time connection issue with yellow message to reconnect [issue 203](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/203) and [issue 197](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/197)
+> Fix :bug: long-time connection issue with yellow message to reconnect [issue 203](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/203) and [issue 197](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/197)
+
 - Flamechart: migrate to flamechart js with zoom possibility from https://github.com/pyatyispyatil/flame-chart-js (MIT licence) and improve a lot the log-parser to get more info and migrate to use the new flamechart.
 - login as incognito [issue 209](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/209) and [issue 202](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/202)
 - SOQL: Remove duplicate columns and technical columns completely [issue 201](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/201)
