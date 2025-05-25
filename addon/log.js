@@ -13,8 +13,12 @@ class LogParser {
     this.nodes = null;
     this.nodeCount = 0;
     this.lines = [];
+    this.apexClasses = new Set();
     this.lastTimestampNano = 0;
     this.logLinePattern = /^[0-9]{2}:[0-9]{2}:[0-9]{2}/m;
+  }
+  addApexClass(cls) {
+    this.apexClasses.add(cls);
   }
   parseLog(data) {
     this.lines = data.split("\n");
@@ -531,6 +535,7 @@ class BaseNode {
     this.heap = 0;
     this.expanded = true;
     this.hidden = false;
+    this.logStartLine = logParser.index;
   }
   attachDebugInfo(debugInfo) {
     if (this.debug == null) {
@@ -538,14 +543,14 @@ class BaseNode {
     }
     this.debug.push(debugInfo);
   }
+  finished(splittedLine, logParser){
+    this.logEndLine = logParser.index;
+  }
 }
 class RootNode extends BaseNode {
   constructor(logParser) {
     super(logParser);
     this.title = "Log";
-  }
-  finished(splittedLine, logParser){
-    //do nothing
   }
 }
 class LogNode extends BaseNode {
@@ -602,6 +607,7 @@ class LogNode extends BaseNode {
     return [null, null];
   }
   finished(splittedLine, logParser){
+    super.finished(splittedLine, logParser);
     if (splittedLine == null) {
       this.endNano = logParser.lastTimestampNano;
     } else {
@@ -624,12 +630,22 @@ class CodeUnitLogNode extends LogNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "CODE_UNIT_FINISHED");
     this.title = "code unit";
+    if (splittedLine.length > 4 && splittedLine[4].endsWith(")")){
+      this.apexClass = splittedLine[4].substring(0, splittedLine[4].lastIndexOf("."));
+      logParser.addApexClass(this.apexClass);
+      this.logStartLine = logParser.index;
+    }
   }
 }
 class ApexNode extends LogNode {
   constructor(splittedLine, logParser, node, expected) {
     super(splittedLine, logParser, node, expected);
-    this.lineNumber = splittedLine[2].substring(1, -1);
+    if (splittedLine[2].length > 2 && splittedLine[2].startsWith("[") && splittedLine[2].endsWith("]")) {
+      this.lineNumber = Number(splittedLine[2].substring(1, splittedLine[2].length - 1));
+      if (isNaN(this.lineNumber)) {
+        this.lineNumber = null;
+      }
+    }
   }
 }
 class SystemMethodNode extends ApexNode {
@@ -640,6 +656,15 @@ class SystemMethodNode extends ApexNode {
 class MethodNode extends ApexNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "METHOD_EXIT");
+    if (splittedLine.length > 4){
+      this.apexClass = splittedLine[4].split(".")[0];
+      logParser.addApexClass(this.apexClass);
+      this.logStartLine = logParser.index;
+    }
+  }
+  finished(splittedLine, logParser){
+    super.finished(splittedLine, logParser);
+    this.logEndLine = logParser.index;
   }
 }
 class SystemConstructorNode extends ApexNode {
@@ -650,6 +675,10 @@ class SystemConstructorNode extends ApexNode {
 class ConstructorNode extends ApexNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "CONSTRUCTOR_EXIT");
+    if (splittedLine.length > 5){
+      this.apexClass = splittedLine[5].split(".")[0];
+      logParser.addApexClass(this.apexClass);
+    }
   }
 }
 class FlowInterviewNode extends LogNode {
@@ -1017,6 +1046,9 @@ class Model {
     this.sfHost = sfHost;
     this.sfLink = "https://" + sfHost;
     this.userInfo = "...";
+    this.apexClassBody = [];
+    this.apexClassName = "";
+    this.apexFilteredLogs = "";
     // URL parameters
     this.recordId = null;
     this.logParser = new LogParser();
@@ -1318,8 +1350,6 @@ class Model {
           return v.toString();
         }).join("");*/
         this.parseLog(data);
-        //this.refs.editor.dataChange();
-        this.didUpdate();
       }
       )
     );
@@ -1419,6 +1449,35 @@ class Model {
     this.EnrichLog = [{value: data}];
     this.logParser.parseLog(data);
     this.lineNumbers = Array.from(Array(this.lineCount).keys());
+  }
+  selectApexClass(apexClassName) {
+    sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT Id,Name, Status, NamespacePrefix, Body FROM ApexClass WHERE Name = '" + apexClassName + "'"), {}).then((data) => {
+      if (data.records.length > 0) {
+        this.apexClassName = apexClassName;
+        this.apexClassBody = data.records[0].Body.split("\n");
+        this.didUpdate();
+      }
+    });
+  }
+  visiteNode(currentNode, idx, arr) {
+    //node.child.map((c) => this.convert(c)),
+    //
+    //filter the apex class with selected class
+    if (currentNode.apexClass == null || currentNode.apexClass == this.apexClassName) {
+      if (idx == (currentNode.lineNumber || 0)) {
+        arr.push(currentNode);
+        return arr;
+      }
+    }
+    if (currentNode.child != null) {
+      currentNode.child.reduce((arr, c) => this.visiteNode(c, idx, arr), arr);
+    }
+    return arr;
+  }
+  selectApexClassLine(idx) {
+    let nodes = this.visiteNode(this.logParser.rootNode, idx, []);
+    this.apexFilteredLogs = nodes.map(n => this.logParser.lines.slice(n.logStartLine, n.logEndLine)).join("\n");
+    this.didUpdate();
   }
 }
 
@@ -1602,6 +1661,12 @@ class LogTabNavigation extends React.Component {
         tabTitle: "Tab3",
         title: "FlamGraph",
         content: NewFlameGraph
+      },
+      {
+        id: 4,
+        tabTitle: "Tab4",
+        title: "Apex",
+        content: ApexLogView
       }
     ];
     this.onTabSelect = this.onTabSelect.bind(this);
@@ -1886,6 +1951,38 @@ class FileUpload extends React.Component {
   }
 }
 
+class ApexLogView extends React.Component {
+  constructor(props) {
+    super(props);
+    this.model = props.model;
+    this.rootNode = this.model.logParser.rootNode;
+    this.onSelectApexClass = this.onSelectApexClass.bind(this);
+    this.onSelectLine = this.onSelectLine.bind(this);
+  }
+  onSelectApexClass(e) {
+    let {model} = this.props;
+    model.selectApexClass(e.target.value);
+  }
+  onSelectLine(idx) {
+    let {model} = this.props;
+    model.selectApexClassLine(idx);
+  }
+  render() {
+    let {model} = this.props;
+    return h("div", {className: "slds-grid slds-gutters", style: {height: "inherit"}}, //className: "slds-tree_container"},
+      h("div", {className: "slds-col slds-size_6-of-12", style: {height: "inherit"}},
+        h("select", {value: "", onChange: this.onSelectApexClass, className: "script-history", title: "Check documentation to customize templates"},
+          h("option", {value: null, disabled: true, defaultValue: true, hidden: true}, "Apex class"),
+          Array.from(model.logParser.apexClasses).map(q => h("option", {key: q, value: q}, q))
+        ),
+        h("div", {style: {overflow: "scroll", height: "inherit"}},
+          model.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line))
+        )
+      ),
+      h("div", {className: "slds-col slds-size_6-of-12", style: {overflow: "scroll", height: "inherit", whiteSpace: "pre"}}, model.apexFilteredLogs)
+    );
+  }
+}
 class NewFlameGraph extends React.Component {
   constructor(props) {
     super(props);
@@ -1982,7 +2079,6 @@ class NewFlameGraph extends React.Component {
     );
   }
 }
-
 
 {
   let args = new URLSearchParams(location.search.slice(1));
