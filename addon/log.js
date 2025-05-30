@@ -731,6 +731,11 @@ class SOQLNode extends ApexNode {
     let row = Number(l[3].substring(5));
     if (!isNaN(row)){
       this.row = row;
+      if (this.title.startsWith("Aggregations:0")) {
+        this.title = "(" + row + " rows) " + this.title.substring(15);
+      } else {
+        this.title = "(" + row + " rows) " + this.title;
+      }
     }
   }
   explain(l) {
@@ -770,6 +775,7 @@ class SOSLNode extends ApexNode {
     let row = Number(l[3].substring(5));
     if (!isNaN(row)){
       this.row = row;
+      this.title = "(" + row + " rows) " + this.title;
     }
   }
 }
@@ -1062,6 +1068,7 @@ class Model {
     this.searchInput = null;
     this.spinnerCount = 0;
     this.searchIndex = -1;
+    this.logLine = -1;
     this.winInnerHeight = 0;
     this.forceScroll = false;
 
@@ -1071,6 +1078,7 @@ class Model {
     this.resizeNextColumnWidth = null;
     this.EnrichLog = [];
     this.timeout = null;
+    this.selectedTabId = 1;
 
     this.column = [
       {
@@ -1479,6 +1487,15 @@ class Model {
     this.apexFilteredLogs = nodes.map(n => this.logParser.lines.slice(n.logStartLine, n.logEndLine)).join("\n");
     this.didUpdate();
   }
+  selectTab(tabIndex) {
+    this.selectedTabId = tabIndex;
+  }
+  viewLogLine(logLine) {
+    this.selectTab(1);
+    this.logLine = logLine;
+    this.forceScroll = true;
+    this.didUpdate();
+  }
 }
 
 let h = React.createElement;
@@ -1640,9 +1657,6 @@ class LogTabNavigation extends React.Component {
   constructor(props) {
     super(props);
     this.model = props.model;
-    this.state = {
-      selectedTabId: 1
-    };
     this.tabs = [
       {
         id: 1,
@@ -1674,7 +1688,8 @@ class LogTabNavigation extends React.Component {
 
   onTabSelect(e) {
     e.preventDefault();
-    this.setState({selectedTabId: e.target.tabIndex});
+    this.model.selectTab(e.target.tabIndex);
+    this.model.didUpdate();
   }
 
   componentDidMount() {
@@ -1683,10 +1698,10 @@ class LogTabNavigation extends React.Component {
   render() {
     return h("div", {className: "slds-tabs_default", style: {height: "inherit"}},
       h("ul", {className: "options-tab-container slds-tabs_default__nav", role: "tablist"},
-        this.tabs.map((tab) => h(LogTab, {key: tab.id, id: tab.id, title: tab.title, content: tab.content, onTabSelect: this.onTabSelect, selectedTabId: this.state.selectedTabId, model: this.model}))
+        this.tabs.map((tab) => h(LogTab, {key: tab.id, id: tab.id, title: tab.title, content: tab.content, onTabSelect: this.onTabSelect, selectedTabId: this.model.selectedTabId, model: this.model}))
       ),
       this.tabs
-        .filter((tab) => tab.id == this.state.selectedTabId)
+        .filter((tab) => tab.id == this.model.selectedTabId)
         .map((tab) => h(tab.content, {key: tab.id, id: tab.id, model: this.model}))
     );
   }
@@ -1837,8 +1852,14 @@ class LogViewer extends React.Component {
     if (this.scroller != null) {
       scrollerOffsetHeight = this.scroller.offsetHeight;
     }
-
-    if (currentSearchIdx != -1 && currentSearchIdx < logView.length && model.forceScroll) {
+    if (model.logLine != -1 && model.forceScroll) {
+      let scrollLog = (model.logLine * rowHeight) - (scrollerOffsetHeight / 2);
+      if (scrollLog > 0 && scrollLog < totalHeight - scrollerOffsetHeight) {
+        model.forceScroll = false;
+        model.logLine = -1;
+        this.scroller.scrollTo(0, scrollLog);
+      }
+    } else if (currentSearchIdx != -1 && currentSearchIdx < logView.length && model.forceScroll) {
       let lineNum = logView.substring(0, currentSearchIdx).split("\n").length;
       let scrollLog = (lineNum * rowHeight) - (scrollerOffsetHeight / 2);
       if (scrollLog > 0 && scrollLog < totalHeight - scrollerOffsetHeight) {
@@ -2032,12 +2053,13 @@ class NewFlameGraph extends React.Component {
     this.state = {
       filterBy: "duration",
     };
-    this.onSelectFilterBy = this.onSelectFilterBy.bind(this);
+    this.onSelect = this.onSelect.bind(this);
 
   }
-  onSelectFilterBy(e) {
+  onSelect({node}) {
     let {model} = this.props;
-    this.setState({filterBy: e.target.value});
+    //TODO issue here because logline is not in node anymore but it is hidden in source.
+    model.viewLogLine(node.source.logLine);
     model.didUpdate();
   }
   convert(node) {
@@ -2047,6 +2069,7 @@ class NewFlameGraph extends React.Component {
       duration: node.duration,
       type: node.icon,
       children: node.child.map((c) => this.convert(c)),
+      logLine: node.logStartLine
     };
   }
   render() {
@@ -2075,7 +2098,7 @@ class NewFlameGraph extends React.Component {
       "table": "#e9bd87",
     };
     return h("div", {style: {overflow: "scroll", height: "inherit"}}, //className: "slds-tree_container"},
-      h(FlameChartComponent, {data, settings, colors, className: "flameChart"})
+      h(FlameChartComponent, {data, settings, colors, onSelect: this.onSelect, className: "flameChart"})
     );
   }
 }
