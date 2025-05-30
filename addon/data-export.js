@@ -2133,7 +2133,7 @@ class App extends React.Component {
   }
   onBatchSizeChange(e){
     let {model} = this.props;
-    model.batchSize = e.target.value;
+    model.batchSize = new Number(e.target.value);
     model.didUpdate();
   }
   componentDidMount() {
