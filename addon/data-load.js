@@ -1331,14 +1331,16 @@ export class Editor extends React.Component {
         return;
       case "ArrowDown":
         if (model.displaySuggestion && !model.disableSuggestionOverText) {
-          e.preventDefault();
-          model.nextSuggestion();
+          if (model.nextSuggestion()) {
+            e.preventDefault();
+          }
         }
         return;
       case "ArrowUp":
         if (model.displaySuggestion && !model.disableSuggestionOverText) {
-          e.preventDefault();
-          model.previousSuggestion();
+          if (model.previousSuggestion()) {
+            e.preventDefault();
+          }
         }
         return;
       case "Enter":

@@ -455,6 +455,9 @@ class Model {
     this.didUpdate();
   }
   nextSuggestion() {
+    if (this.autocompleteResults.results.length == 0) {
+      return false;
+    }
     if (this.activeSuggestion < this.autocompleteResults.results.length - 1) {
       this.activeSuggestion++;
     } else {
@@ -463,8 +466,12 @@ class Model {
     let scrolltop = (this.activeSuggestion * 22) - 100; //(half of total)
     this.autocompleteResultBox.scrollTop = scrolltop > 0 ? scrolltop : 0;
     this.didUpdate();
+    return true;
   }
   previousSuggestion() {
+    if (this.autocompleteResults.results.length == 0) {
+      return false;
+    }
     if (this.activeSuggestion > 0) {
       this.activeSuggestion--;
     } else {
@@ -473,6 +480,7 @@ class Model {
     let scrolltop = (this.activeSuggestion * 22) - 100; //(half of total)
     this.autocompleteResultBox.scrollTop = scrolltop > 0 ? scrolltop : 0;
     this.didUpdate();
+    return true;
   }
   selectSuggestion() {
     if (!this.autocompleteResults || !this.autocompleteResults.results || this.autocompleteResults.results.length == 0) {
