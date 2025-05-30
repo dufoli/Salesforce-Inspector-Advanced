@@ -767,7 +767,7 @@ class FieldRow extends TableRow {
         summary += fieldDefinition.summarizedField;
       }
       summary += ")";
-      if (fieldDefinition.summaryFilterItems.length){
+      if (fieldDefinition.summaryFilterItems && fieldDefinition.summaryFilterItems.length){
         summary += " WHERE ";
         summary += fieldDefinition.summaryFilterItems.map(f => f.field + " " + f.operation + " " + f.value).join(" AND ");
       }
