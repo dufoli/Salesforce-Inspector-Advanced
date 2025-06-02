@@ -1,7 +1,16 @@
 # Release Notes
 
 ## Version 1.32
-- import: fix metadata relationship by setting string type
+- import: fix metadata relationship by setting string type.
+- import: fix import of json and nan support.
+- security: identify client Salesforce inspectorr Advanced in logs.
+- flame chart: link on click in flame chart or profiler to log line.
+- import: fix metadata relation import.
+- editor: fix up arrow and down arrow when no suggestion are shown.
+- inspect: fix filter on object with summary field
+- fix batch size number on query with parametter
+- log: add apex view to display related log to a apex class line. Very useful to troubleshot DML.
+- security: fix potential soql injection, xss ...
 
 ## Version 1.31
 > [!IMPORTANT]

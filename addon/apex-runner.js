@@ -689,11 +689,8 @@ class Model {
   getTraceFlags(DTnow, debugTimeInMs){
     try {
       const expirationDate = new Date(DTnow.getTime() + debugTimeInMs);
-      let query = "query/?q=+SELECT+Id,ExpirationDate+FROM+TraceFlag+"
-                  + "WHERE+TracedEntityid='" + this.userId + "'+"
-                  + "AND+DebugLevel.DeveloperName='SFDC_DevConsole'+"
-                  + "AND+StartDate<" + DTnow.toISOString() + "+"
-                  + "AND+ExpirationDate<" + expirationDate.toISOString();
+      let query = `query/?q=+SELECT+Id,ExpirationDate+FROM+TraceFlag+WHERE+TracedEntityid='${this.userId}'+`
+                  + `AND+DebugLevel.DeveloperName='SFDC_DevConsole'+AND+StartDate<${DTnow.toISOString()}+AND+ExpirationDate<${expirationDate.toISOString()}`;
       return sfConn.rest("/services/data/v" + apiVersion + "/tooling/" + query, {method: "GET"});
     } catch (e){
       console.error(e);
@@ -729,8 +726,7 @@ class Model {
   }
   getDebugLog(){
     try {
-      let query = "query/?q=+SELECT+Id+FROM+DebugLevel+"
-                    + "WHERE+DeveloperName='SFDC_DevConsole'";
+      let query = "query/?q=+SELECT+Id+FROM+DebugLevel+WHERE+DeveloperName='SFDC_DevConsole'";
       return sfConn.rest("/services/data/v" + apiVersion + "/tooling/" + query, {method: "GET"});
     } catch (e){
       console.error(e);
@@ -1158,8 +1154,8 @@ class App extends React.Component {
   componentDidMount() {
     let {model} = this.props;
     model.autocompleteResultBox = this.refs.autocompleteResultBox;
-    let queryApexClass = "SELECT Id, Name, NamespacePrefix FROM ApexClass";
-    model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryApexClass), {}), model, model.apexClasses, (isFinished) => {
+    let queryApexClass = "SELECT+Id,+Name,+NamespacePrefix+FROM+ApexClass";
+    model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + queryApexClass, {}), model, model.apexClasses, (isFinished) => {
       if (!isFinished){
         return;
       }
