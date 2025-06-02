@@ -2386,7 +2386,7 @@ function sfLocaleKeyToCountryCode(localeKey) {
 }
 
 function getLinkTarget(e) {
-  if (JSON.parse(localStorage.getItem("openLinksInNewTab")) || (e.ctrlKey || e.metaKey)) {
+  if (JSON.parse(localStorage.getItem("openLinksInNewTab")) || (e?.ctrlKey || e?.metaKey)) {
     return "_blank";
   } else {
     return "_top";
