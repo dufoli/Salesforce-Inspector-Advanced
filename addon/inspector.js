@@ -53,9 +53,11 @@ export let sfConn = {
       url += (url.includes("?") ? "&" : "?") + "cache=" + Math.random();
     }
     const sfHost = "https://" + this.instanceHostname;
-    xhr.open(method, sfHost + url, true);
+    let finalUrl = new URL(url, sfHost);
+    xhr.open(method, finalUrl.toString(), true);
 
     xhr.setRequestHeader("Accept", "application/json; charset=UTF-8");
+    xhr.setRequestHeader("Sforce-Call-Options", "client:Salesforce Inspector Advanced");
 
     if (api == "bulk") {
       xhr.setRequestHeader("X-SFDC-Session", this.sessionId);
@@ -220,6 +222,7 @@ export let sfConn = {
     xhr.open("POST", "https://" + this.instanceHostname + wsdl.servicePortAddress + "?cache=" + Math.random(), true);
     xhr.setRequestHeader("Content-Type", "text/xml");
     xhr.setRequestHeader("SOAPAction", '""');
+    xhr.setRequestHeader("CallOptions", "client:Salesforce Inspector Advanced");
 
     let requestBody;
     if (typeof args == "string") {
