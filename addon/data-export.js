@@ -737,7 +737,7 @@ class Model {
     }
     let contextValueField = contextValueFields[0];
     let queryMethod = useToolingApi ? "tooling/query" : this.queryAll ? "queryAll" : "query";
-    let acQuery = "select " + contextValueField.field.name + " from " + contextValueField.sobjectDescribe.name + " where " + contextValueField.field.name + " like '%" + searchTerm.replace(/'/g, "\\'") + "%' group by " + contextValueField.field.name + " limit 100";
+    let acQuery = "select " + contextValueField.field.name + " from " + contextValueField.sobjectDescribe.name + " where " + contextValueField.field.name + " like '%" + searchTerm.replace(/([%_\\'])/g, "\\$1") + "%' group by " + contextValueField.field.name + " limit 100";
     this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/" + queryMethod + "/?q=" + encodeURIComponent(acQuery), {progressHandler: this.autocompleteProgress})
       .catch(err => {
         if (err.name != "AbortError") {
