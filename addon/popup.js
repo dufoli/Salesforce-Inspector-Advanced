@@ -146,7 +146,7 @@ class App extends React.PureComponent {
     if (e.contextSobject && localStorage.getItem("useSObjectContextOnDataImportLink") !== "false") {
       let query = "SELECT Id FROM " + e.contextSobject;
       if (e.contextRecordId && (e.contextRecordId.length == 15 || e.contextRecordId.length == 18)) {
-        query += " WHERE Id = '" + e.contextRecordId.replace(/'/g, "\\'") + "'";
+        query += " WHERE Id = '" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "'";
       }
       exportArg.set("query", query);
       importArg.set("sobject", e.contextSobject);
@@ -192,7 +192,7 @@ class App extends React.PureComponent {
     if (!flowId) {
       return;
     }
-    sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+DefinitionId+FROM+Flow+WHERE+Id='" + flowId.replace(/'/g, "\\'") + "'", {method: "GET"}).then(res => {
+    sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+DefinitionId+FROM+Flow+WHERE+Id='" + flowId.replace(/([\\'])/g, "\\$1") + "'", {method: "GET"}).then(res => {
       res.records.forEach(recentItem => {
         let flowDefinitionId = recentItem.DefinitionId;
         window.open("https://" + this.props.sfHost + "/lightning/setup/Flows/page?address=%2F" + flowDefinitionId, "_blank");
@@ -221,7 +221,7 @@ class App extends React.PureComponent {
       if (!recordId) {
         return;
       }
-      const flowSelect = "SELECT FlowDefinitionViewId, FlowDefinitionView.VersionNumber FROM FlowVersionView where DurableId = '" + recordId.replace(/'/g, "\\'") + "'";
+      const flowSelect = "SELECT FlowDefinitionViewId, FlowDefinitionView.VersionNumber FROM FlowVersionView where DurableId = '" + recordId.replace(/([\\'])/g, "\\$1") + "'";
       const flowResults = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + flowSelect);
       let flowDefinitionViewId;
       let keepLatestVersionNumber;
@@ -917,7 +917,7 @@ class AllDataBoxUsers extends React.PureComponent {
     //TODO: Better search query. SOSL?
     const fullQuerySelect = "select Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, ProfileId, Profile.Name";
     const minimalQuerySelect = "select Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive";
-    const queryFrom = "from User where (username like '%" + userQuery.replace(/'/g, "\\'") + "%' or name like '%" + userQuery.replace(/'/g, "\\'") + "%') order by IsActive DESC, LastLoginDate limit 100";
+    const queryFrom = "from User where (username like '%" + userQuery.replace(/([%_\\'])/g, "\\$1") + "%' or name like '%" + userQuery.replace(/([%_\\'])/g, "\\$1") + "%') order by IsActive DESC, LastLoginDate limit 100";
     const compositeQuery = toCompositeRequest({fullData: fullQuerySelect + " " + queryFrom, minimalData: minimalQuerySelect + " " + queryFrom});
 
     try {
@@ -1301,9 +1301,9 @@ class AllDataBoxShortcut extends React.PureComponent {
 
       //search for metadata if user did not disabled it
       if (metadataShortcutSearch == "true"){
-        const flowSelect = "SELECT LatestVersionId, ApiName, Label, ProcessType FROM FlowDefinitionView WHERE Label LIKE '%" + shortcutSearch.replace(/'/g, "\\'") + "%' LIMIT 30";
-        const profileSelect = "SELECT Id, Name, UserLicense.Name FROM Profile WHERE Name LIKE '%" + shortcutSearch.replace(/'/g, "\\'") + "%' LIMIT 30";
-        const permSetSelect = "SELECT Id, Name, Label, Type, LicenseId, License.Name, PermissionSetGroupId FROM PermissionSet WHERE Label LIKE '%" + shortcutSearch.replace(/'/g, "\\'") + "%' LIMIT 30";
+        const flowSelect = "SELECT LatestVersionId, ApiName, Label, ProcessType FROM FlowDefinitionView WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
+        const profileSelect = "SELECT Id, Name, UserLicense.Name FROM Profile WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
+        const permSetSelect = "SELECT Id, Name, Label, Type, LicenseId, License.Name, PermissionSetGroupId FROM PermissionSet WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
         const compositeQuery = toCompositeRequest({flowSelect, profileSelect, permSetSelect});
 
         const searchResult = await sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery});
