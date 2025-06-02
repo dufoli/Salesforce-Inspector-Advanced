@@ -870,7 +870,7 @@ class Model {
         let fieldTypes = {};
         let selectedObjectFields = this.describeInfo.describeSobject(false, sobjectType).sobjectDescribe?.fields || [];
         selectedObjectFields.forEach(field => {
-          fieldTypes[field.name] = field.soapType;
+          fieldTypes[field.name] = (field.soapType == "tns:ID" ? "xsd:string" : field.soapType);
         });
 
         let sobject = {};

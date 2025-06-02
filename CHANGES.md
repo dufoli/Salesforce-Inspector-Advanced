@@ -1,5 +1,8 @@
 # Release Notes
 
+## Version 1.32
+- import: fix metadata relationship by setting string type
+
 ## Version 1.31
 > [!IMPORTANT]
 > Fix :bug: long-time connection issue with yellow message to reconnect [issue 203](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/203) and [issue 197](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/197)
