@@ -127,13 +127,38 @@ class Model {
   message() {
     return "Paste " + this.dataFormat.toUpperCase() + " data here";
   }
-
+  guessFormat(text) {
+    if (text.startsWith("{") || text.startsWith("[")) {
+      try {
+        let json = JSON.parse(text); // Validate JSON
+        this.dataFormat = "json";
+        return json;
+      } catch (e) {
+        this.dataError = e;
+      }
+    }
+    // check only first line for performance
+    let header = text;
+    if (text.indexOf("\n") > -1) {
+      header = text.substring(0, text.indexOf("\n"));
+    }
+    let tabCount = header.length - header.replace(/\t/g, "").length;
+    let commaCount = header.length - header.replace(/,/g, "").length;
+    if (commaCount < tabCount) {
+      this.dataFormat = "excel";
+      return text;
+    } else {
+      this.dataFormat = "csv";
+      return text;
+    }
+  }
   setData(text) {
     if (this.isWorking()) {
       return;
     }
+    let json = this.guessFormat(text.trim());
     if (this.dataFormat == "json") {
-      text = this.getDataFromJson(text);
+      text = this.getDataFromJson(json);
     }
     let csvSeparator = ",";
     if (localStorage.getItem("csvSeparator")) {
@@ -193,7 +218,6 @@ class Model {
   }
 
   getDataFromJson(json) {
-    json = JSON.parse(json);
     let csv;
     let fields = ["_"].concat(Object.keys(json[0]));
     fields = fields.filter(field => field != "attributes");
@@ -207,13 +231,16 @@ class Model {
     if (sobject) {
       csv = json.map((row) => fields.map((fieldName) => {
         let value = fieldName == "_" ? sobject : row[fieldName];
-        if (typeof value == "boolean" || (value != undefined && !isNaN(value) && typeof value !== "object")) {
-          return fieldName == "_" ? '"[' + sobject + ']"' : JSON.stringify(value);
+        if (typeof value == "number" && isNaN(value)) {
+          return undefined; // Skip NaN values
+        }
+        if (typeof value == "boolean" || (value && typeof value !== "object")) {
+          return fieldName == "_" ? `"[${sobject}]"` : JSON.stringify(value);
         }
         //null undefined NaN
         return undefined;
       }).join(separator));
-      fields = fields.map(str => '"' + str + '"');
+      fields = fields.map(str => `"${str}"`);
       csv.unshift(fields.join(separator));
       csv = csv.join("\r\n");
     }
