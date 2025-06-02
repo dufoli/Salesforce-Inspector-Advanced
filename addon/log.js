@@ -1059,6 +1059,7 @@ class Model {
     this.recordId = null;
     this.logParser = new LogParser();
     this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
+    this.scroller = null;
 
     //full log text data
     this.logData = "";
@@ -1323,6 +1324,7 @@ class Model {
       }
     }
     this.didUpdate();
+    //this.logviewScrollLog();
   }
   scrollLog(searchIdx) {
     let vm = this; // eslint-disable-line consistent-this
@@ -1342,6 +1344,7 @@ class Model {
       }
     }
     this.didUpdate();
+    //this.logviewScrollLog();
   }
   startLoading() {
     if (this.recordId == null){
@@ -1456,7 +1459,7 @@ class Model {
     this.logData = data;
     this.EnrichLog = [{value: data}];
     this.logParser.parseLog(data);
-    this.lineNumbers = Array.from(Array(this.lineCount).keys());
+    this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
   }
   selectApexClass(apexClassName) {
     sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT Id,Name, Status, NamespacePrefix, Body FROM ApexClass WHERE Name = '" + apexClassName + "'"), {}).then((data) => {
@@ -1494,7 +1497,34 @@ class Model {
     this.selectTab(1);
     this.logLine = logLine;
     this.forceScroll = true;
-    this.didUpdate();
+    let self = this;
+    this.didUpdate(() => self.logviewScrollLog());
+  }
+  logviewScrollLog() {
+    let logView = this.logData;
+    let currentSearchIdx = this.searchIndex;
+    let rowHeight = 14;
+    let scrollerOffsetHeight = 0;
+    let totalHeight = (this.logParser ? this.logParser.lineCount : 0) * rowHeight;
+
+    if (this.scroller != null) {
+      scrollerOffsetHeight = this.scroller.offsetHeight;
+      if (this.logLine != -1 && this.forceScroll) {
+        let scrollLogIdx = (this.logLine * rowHeight) - (scrollerOffsetHeight / 2);
+        if (scrollLogIdx > 0 && scrollLogIdx < totalHeight - scrollerOffsetHeight) {
+          this.forceScroll = false;
+          this.logLine = -1;
+          this.scroller.scrollTo(0, scrollLogIdx);
+        }
+      } else if (currentSearchIdx != -1 && currentSearchIdx < logView.length && this.forceScroll) {
+        let lineNum = logView.substring(0, currentSearchIdx).split("\n").length;
+        let scrollLogIdx = (lineNum * rowHeight) - (scrollerOffsetHeight / 2);
+        if (scrollLogIdx > 0 && scrollLogIdx < totalHeight - scrollerOffsetHeight) {
+          this.forceScroll = false;
+          this.scroller.scrollTo(0, scrollLogIdx);
+        }
+      }
+    }
   }
 }
 
@@ -1726,10 +1756,14 @@ class LogTreeviewNode extends React.Component {
     this.column = props.column;
     this.model = props.model;
     this.toggleExpand = this.toggleExpand.bind(this);
+    this.onSelectLogNode = this.onSelectLogNode.bind(this);
   }
   toggleExpand(){
     this.model.toggleExpand(this.node.index);
     this.model.didUpdate();
+  }
+  onSelectLogNode(){
+    this.model.viewLogLine(this.node.logStartLine);
   }
 
   render() {
@@ -1750,7 +1784,7 @@ class LogTreeviewNode extends React.Component {
           h("use", {xlinkHref: "symbols.svg#" + this.node.icon})
         ) : "",
         h("div", {className: "slds-truncate", title: this.node.title},
-          h("a", {href: "#", tabIndex: "-1"}, this.node.title)
+          h("a", {href: "#", tabIndex: "-1", onClick: this.onSelectLogNode}, this.node.title)
         )
       ),
       this.column.filter(c => c.field).map((c, i) => h("td", {"data-label": c.title, role: "gridcell", key: "cell" + i},
@@ -1821,14 +1855,13 @@ class LogViewer extends React.Component {
     this.scrollLeft = 0;
     this.offsetHeight = 0;
     this.offsetWidth = 0;
-    this.scroller = null;
 
     this.renderNode = this.renderNode.bind(this);
   }
   componentDidMount() {
     let {model} = this.props;
     let log = this.refs.log;
-    this.scroller = this.refs.scroller;
+    model.scroller = this.refs.scroller;
 
     model.setLogInput(log);
     function resize() {
@@ -1843,30 +1876,7 @@ class LogViewer extends React.Component {
   }
   componentDidUpdate() {
     let {model} = this.props;
-    let logView = model.logData;
-    let currentSearchIdx = model.searchIndex;
-    let rowHeight = 14;
-    let scrollerOffsetHeight = 0;
-    let totalHeight = model.logParser.lineCount * rowHeight;
-
-    if (this.scroller != null) {
-      scrollerOffsetHeight = this.scroller.offsetHeight;
-    }
-    if (model.logLine != -1 && model.forceScroll) {
-      let scrollLog = (model.logLine * rowHeight) - (scrollerOffsetHeight / 2);
-      if (scrollLog > 0 && scrollLog < totalHeight - scrollerOffsetHeight) {
-        model.forceScroll = false;
-        model.logLine = -1;
-        this.scroller.scrollTo(0, scrollLog);
-      }
-    } else if (currentSearchIdx != -1 && currentSearchIdx < logView.length && model.forceScroll) {
-      let lineNum = logView.substring(0, currentSearchIdx).split("\n").length;
-      let scrollLog = (lineNum * rowHeight) - (scrollerOffsetHeight / 2);
-      if (scrollLog > 0 && scrollLog < totalHeight - scrollerOffsetHeight) {
-        model.forceScroll = false;
-        this.scroller.scrollTo(0, scrollLog);
-      }
-    }
+    model.logviewScrollLog();
   }
 
   renderNode(txtNode, i) {
@@ -1911,9 +1921,9 @@ class LogViewer extends React.Component {
     let rowHeight = 14; // constant: The initial estimated height of a row before it is rendered
     let scrollerOffsetHeight = 0;
     let scrollerScrollTop = 0;
-    if (this.scroller != null) {
-      scrollerScrollTop = this.scroller.scrollTop;
-      scrollerOffsetHeight = this.scroller.offsetHeight;
+    if (model.scroller != null) {
+      scrollerScrollTop = model.scroller.scrollTop;
+      scrollerOffsetHeight = model.scroller.offsetHeight;
     }
 
     //return h("div", {className: "editor", ref: "scroller", onScroll: onScrollerScroll, style: {offsetHeight: scrollerOffsetHeight, scrollTop: scrollerScrollTop, maxHeight: (model.winInnerHeight - 160) + "px"}},
@@ -2058,9 +2068,7 @@ class NewFlameGraph extends React.Component {
   }
   onSelect({node}) {
     let {model} = this.props;
-    //TODO issue here because logline is not in node anymore but it is hidden in source.
     model.viewLogLine(node.source.logLine);
-    model.didUpdate();
   }
   convert(node) {
     return {
@@ -2130,11 +2138,13 @@ class NewFlameGraph extends React.Component {
       }
     };
     document.body.onmouseup = () => {
-      model.resizeColumnpageX = null;
-      model.resizeColumnIndex = null;
-      model.resizeNextColumnWidth = null;
-      model.resizeColumnWidth = null;
-      model.didUpdate();
+      if (model.resizeColumnIndex !== null) {
+        model.resizeColumnpageX = null;
+        model.resizeColumnIndex = null;
+        model.resizeNextColumnWidth = null;
+        model.resizeColumnWidth = null;
+        model.didUpdate();
+      }
     };
     if (parent && parent.isUnitTest) { // for unit tests
       parent.insextTestLoaded({model, sfConn});
