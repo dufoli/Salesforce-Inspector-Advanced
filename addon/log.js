@@ -86,6 +86,10 @@ class LogParser {
           new MethodNode(l, this, node);
           break;
         }
+        case "VARIABLE_ASSIGNMENT": {
+          new VariableAssignmentNode(l, this, node);
+          break;
+        }
         case "SYSTEM_CONSTRUCTOR_ENTRY" : {
           new SystemConstructorNode(l, this, node);
           break;
@@ -450,7 +454,6 @@ class LogParser {
         case "USER_DEBUG_INFO" :
         case "USER_DEBUG_WARN" :
         case "USER_INFO":
-        case "VARIABLE_ASSIGNMENT"://apex variable: nothing important
         case "VARIABLE_SCOPE_BEGIN"://apex variable: nothing important
         case "VARIABLE_SCOPE_END":
         case "VF_APEX_CALL" :
@@ -638,8 +641,8 @@ class CodeUnitLogNode extends LogNode {
   }
 }
 class ApexNode extends LogNode {
-  constructor(splittedLine, logParser, node, expected) {
-    super(splittedLine, logParser, node, expected);
+  constructor(splittedLine, logParser, node, expected, autoclose) {
+    super(splittedLine, logParser, node, expected, autoclose);
     if (splittedLine[2].length > 2 && splittedLine[2].startsWith("[") && splittedLine[2].endsWith("]")) {
       this.lineNumber = Number(splittedLine[2].substring(1, splittedLine[2].length - 1));
       if (isNaN(this.lineNumber)) {
@@ -665,6 +668,11 @@ class MethodNode extends ApexNode {
   finished(splittedLine, logParser){
     super.finished(splittedLine, logParser);
     this.logEndLine = logParser.index;
+  }
+}
+class VariableAssignmentNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
   }
 }
 class SystemConstructorNode extends ApexNode {
@@ -715,6 +723,7 @@ class SOQLNode extends ApexNode {
     super(splittedLine, logParser, node, "SOQL_EXECUTE_END");
     this.icon = "table";
     this.soql = 1;
+    this.query = splittedLine[4];
     if (splittedLine[3].startsWith("Aggregations:")) {
       let agg = Number(splittedLine[3].substring(13));
       if (!isNaN(agg)) {
@@ -765,6 +774,7 @@ class SOSLNode extends ApexNode {
     super(splittedLine, logParser, node, "SOSL_EXECUTE_END");
     this.icon = "search";
     this.sosl = 1;
+    this.query = splittedLine[3];
   }
   finished(l, logParser) {
     super.finished(l, logParser);
@@ -784,6 +794,7 @@ class CalloutNode extends LogNode {
     super(splittedLine, logParser, node, "CALLOUT_RESPONSE");
     this.icon = "broadcast";
     this.callout = 1;
+    this.query = splittedLine[3];
   }
   finished(l, logParser) {
     super.finished(l, logParser);
@@ -808,6 +819,7 @@ class DMLNode extends ApexNode {
     //DML_BEGIN|[71]|Op:Update|Type:Account|Rows:1
     this.icon = "database";
     this.title = "DML " + splittedLine[3].substring(3) + " " + splittedLine[4].substring(5);
+    this.query = splittedLine[3].substring(3) + " " + splittedLine[4].substring(5);
     this.dml = 1;
     if (splittedLine.length > 4){
       let dmlRowCount = Number(splittedLine[5].substring());
@@ -1691,7 +1703,7 @@ class LogTabNavigation extends React.Component {
       {
         id: 1,
         tabTitle: "Tab1",
-        title: "Raw Log",
+        title: "Raw log",
         content: RawLog
       },
       {
@@ -1703,7 +1715,7 @@ class LogTabNavigation extends React.Component {
       {
         id: 3,
         tabTitle: "Tab3",
-        title: "FlamGraph",
+        title: "Flame graph",
         content: NewFlameGraph
       },
       {
@@ -1711,6 +1723,12 @@ class LogTabNavigation extends React.Component {
         tabTitle: "Tab4",
         title: "Apex",
         content: ApexLogView
+      },
+      {
+        id: 5,
+        tabTitle: "Tab5",
+        title: "Ressource",
+        content: RessourceView
       }
     ];
     this.onTabSelect = this.onTabSelect.bind(this);
@@ -1814,6 +1832,7 @@ class Profiler extends React.Component {
       this.model.resizeNextColumnWidth = this.model.column[id + 1].width;
     }
   }
+  //TODO option to regroup loop
   render() {
     return h("div", {style: {overflow: "scroll", height: "inherit"}}, //className: "slds-tree_container"},
       h("h4", {className: "slds-tree__group-header", id: "treeheading"}, "Log"),
@@ -1981,12 +2000,76 @@ class FileUpload extends React.Component {
     );
   }
 }
+class RessourceView extends React.Component {
+  constructor(props) {
+    super(props);
+    this.model = props.model;
+    this.onSelectRessource = this.onSelectRessource.bind(this);
+  }
+  regroupNode(node, ressources) {
+    let self = this;
+    node.child.forEach(
+      (child) => self.regroupNode(child, ressources)
+    );
+    if (!node.query) {
+      return ressources;
+    }
+    if (this.model.logFilter == "CALLOUT" && node.icon != "broadcast") {
+      return ressources;
+    }
+    if (this.model.logFilter == "SOQL" && node.icon != "table") {
+      return ressources;
+    }
+    if (this.model.logFilter == "SOSL" && node.icon != "search") {
+      return ressources;
+    }
+    if (this.model.logFilter == "DML" && node.icon != "database") {
+      return ressources;
+    }
+
+    let n = ressources.get(node.query);
+    if (n == null) {
+      node.count = 1;
+      ressources.set(node.query, node);
+    } else {
+      n.duration += node.duration;
+      n.count++;
+    }
+    return ressources;
+  }
+  onSelectRessource(n) {
+    let {model} = this.props;
+    model.setLogSearch(n.query);
+    model.selectTab(1); // switch to log tab
+    model.didUpdate();
+  }
+  render() {
+    let ressources = Array.from(this.regroupNode(this.model.logParser.rootNode, new Map()).values()).sort((n1, n2) => n2.count - n1.count);
+
+    let {model} = this.props;
+    return h("table", {className: "slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped"},
+      h("thead", {className: ""},
+        h("tr", {className: "slds-line-height_reset"},
+          h("th", {scope: "col", className: ""}, "Ressource"),
+          h("th", {scope: "col", className: ""}, "Count")
+        )
+      ),
+      h("tbody", {},
+        ressources.map((node, i) =>
+          h("tr", {className: "slds-hint-parent", key: "RessourceNode" + i},
+            h("td", {scope: "row"}, h("a", {href: "#", onClick: () => this.onSelectRessource(node)}, node.query)),
+            h("td", {}, node.count)
+          )
+        )
+      )
+    );
+  }
+}
 
 class ApexLogView extends React.Component {
   constructor(props) {
     super(props);
     this.model = props.model;
-    this.rootNode = this.model.logParser.rootNode;
     this.onSelectApexClass = this.onSelectApexClass.bind(this);
     this.onSelectLine = this.onSelectLine.bind(this);
   }
@@ -2105,7 +2188,7 @@ class NewFlameGraph extends React.Component {
       "search": "#f899a5",
       "table": "#e9bd87",
     };
-    return h("div", {style: {overflow: "scroll", height: "inherit"}}, //className: "slds-tree_container"},
+    return h("div", {style: {height: "inherit"}}, //className: "slds-tree_container"},
       h(FlameChartComponent, {data, settings, colors, onSelect: this.onSelect, className: "flameChart"})
     );
   }
