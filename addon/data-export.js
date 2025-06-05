@@ -911,6 +911,9 @@ class Model {
       };
       return;
     }
+    //operator if we have AND|OR|WHERE space word space
+    let isOperator = isAfterWhere && query.substring(0, selStart).match(/[\n\s()]+(AND|WHERE|OR)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+(l)?[^\s]*$/i);
+    let isBooleanOperator = isAfterWhere && !isFieldValue && !isOperator && query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,)*('?[^'\s]*'?)\s+$/i);
     if (isFieldValue) {
       //check if fieldname is polymorphique field
       if (fieldName.toLowerCase() == "type"
@@ -1026,52 +1029,72 @@ class Model {
         results: ar
       };
       return;
-    } else {
+    }
+    let operators = [];
+    if (isOperator) {
+      operators.push({value: "IN", title: "IN", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "LIKE", title: "LIKE", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "=", title: "=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "<", title: "<", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: ">", title: ">", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "<=", title: "<=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: ">=", title: ">=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "!=", title: "!=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+
+    } else if (isBooleanOperator) {
+      operators.push({value: "AND", title: "AND", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "OR", title: "OR", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "GROUP", title: "GROUP BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "ORDER", title: "ORDER BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "LIMIT", title: "LIMIT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "HAVING", title: "HAVING", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+    }
+    let prepend = new Enumerable(operators)
+      .filter(fn => fn.value.toLowerCase().startsWith(searchTerm.toLowerCase()));
       // Autocomplete field names and functions
-      if (ctrlSpace) {
-        let ar = contextSobjectDescribes
-          .flatMap(sobjectDescribe => sobjectDescribe.fields)
-          .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
-          .map(field => contextPath + field.name)
-          .toArray();
-        if (ar.length > 0) {
-          vm.editor.focus();
-          vm.editor.setRangeText(ar.join(", ") + (isAfterWhere ? " " : ""), selStart - contextPath.length, selEnd, "end");
-        }
-        vm.editorAutocompleteHandler();
-        return;
+    if (ctrlSpace) {
+      let ar = contextSobjectDescribes
+        .flatMap(sobjectDescribe => sobjectDescribe.fields)
+        .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
+        .map(field => contextPath + field.name)
+        .toArray();
+      if (ar.length > 0) {
+        vm.editor.focus();
+        vm.editor.setRangeText(ar.join(", ") + (isAfterWhere ? " " : ""), selStart - contextPath.length, selEnd, "end");
       }
-      vm.autocompleteResults = {
-        sobjectName,
-        isField: true,
-        contextPath,
-        title: contextSobjectDescribes.map(sobjectDescribe => sobjectDescribe.name).toArray().join(", ") + " fields suggestions:",
-        results: contextSobjectDescribes
-          .flatMap(sobjectDescribe => sobjectDescribe.fields)
-          .filter(field => field.type != "address")
-          .flatMap(function* (field) {
-            yield {value: field.name, title: field.label, suffix: isAfterWhere ? " " : ", ", rank: 1, autocompleteType: "fieldName", dataType: field.type};
-            if (field.relationshipName) {
-              yield {value: field.relationshipName + ".", title: field.label, suffix: "", rank: 1, autocompleteType: "relationshipName", dataType: ""};
-            }
-          })
-          .filter(field => field.value.toLowerCase().includes(searchTerm.toLowerCase()) || field.title.toLowerCase().includes(searchTerm.toLowerCase()))
-          .concat(
-            new Enumerable(["FIELDS(ALL)", "FIELDS(STANDARD)", "FIELDS(CUSTOM)", "AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "SUM", "CALENDAR_MONTH", "CALENDAR_QUARTER", "CALENDAR_YEAR", "DAY_IN_MONTH", "DAY_IN_WEEK", "DAY_IN_YEAR", "DAY_ONLY", "FISCAL_MONTH", "FISCAL_QUARTER", "FISCAL_YEAR", "HOUR_IN_DAY", "WEEK_IN_MONTH", "WEEK_IN_YEAR", "convertTimezone", "toLabel", "convertCurrency", "FORMAT"])
-              .filter(fn => fn.toLowerCase().startsWith(searchTerm.toLowerCase()))
-              .map(fn => {
-                if (fn.includes(")")) { //Exception to easily support functions with hardcoded parameter options
-                  return {value: fn, title: fn, suffix: "", rank: 2, autocompleteType: "variable", dataType: ""};
-                } else {
-                  return {value: fn, title: fn + "()", suffix: "(", rank: 2, autocompleteType: "variable", dataType: ""};
-                }
-              })
-          )
-          .toArray()
-          .sort(this.resultsSort(searchTerm))
-      };
+      vm.editorAutocompleteHandler();
       return;
     }
+    vm.autocompleteResults = {
+      sobjectName,
+      isField: true,
+      contextPath,
+      title: contextSobjectDescribes.map(sobjectDescribe => sobjectDescribe.name).toArray().join(", ") + " fields suggestions:",
+      results: contextSobjectDescribes
+        .flatMap(sobjectDescribe => sobjectDescribe.fields)
+        .filter(field => field.type != "address")
+        .flatMap(function* (field) {
+          yield {value: field.name, title: field.label, suffix: isAfterWhere ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: field.type};
+          if (field.relationshipName) {
+            yield {value: field.relationshipName + ".", title: field.label, suffix: "", rank: 2, autocompleteType: "relationshipName", dataType: ""};
+          }
+        })
+        .filter(field => field.value.toLowerCase().includes(searchTerm.toLowerCase()) || field.title.toLowerCase().includes(searchTerm.toLowerCase()))
+        .concat(prepend)
+        .concat(
+          new Enumerable(["FIELDS(ALL)", "FIELDS(STANDARD)", "FIELDS(CUSTOM)", "AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "SUM", "CALENDAR_MONTH", "CALENDAR_QUARTER", "CALENDAR_YEAR", "DAY_IN_MONTH", "DAY_IN_WEEK", "DAY_IN_YEAR", "DAY_ONLY", "FISCAL_MONTH", "FISCAL_QUARTER", "FISCAL_YEAR", "HOUR_IN_DAY", "WEEK_IN_MONTH", "WEEK_IN_YEAR", "convertTimezone", "toLabel", "convertCurrency", "FORMAT"])
+            .filter(fn => fn.toLowerCase().startsWith(searchTerm.toLowerCase()))
+            .map(fn => {
+              if (fn.includes(")")) { //Exception to easily support functions with hardcoded parameter options
+                return {value: fn, title: fn, suffix: "", rank: 3, autocompleteType: "variable", dataType: ""};
+              } else {
+                return {value: fn, title: fn + "()", suffix: "(", rank: 3, autocompleteType: "variable", dataType: ""};
+              }
+            })
+        )
+        .toArray()
+        .sort(this.resultsSort(searchTerm))
+    };
   }
 
   autocompleteRelation(ctx, suggestRelation) {
@@ -1255,15 +1278,43 @@ class Model {
       }
     }
     if (!sobjectName) {
-      vm.autocompleteResults = {
-        sobjectName: "",
-        title: "\"from\" keyword not found",
-        results: []
-      };
-      return;
+      if (query.substring(0, selStart).toLowerCase().indexOf("select") < 0) {
+        vm.autocompleteResults = {
+          sobjectName: "",
+          title: "",
+          results: [{value: "SELECT", title: "SELECT", suffix: " ", rank: 1, autocompleteType: "keyword", dataType: ""}]
+        };
+        return;
+      } else if (selStart <= query.toLowerCase().indexOf("from") || query.substring(0, selStart).match(/select\s+[a-zA-Z0-9_]+\s/gi)) {
+        vm.autocompleteResults = {
+          sobjectName: "",
+          title: "",
+          results: [{value: "FROM", title: "FROM", suffix: " ", rank: 1, autocompleteType: "keyword", dataType: ""}]
+        };
+        return;
+      } else {
+        vm.autocompleteResults = {
+          sobjectName: "",
+          title: "",
+          results: [{value: "Id", title: "Id", suffix: " ", rank: 1, autocompleteType: "fieldName", dataType: ""}]
+        };
+        return;
+      }
     }
     let ctx = {vm, ctrlSpace, query, selStart, sobjectName, isAfterFrom};
     if (isAfterFrom || !this.parseSubQuery(ctx)) {
+      if (!query.substring(fromKeywordMatch?.index ?? 0, selStart).toLowerCase().includes("where")) {
+        vm.autocompleteResults = {
+          sobjectName: "",
+          title: "",
+          results: [{value: "WHERE", title: "WHERE", suffix: " ", rank: 1, autocompleteType: "keyword", dataType: ""},
+            {value: "GROUP", title: "GROUP BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""},
+            {value: "ORDER", title: "ORDER BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""},
+            {value: "LIMIT", title: "LIMIT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+            {value: "HAVING", title: "HAVING", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""}]
+        };
+        return;
+      }
       this.autocompleteField(vm, ctrlSpace, ctx.sobjectName, ctx.isAfterFrom);
     }
   }
@@ -1700,6 +1751,10 @@ function RecordTable(vm) {
   let dateFormat = localStorage.getItem("dateFormat");
   let datetimeFormat = localStorage.getItem("datetimeFormat");
   let decimalFormat = localStorage.getItem("decimalFormat");
+  if (decimalFormat != "." && decimalFormat != ",") {
+    decimalFormat = ".";
+    localStorage.setItem("decimalFormat", decimalFormat);
+  }
   // try to respect the right order of column by matching query column and record column
   async function discoverQueryColumns(record, fields) {
     let sobjectDescribe = null;
