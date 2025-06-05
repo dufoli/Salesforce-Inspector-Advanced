@@ -1504,57 +1504,77 @@ class Model {
     }
     return formatedQuery;
   }
-  cleanupQuery(query) {
-    if (query && !query.includes("//") && !query.includes("/*")) {
-      return query;
-    }
+  cleanupQuery(query, vm) {
     let remaining = query;
-    let commentRegEx = /(\/\/|\/\*|')/g;
+    let commentRegEx = /(\/\/|\/\*|'|,\s*,|,\s*FROM\s+)/gi;
     let commentMatch;
     let finalQuery = "";
     let endIndex;
+    let newQuery = "";
     //skip subquery by checking that we have same number of open and close parenthesis before
     while ((commentMatch = commentRegEx.exec(remaining)) !== null) {
       switch (commentMatch[1]) {
         case "//":
           finalQuery += remaining.substring(0, commentMatch.index);
+          newQuery += remaining.substring(0, commentMatch.index + 2);
           remaining = remaining.substring(commentMatch.index + 2);
           endIndex = remaining.indexOf("\n");
           if (endIndex > 0) {
+            newQuery += remaining.substring(0, endIndex + 1);
             remaining = remaining.substring(endIndex + 1);
           } else {
+            newQuery += remaining;
             remaining = "";
           }
           break;
         case "/*":
           finalQuery += remaining.substring(0, commentMatch.index);
+          newQuery += remaining.substring(0, commentMatch.index + 2);
           remaining = remaining.substring(commentMatch.index + 2);
           endIndex = remaining.indexOf("*/");
           if (endIndex > 0) {
+            newQuery += remaining.substring(0, endIndex + 2);
             remaining = remaining.substring(endIndex + 2);
           } else {
+            newQuery += remaining;
             remaining = "";
           }
           break;
         case "'":
-          //TODO escape caracter in string
-          finalQuery += remaining.substring(0, commentMatch.index) + "'";
+          finalQuery += remaining.substring(0, commentMatch.index + 1);
+          newQuery += remaining.substring(0, commentMatch.index + 1);
           remaining = remaining.substring(commentMatch.index + 1);
           endIndex = remaining.indexOf("'");
           if (endIndex > 0) {
-            finalQuery += remaining.substring(0, endIndex) + "'";
+            finalQuery += remaining.substring(0, endIndex + 1);
+            newQuery += remaining.substring(0, endIndex + 1);
             remaining = remaining.substring(endIndex + 1);
           } else {
+            newQuery += remaining;
             remaining = "";
           }
           break;
         default:
+          //comma before from
+          if (commentMatch[1] && commentMatch[1].includes("FROM")) {
+            finalQuery += remaining.substring(0, commentMatch.index) + commentMatch[1].substring(1);
+            newQuery += remaining.substring(0, commentMatch.index) + commentMatch[1].substring(1);
+            remaining = remaining.substring(commentMatch.index + commentMatch[1].length);
+          } else { //double comma
+            finalQuery += remaining.substring(0, commentMatch.index) + commentMatch[1].substring(1);
+            newQuery += remaining.substring(0, commentMatch.index) + commentMatch[1].substring(1);
+            remaining = remaining.substring(commentMatch.index + commentMatch[1].length);
+          }
           break;
       }
       //reset regex index
-      commentRegEx = /(\/\/|\/\*|')/g;
+      commentRegEx = /(\/\/|\/\*|'|,\s*,|,\s*FROM\s+)/gi;
     }
     finalQuery += remaining;
+    newQuery += remaining;
+    if (query != newQuery) {
+      vm.editor.value = newQuery;
+    }
     return finalQuery;
   }
   sliceArrayIntoGroups(arr, size) {
@@ -1573,7 +1593,7 @@ class Model {
     exportedData.describeInfo = vm.describeInfo;
     exportedData.sfHost = vm.sfHost;
     vm.initPerf();
-    let query = this.cleanupQuery(vm.editor.value);
+    let query = this.cleanupQuery(vm.editor.value, vm);
     vm.columnIndex = this.extractColumnFromQuery(query);
     function onError(error) {
       console.error(error);
