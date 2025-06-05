@@ -1508,6 +1508,9 @@ class Model {
   viewLogLine(logLine) {
     this.selectTab(1);
     this.logLine = logLine;
+    this.logSearch = "";
+    this.recalculculSearch();
+    this.hideNodesBySearch("");
     this.forceScroll = true;
     let self = this;
     this.didUpdate(() => self.logviewScrollLog());
