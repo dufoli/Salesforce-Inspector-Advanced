@@ -1303,7 +1303,7 @@ class Model {
     }
     let ctx = {vm, ctrlSpace, query, selStart, sobjectName, isAfterFrom};
     if (isAfterFrom || !this.parseSubQuery(ctx)) {
-      if (!query.substring(fromKeywordMatch?.index ?? 0, selStart).toLowerCase().includes("where")) {
+      if (ctx.isAfterFrom && !query.substring(fromKeywordMatch?.index ?? 0, selStart).toLowerCase().includes("where")) {
         vm.autocompleteResults = {
           sobjectName: "",
           title: "",
