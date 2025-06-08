@@ -421,6 +421,31 @@ export class TableModel {
       });
     });
   }
+  doApplyAll(rowId) {
+    let row = this.rows[rowId];
+    let separator = ",";
+    if (localStorage.getItem("csvSeparator")) {
+      separator = localStorage.getItem("csvSeparator");
+    }
+    let suffix = "";
+    let header = "\"Id\"";
+    row.cells.filter(c => c.dataEditValue !== undefined).forEach((c) => {
+      suffix += `${separator}"${c.dataEditValue}"`;
+      header += `${separator}"${this.data.table[0][c.idx]}"`;
+    });
+    let idFieldIdx = this.data.table[0].indexOf("Id");
+    let csv = header + "\r\n" + this.data.table.filter((c, i) => i != 0).map(row => `"${row[idFieldIdx]}"${suffix}`).join("\r\n");
+    let encodedData = window.btoa(csv);
+
+    let args = new URLSearchParams();
+    args.set("host", this.sfHost);
+    args.set("data", encodedData);
+    args.set("sobject", this.data.table[1][0]?.attributes?.type);
+    args.set("action", "update");
+    if (this.queryTooling) args.set("apitype", "Tooling");
+
+    window.open("data-import.html?" + args, "_blank");
+  }
   doSave(rowId) {
     let row = this.rows[rowId];
     let record = {};
@@ -1126,10 +1151,15 @@ export class ScrollTableRow extends React.Component {
     this.row = props.row;
     this.previousRow = props.previousRow;
     this.onDoSave = this.onDoSave.bind(this);
+    this.onDoApplyAll = this.onDoApplyAll.bind(this);
   }
   onDoSave(){
     let {model} = this.props;
     model.doSave(this.row.id);
+  }
+  onDoApplyAll(){
+    let {model} = this.props;
+    model.doApplyAll(this.row.id);
   }
   render() {
     let {model, row, rowHeight, previousRow} = this.props;
@@ -1147,7 +1177,13 @@ export class ScrollTableRow extends React.Component {
         title: "Save the values of this record",
         className: "button button-brand",
         onClick: this.onDoSave
-      }, "Save"), row.error ? row.error : ""));
+      }, "Save"), h("button", {
+        name: "applyAllBtn",
+        key: "applyAllBtn" + row.id,
+        title: "Apply this value to all records",
+        className: "button button-brand",
+        onClick: this.onDoApplyAll
+      }, "Apply all"), row.error ? row.error : ""));
     }
     return h("tr", {}, cells);
   }

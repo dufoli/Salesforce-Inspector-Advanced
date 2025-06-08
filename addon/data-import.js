@@ -77,6 +77,9 @@ class Model {
       this.importActionName = this.importType.endsWith("__mdt") ? "Delete Metadata" : "Delete";
       this.skipAllUnknownFields();
     }
+    if (args.has("action")){
+      this.importAction = args.get("action");
+    }
     this.tableModel = new TableModel(sfHost, this.didUpdate.bind(this));
     this.resultTableCallback = (d) => this.tableModel.dataChange(d);
   }
