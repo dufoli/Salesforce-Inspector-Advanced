@@ -286,7 +286,7 @@ class Model {
     copyToClipboard(JSON.stringify(this.exportedData.records, null, "  "));
   }
   deleteRecords(e) {
-    let data = this.exportedData.csvIdSerialize();
+    let data = this.exportedData.csvIdSerialize(getSeparator());
     let encodedData = window.btoa(data);
 
     let args = new URLSearchParams();
