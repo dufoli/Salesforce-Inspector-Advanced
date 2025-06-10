@@ -174,14 +174,16 @@ class Model {
   }
   selectHistoryEntry() {
     if (this.selectedHistoryEntry != null) {
-      this.applyEdit(this.selectedHistoryEntry.query, 0, 0, "preserve");
+      this.editor.value = this.selectedHistoryEntry.query;
+      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
       this.queryTooling = this.selectedHistoryEntry.useToolingApi;
       this.editorAutocompleteHandler();
       this.selectedHistoryEntry = null;
     }
   }
   selectQueryTemplate(val) {
-    this.applyEdit(val.trimStart(), this.editor.selectionStart, this.editor.selectionEnd, "preserve");
+    this.editor.value = val.trimStart();
+    this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
     this.editor.focus();
     let indexPos = this.editor.value.toLowerCase().indexOf("from ");
     if (indexPos !== -1) {
@@ -234,10 +236,11 @@ class Model {
       let delimitermatch = this.selectedSavedEntry.query.match(/:\s*(select|find)[\S\s]*$/i);
       if (delimitermatch) {
         this.queryName = this.selectedSavedEntry.query.substring(0, delimitermatch.index);
-        this.applyEdit(this.selectedSavedEntry.query.substring(delimitermatch.index + 1), this.editor.selectionStart, this.editor.selectionEnd, "preserve");
+        this.editor.value = this.selectedSavedEntry.query.substring(delimitermatch.index + 1);
+        this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
       } else {
         this.editor.value = this.selectedSavedEntry.query;
-        this.applyEdit(this.selectedSavedEntry.query, this.editor.selectionStart, this.editor.selectionEnd, "preserve");
+        this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
         if (this.selectedSavedEntry.name) {
           this.queryName = this.selectedSavedEntry.name;
         } else {
