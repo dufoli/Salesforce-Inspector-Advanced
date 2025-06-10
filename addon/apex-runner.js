@@ -11,6 +11,8 @@ class Model {
     this.tableJobModel = new TableModel(sfHost, this.didUpdate.bind(this));
     this.resultJobTableCallback = (d) => this.tableJobModel.dataChange(d);
     this.editor = null;
+    this.historyOffset = -1;
+    this.historyStack = [];//text + timestamp
     this.initialScript = "";
     this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => {
       this.editorAutocompleteHandler({newDescribe: true});
@@ -111,6 +113,12 @@ class Model {
   setEditor(editor) {
     this.editor = editor;
     editor.value = this.initialScript;
+    this.historyStack = [{
+      value: this.initialScript,
+      selectionStart: 0,
+      selectionEnd: 0
+    }];
+    this.historyOffset = 0;
     this.initialScript = null;
   }
   toggleHelp() {
@@ -122,12 +130,14 @@ class Model {
   selectHistoryEntry() {
     if (this.selectedHistoryEntry != null) {
       this.editor.value = this.selectedHistoryEntry.script;
+      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
       this.editorAutocompleteHandler();
       this.selectedHistoryEntry = null;
     }
   }
   selectScriptTemplate(val) {
     this.editor.value = val.trimStart();
+    this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
     this.editor.focus();
   }
   clearHistory() {
@@ -145,6 +155,7 @@ class Model {
         scriptStr = this.selectedSavedEntry.script;
       }
       this.editor.value = scriptStr;
+      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
       this.editorAutocompleteHandler();
       this.selectedSavedEntry = null;
     }
@@ -497,7 +508,7 @@ class Model {
     selStart = selEnd - searchTerm.length;
 
     this.editor.focus();
-    this.editor.setRangeText(ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
+    this.applyEdit(ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
     this.activeSuggestion = -1;
     this.editorAutocompleteHandler();
   }
@@ -567,7 +578,7 @@ class Model {
 
     vm.autocompleteClick = ({value, suffix}) => {
       vm.editor.focus();
-      vm.editor.setRangeText(value + suffix, selStart, selEnd, "end");
+      vm.applyEdit(value + suffix, selStart, selEnd, "end");
       vm.editorAutocompleteHandler();
     };
 
@@ -581,7 +592,7 @@ class Model {
       lastLine = lastLine.substring(lastLine.lastIndexOf("\n") + 1);
       let m = lastLine.match(/^\s+/);
       if (m) {
-        vm.editor.setRangeText(m[0], selStart, selEnd, "end");
+        vm.applyEdit(m[0], selStart, selEnd, "end");
       }
     }
     this.autocompleteClass(vm, ctrlSpace);
@@ -629,7 +640,71 @@ class Model {
       return null;
     });
   }
-
+  //TODO migrate to editor Model common to apex runner and data export
+  applyEdit(value, selectionStart, selectionEnd, mode = "preserve") {
+    if (this.editor) {
+      this.editor.setRangeText(value, selectionStart, selectionEnd, mode);
+      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+    }
+  }
+  undoEdit() {
+    if (this.editor && this.historyOffset > 0) {
+      this.historyOffset--;
+      let previous = this.historyStack[this.historyOffset];
+      this.editor.value = previous.value;
+      this.editor.selectionStart = previous.selectionStart;
+      this.editor.selectionEnd = previous.selectionEnd;
+    }
+  }
+  redoEdit() {
+    if (this.editor && this.historyOffset < this.historyStack.length - 1) {
+      this.historyOffset++;
+      let next = this.historyStack[this.historyOffset];
+      this.editor.value = next.value;
+      this.editor.selectionStart = next.selectionStart;
+      this.editor.selectionEnd = next.selectionEnd;
+    }
+  }
+  writeEditHistory(value, selectionStart, selectionEnd, force) {
+    const HISTORY_LIMIT = 100;
+    const HISTORY_TIME_GAP = 3000;
+    //remove history after offset
+    if (this.historyOffset != -1 && this.historyOffset < this.historyStack.length - 1) {
+      this.historyStack = this.historyStack.slice(0, this.historyOffset + 1);
+    }
+    //remove first elements if limit reached
+    if (this.historyStack.length > 0 && this.historyOffset > -1 && this.historyStack.length > HISTORY_LIMIT) {
+      let cnt = this.historyStack.length - HISTORY_LIMIT;
+      this.historyStack = this.historyStack.slice(cnt);
+      this.historyOffset = Math.max(this.historyOffset - cnt, 0);
+    }
+    if (!force && this.historyOffset >= 0) {
+      let last = this.historyStack[this.historyOffset];
+      let lastWord = last.value.substring(0, last.selectionStart).match(/[a-z0-9]+$/i);
+      let newLastWord = value.substring(0, selectionStart).match(/[a-z0-9]+$/i);
+      if (last
+          && Date.now() - last.timestamp < HISTORY_TIME_GAP
+          && lastWord && newLastWord && newLastWord[0].startsWith(lastWord[0])) {
+        this.historyStack[this.historyOffset] = {
+          value, //overwrite last entry
+          selectionStart,
+          selectionEnd,
+          timestamp: last.timestamp //keep previous timestamp to write every 3 seconds at least
+        };
+        return;
+      }
+    }
+    this.historyOffset++;
+    this.historyStack.push({
+      value,
+      selectionStart,
+      selectionEnd,
+      timestamp: Date.now()
+    });
+  }
+  handleEditorChange(value, selectionStart, selectionEnd) {
+    this.writeEditHistory(value, selectionStart, selectionEnd, false);
+  }
   doExecute() {
     let vm = this; // eslint-disable-line consistent-this
     //if polling have been stoped resume it.

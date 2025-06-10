@@ -1251,6 +1251,7 @@ export class Editor extends React.Component {
     this.keywordColor = props.keywordColor;
     this.keywordCaseSensitive = props.keywordCaseSensitive;
     this.handlekeyDown = this.handlekeyDown.bind(this);
+    this.handleChange = this.handleChange.bind(this);
     this.editorAutocompleteEvent = this.editorAutocompleteEvent.bind(this);
     this.onScroll = this.onScroll.bind(this);
     this.processText = this.processText.bind(this);
@@ -1338,12 +1339,26 @@ export class Editor extends React.Component {
     model.editorAutocompleteHandler(e);
     model.didUpdate();
   }
+  handleChange(e) {
+    let {model} = this.props;
+    model.handleEditorChange(e.currentTarget.value, e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
+  }
   handlekeyDown(e) {
     // We do not want to perform Salesforce API calls for autocomplete on every keystroke, so we only perform these when the user pressed Ctrl+Space
     // Chrome on Linux does not fire keypress when the Ctrl key is down, so we listen for keydown. Might be https://code.google.com/p/chromium/issues/detail?id=13891#c50
     let {model} = this.props;
     const {value, selectionStart, selectionEnd} = e.currentTarget;
     const tabChar = "  ";//default is 2 spaces
+    if (e.ctrlKey && e.key === "z") {
+      e.preventDefault();
+      model.undoEdit();
+      return;
+    }
+    if (e.ctrlKey && e.key === "y") {
+      e.preventDefault();
+      model.redoEdit();
+      return;
+    }
     switch (e.key) {
       case " ":
         if (e.ctrlKey) {
@@ -1665,7 +1680,7 @@ export class Editor extends React.Component {
           h("div", {ref: "editorMirror", className: "editor_container_mirror"}, highlighted.map((s) => h("span", s.attributes, s.value)),
             endOfText
           ),
-          h("textarea", {id: "editor", autoComplete: "off", autoCorrect: "off", spellCheck: "false", autoCapitalize: "off", className: "editor_textarea", ref: "editor", onScroll: this.onScroll, onKeyUp: this.editorAutocompleteEvent, onMouseUp: this.handleMouseUp, onSelect: this.editorAutocompleteEvent, onInput: this.editorAutocompleteEvent, onKeyDown: this.handlekeyDown, onBlur: this.onBlur})
+          h("textarea", {id: "editor", autoComplete: "off", autoCorrect: "off", spellCheck: "false", autoCapitalize: "off", className: "editor_textarea", ref: "editor", onScroll: this.onScroll, onKeyUp: this.editorAutocompleteEvent, onMouseUp: this.handleMouseUp, onSelect: this.editorAutocompleteEvent, onInput: this.editorAutocompleteEvent, onKeyDown: this.handlekeyDown, onChange: this.handleChange, onBlur: this.onBlur})
         )
       )
     );
