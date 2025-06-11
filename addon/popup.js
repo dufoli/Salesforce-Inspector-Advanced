@@ -1502,6 +1502,7 @@ class UserDetails extends React.PureComponent {
     this.sfHost = props.sfHost;
     this.enableDebugLog = this.enableDebugLog.bind(this);
     this.clickLoginIncognito = this.clickLoginIncognito.bind(this);
+    this.clickResetPassword = this.clickResetPassword.bind(this);
   }
 
   async enableDebugLog() {
@@ -1661,6 +1662,13 @@ class UserDetails extends React.PureComponent {
     const url = "https://" + sfHost + "/secur/frontdoor.jsp?sid=" + sfConn.sessionId + "&retURL=" + encodeURIComponent(this.getLoginAsLink(user.Id));
     chrome.runtime.sendMessage({message: "incognito", url});
   }
+  clickResetPassword() {
+    if (confirm("Reset password for this user?") == true) {
+      sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User/" + this.props.user.Id + "/password", {method: "DELETE"}).catch(err => {
+        console.error(err);
+      });
+    }
+  }
 
   render() {
     let {user, linkTarget} = this.props;
@@ -1721,6 +1729,7 @@ class UserDetails extends React.PureComponent {
           this.doSupportLoginAs(user) ? h("a", {href: this.getLoginAsLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral"}, "Try login as") : null, //integration or meet_focus_presenter or trailblazer_ext
           this.canLoginAsPortal(user) ? h("a", {href: this.getLoginAsPortalLink(user), target: linkTarget, className: "slds-button slds-button_neutral"}, "Login to Experience") : null, //internal_share or people
           this.doSupportLoginAs(user) ? h("a", {onClick: this.clickLoginIncognito, target: linkTarget, className: "slds-button slds-button_neutral"}, "Login as Incognito") : null, // meet_focus_equal or new_window
+          this.doSupportLoginAs(user) ? h("a", {onClick: this.clickResetPassword, target: linkTarget, className: "slds-button slds-button_neutral"}, "Reset Password") : null,
         )
       )
     );
