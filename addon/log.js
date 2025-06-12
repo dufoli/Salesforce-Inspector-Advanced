@@ -41,7 +41,14 @@ class LogParser {
       c.position = i + 1;
       c.tabIndex = -1;
       c.index = result.length;
-      result.push(c);
+
+      if (!(c instanceof ConstructorNode
+        || c instanceof SystemConstructorNode
+        || c instanceof VariableAssignmentNode
+        || c instanceof MethodNode
+        || c instanceof SystemMethodNode) || c.duration > 10) {
+        result.push(c);
+      }
       if (c.child && c.child.length > 0) {
         maxLvlNodes = this.flatternNode(c.child, result, lvl + 1, maxLvlNodes)[1];
       }
@@ -2011,9 +2018,11 @@ class RessourceView extends React.Component {
   }
   regroupNode(node, ressources) {
     let self = this;
-    node.child.forEach(
-      (child) => self.regroupNode(child, ressources)
-    );
+    if (node?.child != null) {
+      node.child.forEach(
+        (child) => self.regroupNode(child, ressources)
+      );
+    }
     if (!node.query) {
       return ressources;
     }
@@ -2050,18 +2059,20 @@ class RessourceView extends React.Component {
     let ressources = Array.from(this.regroupNode(this.model.logParser.rootNode, new Map()).values()).sort((n1, n2) => n2.count - n1.count);
 
     let {model} = this.props;
-    return h("table", {className: "slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped"},
-      h("thead", {className: ""},
-        h("tr", {className: "slds-line-height_reset"},
-          h("th", {scope: "col", className: ""}, "Ressource"),
-          h("th", {scope: "col", className: ""}, "Count")
-        )
-      ),
-      h("tbody", {},
-        ressources.map((node, i) =>
-          h("tr", {className: "slds-hint-parent", key: "RessourceNode" + i},
-            h("td", {scope: "row"}, h("a", {href: "#", onClick: () => this.onSelectRessource(node)}, node.query)),
-            h("td", {}, node.count)
+    return h("div", {style: {overflow: "scroll", height: "inherit"}},
+      h("table", {className: "slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped", style: {wordBreak: "break-all"}},
+        h("thead", {className: ""},
+          h("tr", {className: "slds-line-height_reset"},
+            h("th", {scope: "col", className: ""}, "Ressource"),
+            h("th", {scope: "col", className: ""}, "Count")
+          )
+        ),
+        h("tbody", {},
+          ressources.map((node, i) =>
+            h("tr", {className: "slds-hint-parent", key: "RessourceNode" + i},
+              h("td", {scope: "row", className: "slds-cell-wrap"}, h("a", {href: "#", onClick: () => this.onSelectRessource(node)}, node.query)),
+              h("td", {}, node.count)
+            )
           )
         )
       )

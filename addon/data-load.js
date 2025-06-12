@@ -536,7 +536,6 @@ export class TableModel {
     let rowEditedCells = this.editedRows.get(row.idx);
     if (!rowEditedCells){
       rowEditedCells = new Map();
-      //TODO editdrows
       this.editedRows.set(row.idx, rowEditedCells);
     }
     for (let cellId = 0; cellId < row.cells.length; cellId++) {

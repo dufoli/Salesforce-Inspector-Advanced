@@ -1,16 +1,23 @@
 # Release Notes
 
 ## Version 1.32
-- import: fix metadata relationship by setting string type.
-- import: fix import of json and nan support.
-- security: identify client Salesforce inspectorr Advanced in logs.
-- flame chart: link on click in flame chart or profiler to log line.
-- import: fix metadata relation import.
-- editor: fix up arrow and down arrow when no suggestion are shown.
-- inspect: fix filter on object with summary field
-- fix batch size number on query with parametter
-- log: add apex view to display related log to a apex class line. Very useful to troubleshot DML.
-- security: fix potential soql injection, xss ...
+Import: Fixed metadata relationship by setting string type.
+Import: Fixed import of JSON.
+Import: Fixed metadata relation import.
+Editor: Permit naviguation with up and down arrow when no suggestions are shown.
+Editor: Added undo and redo functionality with ctrl+z and ctrl+y.
+Inspect: Fixed filter on object with summary field.
+Data Export: Added support for keywords in suggestions.
+Data Export: Added bulk update with fixed value functionality.
+Data export: Clean query from common mistakes on export.
+Data Export: Fixed batch size number on query with parameters.
+User: Added reset password functionality.
+Log: Linked on click in flame chart or profiler to log line.
+Log: Added Apex view to display related logs to an Apex class line.
+Log: Added Ressource view to list SOQL, SOSL, DML and callout with count
+Security: Identified client Salesforce Inspector Advanced in logs.
+Security: Fixed potential SOQL injection and XSS vulnerabilities.
+Security: Restricted access to resources in the manifest.
 
 ## Version 1.31
 > [!IMPORTANT]
