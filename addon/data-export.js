@@ -602,7 +602,7 @@ class Model {
           this.autocompleteObject(vm, ctrlSpace);
           return;
         }
-        matchObjName = beforeSel.match(/^([a-zA-Z0-9_-]+)/i);
+        matchObjName = beforeSel.match(/^([a-z0-9_-]+)/i);
       }
       if (beforeSel == "") {
         this.autocompleteObject(vm, ctrlSpace);
@@ -804,7 +804,18 @@ class Model {
         */
 
     let contextEnd = selStart;
-
+    //after limit no proposition of field or field value
+    if (query.substring(0, selStart).match(/(\s+limit)\s+[0-9]*\s*$/i)) {
+      vm.autocompleteResults = {
+        sobjectName,
+        title: "LIMIT suggestions:",
+        results: [{value: "1", title: "1", suffix: " ", rank: 1, autocompleteType: "variable", dataType: ""},
+          {value: "10", title: "10", suffix: " ", rank: 1, autocompleteType: "variable", dataType: ""},
+          {value: "100", title: "100", suffix: " ", rank: 1, autocompleteType: "variable", dataType: ""}
+        ]
+      };
+      return; // don't autocomplete after LIMIT
+    }
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
     // \s*[<>=!]+\s*('?[^'\s]*)$
@@ -923,9 +934,11 @@ class Model {
       };
       return;
     }
-    //operator if we have AND|OR|WHERE space word space
-    let isOperator = isAfterWhere && query.substring(0, selStart).match(/[\n\s()]+(AND|WHERE|OR)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+(l)?[^\s]*$/i);
-    let isBooleanOperator = isAfterWhere && !isFieldValue && !isOperator && query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,)*('?[^'\s]*'?)\s+$/i);
+    let isAfterOrderBy = query.substring(0, selStart).match(/[\n\s()]+ORDER\s+BY\s*/i);
+    let isAfterGroupBy = query.substring(0, selStart).match(/[\n\s()]+GROUP\s+BY\s*/i);
+    let isAfterHaving = query.substring(0, selStart).match(/[\n\s()]+(HAVING)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+[^\s]*$/i);
+    let isOperator = isAfterWhere && (isAfterHaving || (!isAfterOrderBy && !isAfterGroupBy && query.substring(0, selStart).match(/[\n\s()]+(AND|WHERE|OR)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+[^\s]*$/i)));
+    let isBooleanOperator = isAfterWhere && !isAfterOrderBy && !isAfterGroupBy && !isFieldValue && !isOperator && query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,)*('?[^'\s]*'?)\s+$/i);
     if (isFieldValue) {
       //check if fieldname is polymorphique field
       if (fieldName.toLowerCase() == "type"
@@ -1051,7 +1064,8 @@ class Model {
         {value: ">", title: ">", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "<=", title: "<=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: ">=", title: ">=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
-        {value: "!=", title: "!=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+        {value: "!=", title: "!=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "NOT", title: "NOT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
 
     } else if (isBooleanOperator) {
       operators.push({value: "AND", title: "AND", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
@@ -1060,6 +1074,15 @@ class Model {
         {value: "ORDER", title: "ORDER BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "LIMIT", title: "LIMIT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "HAVING", title: "HAVING", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+    } else if (isAfterOrderBy) {
+      operators.push({value: "ASC", title: "ASC", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "DESC", title: "DESC", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "HAVING", title: "HAVING", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "LIMIT", title: "LIMIT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+    } else if (isAfterGroupBy) {
+      operators.push({value: "HAVING", title: "HAVING", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "LIMIT", title: "LIMIT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "ORDER", title: "ORDER BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""});
     }
     let prepend = new Enumerable(operators)
       .filter(fn => fn.value.toLowerCase().startsWith(searchTerm.toLowerCase()));
@@ -1086,7 +1109,7 @@ class Model {
         .flatMap(sobjectDescribe => sobjectDescribe.fields)
         .filter(field => field.type != "address")
         .flatMap(function* (field) {
-          yield {value: field.name, title: field.label, suffix: isAfterWhere ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: field.type};
+          yield {value: field.name, title: field.label, suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: field.type};
           if (field.relationshipName) {
             yield {value: field.relationshipName + ".", title: field.label, suffix: "", rank: 2, autocompleteType: "relationshipName", dataType: ""};
           }
@@ -1255,8 +1278,10 @@ class Model {
     // Find out what sobject we are querying, by using the word after the "from" keyword.
     let fromRegEx = /(^|\s)from\s+([a-z0-9_]*)/gi;
     let fromKeywordMatch;
+    let fromIdx = 0;
     //skip subquery by checking that we have same number of open and close parenthesis before
     while ((fromKeywordMatch = fromRegEx.exec(query)) !== null) {
+      fromIdx = fromKeywordMatch.index + fromKeywordMatch[0].length;
       let beforeFrom = query.substring(0, fromKeywordMatch.index);
       let openParenthesisSplit = beforeFrom.split("(");
       if (sobjectName //in sub query after from
@@ -1276,9 +1301,9 @@ class Model {
     }
     // If we are just after the last "from" keyword, autocomplete the sobject name
     fromRegEx = /(^|\s)from\s*$/gi;
-    fromKeywordMatch = fromRegEx.exec(query.substring(0, selStart));
-    if (fromKeywordMatch) {
-      let beforeFrom = query.substring(0, fromKeywordMatch.index);
+    let fromKeywordMatch2 = fromRegEx.exec(query.substring(0, selStart));
+    if (fromKeywordMatch2) {
+      let beforeFrom = query.substring(0, fromKeywordMatch2.index);
       let openParenthesisSplit = beforeFrom.split("(");
       //not in subquery before main from
       if (!beforeFrom //nothing before
@@ -1313,9 +1338,9 @@ class Model {
         return;
       }
     }
-    let ctx = {vm, ctrlSpace, query, selStart, sobjectName, isAfterFrom};
+    let ctx = {vm, ctrlSpace, query, selStart, sobjectName, isAfterFrom, fromIdx};
     if (isAfterFrom || !this.parseSubQuery(ctx)) {
-      if (ctx.isAfterFrom && !query.substring(fromKeywordMatch?.index ?? 0, selStart).toLowerCase().includes("where")) {
+      if (ctx.isAfterFrom && query.substring(ctx.fromIdx, selStart).trim() == "") {
         vm.autocompleteResults = {
           sobjectName: "",
           title: "",
@@ -1336,6 +1361,7 @@ class Model {
     let subQuery = ctx.query;
     let fromKeywordMatch;
     while ((fromKeywordMatch = subQueryRegExp.exec(subQuery)) !== null) {
+      ctx.fromIdx = fromKeywordMatch.index + fromKeywordMatch[1].length + fromKeywordMatch[2].length + fromKeywordMatch[3].length;
       if (fromKeywordMatch
         && fromKeywordMatch.index < ctx.selStart
         && fromKeywordMatch.index + fromKeywordMatch[0].length > ctx.selStart) {
