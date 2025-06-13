@@ -1729,7 +1729,7 @@ class UserDetails extends React.PureComponent {
           this.doSupportLoginAs(user) ? h("a", {href: this.getLoginAsLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral"}, "Try login as") : null, //integration or meet_focus_presenter or trailblazer_ext
           this.canLoginAsPortal(user) ? h("a", {href: this.getLoginAsPortalLink(user), target: linkTarget, className: "slds-button slds-button_neutral"}, "Login to Experience") : null, //internal_share or people
           this.doSupportLoginAs(user) ? h("a", {onClick: this.clickLoginIncognito, target: linkTarget, className: "slds-button slds-button_neutral"}, "Login as Incognito") : null, // meet_focus_equal or new_window
-          this.doSupportLoginAs(user) ? h("a", {onClick: this.clickResetPassword, target: linkTarget, className: "slds-button slds-button_neutral"}, "Reset Password") : null,
+          user?.IsActive ? h("a", {onClick: this.clickResetPassword, target: linkTarget, className: "slds-button slds-button_neutral"}, "Reset Password") : null,
         )
       )
     );
