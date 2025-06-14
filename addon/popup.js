@@ -659,6 +659,7 @@ class AllDataBox extends React.PureComponent {
       contextUserId: null,
       contextOrgId: null,
       contextPath: null,
+      contextFilterName: null,
       contextSobject: null
     };
     this.onAspectClick = this.onAspectClick.bind(this);
@@ -698,11 +699,13 @@ class AllDataBox extends React.PureComponent {
     if (contextUrl) {
       let recordId = getRecordId(contextUrl);
       let path = getSfPathFromUrl(contextUrl);
+      let filterName = path.endsWith("/list") ? getSfFilterNameFromUrl(contextUrl) : "";
       let sobject = getSobject(contextUrl);
       let context = {
         contextRecordId: recordId,
         contextPath: path,
-        contextSobject: sobject
+        contextSobject: sobject,
+        contextFilterName: filterName
       };
       this.setState(context);
       onContextRecordChange(context);
@@ -860,7 +863,7 @@ class AllDataBox extends React.PureComponent {
   }
 
   render() {
-    let {activeSearchAspect, sobjectsLoading, contextRecordId, contextSobject, contextUserId, contextOrgId, contextPath, sobjectsList} = this.state;
+    let {activeSearchAspect, sobjectsLoading, contextRecordId, contextSobject, contextUserId, contextOrgId, contextPath, sobjectsList, contextFilterName} = this.state;
     let {sfHost, showDetailsSupported, linkTarget, onContextRecordChange, isFieldsPresent} = this.props;
 
     return (
@@ -872,7 +875,7 @@ class AllDataBox extends React.PureComponent {
           h("li", {ref: "orgTab", onClick: this.onAspectClick, "data-aspect": this.SearchAspectTypes.org, className: (activeSearchAspect == this.SearchAspectTypes.org) ? "active" : ""}, h("span", {}, "O", h("u", {}, "r"), "g"))
         ),
         (activeSearchAspect == this.SearchAspectTypes.sobject)
-          ? h(AllDataBoxSObject, {ref: "showAllDataBoxSObject", sfHost, showDetailsSupported, sobjectsList, sobjectsLoading, contextRecordId, contextSobject, linkTarget, onContextRecordChange, isFieldsPresent})
+          ? h(AllDataBoxSObject, {ref: "showAllDataBoxSObject", sfHost, showDetailsSupported, sobjectsList, sobjectsLoading, contextRecordId, contextSobject, linkTarget, onContextRecordChange, isFieldsPresent, contextFilterName})
           : (activeSearchAspect == this.SearchAspectTypes.users)
             ? h(AllDataBoxUsers, {ref: "showAllDataBoxUsers", sfHost, linkTarget, contextUserId, contextOrgId, contextPath, setIsLoading: (value) => { this.setIsLoading("usersBox", value); }}, "Users")
             : (activeSearchAspect == this.SearchAspectTypes.shortcuts)
@@ -1249,13 +1252,13 @@ class AllDataBoxSObject extends React.PureComponent {
   }
 
   render() {
-    let {sfHost, showDetailsSupported, sobjectsList, linkTarget, contextRecordId, isFieldsPresent} = this.props;
+    let {sfHost, showDetailsSupported, sobjectsList, linkTarget, contextRecordId, isFieldsPresent, contextSobject, contextFilterName} = this.props;
     let {selectedValue, recordIdDetails} = this.state;
     return (
       h("div", {},
         h(AllDataSearch, {ref: "allDataSearch", sfHost, onDataSelect: this.onDataSelect, sobjectsList, getMatches: this.getMatches, inputSearchDelay: 0, placeholderText: "Record id, id prefix or object name", title: "Click to show recent items", resultRender: this.resultRender}),
         selectedValue
-          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent})
+          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject})
           : h("div", {className: "all-data-box-inner empty"}, "No record to display")
       )
     );
@@ -1793,6 +1796,10 @@ class ShowDetailsButton extends React.PureComponent {
 
 
 class AllDataSelection extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.exportListView = this.exportListView.bind(this);
+  }
   clickShowDetailsBtn() {
     this.refs.showDetailsBtn.onDetailsClick();
   }
@@ -1808,6 +1815,32 @@ class AllDataSelection extends React.PureComponent {
     if (this.refs.showNewBtn){
       this.refs.showNewBtn.click();
     }
+  }
+  exportListView(){
+    let separator = ",";
+    if (localStorage.getItem("csvSeparator")) {
+      separator = localStorage.getItem("csvSeparator");
+    }
+    let filterName = this.props.contextFilterName;
+    if (this.props.contextFilterName == "__Recent") {
+      filterName = "RecentlyViewed" + this.props.contextSobject + "s";
+    }
+    let query = `/query/?q=+SELECT+Id+FROM+ListView+WHERE+DeveloperName='${filterName}'`;
+    return sfConn.rest("/services/data/v" + apiVersion + query, {method: "GET"}).then(lv => {
+      sfConn.rest("/services/data/v" + apiVersion + "/sobjects/" + this.props.contextSobject + "/listviews/" + lv.records[0].Id + "/results", {method: "GET"}).then(res => {
+        let header = res.columns.map(col => col.fieldNameOrPath);
+        let csv = header.map(h => `"${h}"`).join(separator) + "\r\n";
+        csv += res.records.map(record => record.columns.map(c => `"${c?.value == null ? "" : "" + c?.value}"`).join(separator)).join("\r\n");
+        let downloadLink = document.createElement("a");
+        const date = new Date();
+        const timestamp = date.toISOString().replace(/[^0-9]/g, "");
+        downloadLink.download = `export${timestamp}.csv`;
+        let BOM = "\uFEFF";
+        let bb = new Blob([BOM, csv], {type: "text/csv;charset=utf-8"});
+        downloadLink.href = window.URL.createObjectURL(bb);
+        downloadLink.click();
+      });
+    });
   }
   getAllDataUrl(toolingApi) {
     let {sfHost, selectedValue} = this.props;
@@ -1890,7 +1923,7 @@ class AllDataSelection extends React.PureComponent {
     return "https://" + sfHost + newUrl;
   }
   render() {
-    let {sfHost, showDetailsSupported, contextRecordId, selectedValue, linkTarget, recordIdDetails, isFieldsPresent} = this.props;
+    let {sfHost, showDetailsSupported, contextRecordId, selectedValue, linkTarget, recordIdDetails, isFieldsPresent, contextFilterName} = this.props;
     // Show buttons for the available APIs.
     let buttons = selectedValue.sobject.availableApis ? Array.from(selectedValue.sobject.availableApis) : [];
     buttons.sort();
@@ -1963,6 +1996,7 @@ class AllDataSelection extends React.PureComponent {
         ))),
         isFieldsPresent ? h("a", {ref: "showFieldApiNameBtn", onClick: showApiName, target: linkTarget, className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, h("span", {}, "Show ", h("u", {}, "f"), "ields API names")) : null,
         selectedValue.sobject.isEverCreatable ? h("a", {ref: "showNewBtn", href: this.getNewObjectUrl(sfHost, selectedValue.sobject.newUrl), target: linkTarget, className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, h("span", {}, h("u", {}, "N"), "ew " + selectedValue.sobject.label)) : null,
+        contextFilterName ? h("a", {ref: "exportListViewBtn", onClick: this.exportListView, target: linkTarget, className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, h("span", {}, "Export ", h("u", {}, "L"), "ist View")) : null,
       )
     );
   }
@@ -2393,6 +2427,13 @@ function getSfPathFromUrl(href) {
     return "/";
   }
   return url.pathname;
+}
+function getSfFilterNameFromUrl(href) {
+  let url = new URL(href);
+  if (url.protocol.endsWith("-extension:")) {
+    return "";
+  }
+  return url.searchParams.get("filterName");
 }
 
 function sfLocaleKeyToCountryCode(localeKey) {
