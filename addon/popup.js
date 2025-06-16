@@ -135,7 +135,7 @@ class App extends React.PureComponent {
     this.onCloseBanner = this.onCloseBanner.bind(this);
     this.clearOlderFlows = this.clearOlderFlows.bind(this);
   }
-  onContextRecordChange(e) {
+  async onContextRecordChange(e) {
     let {sfHost} = this.props;
     let limitsArg = new URLSearchParams();
     let exportArg = new URLSearchParams();
@@ -147,6 +147,118 @@ class App extends React.PureComponent {
       let query = "SELECT Id FROM " + e.contextSobject;
       if (e.contextRecordId && (e.contextRecordId.length == 15 || e.contextRecordId.length == 18)) {
         query += " WHERE Id = '" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "'";
+      }
+      if (e.contextSobject == "Report") {
+        let report = await sfConn.rest("/services/data/v" + apiVersion + "/analytics/reports/" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "/describe", {method: "GET"});
+        let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.shift()?.entityApiName;
+        let aggregates = report.reportMetadata.aggregates.map(agg => {
+          switch (agg) {
+            case "RowCount":
+              return "Count(Id)";
+            case "Sum":
+              return "SUM(" + agg.column + ")";
+            case "Average":
+              return "AVG(" + agg.column + ")";
+            case "Maximum":
+              return "MAX(" + agg.column + ")";
+            case "Minimum":
+              return "MIN(" + agg.column + ")";
+            case "Unique":
+              return "COUNT_DISTINCT(" + agg.column + ")";
+            case "Median":
+              return "";//NOT SUPPORTED
+            case "Noop":
+              return "";
+            default:
+              return "";
+          }
+        }).filter(agg => agg != "");
+        query = "//BETA\nSELECT " + report.reportMetadata.detailColumns.concat(aggregates).join(", ");
+        query += " FROM " + sobjectName;
+        let filters = report.reportMetadata.reportFilters.map(f => {
+          let q = !isNaN(f.value) && !isNaN(parseFloat(f.value)) ? "" : "'";
+          switch (f.operator) {
+            case "notEqual":
+              return f.column + " != " + q + f.value + q;
+            case "equals":
+              return f.column + " = " + q + f.value + q;
+            case "lessThan":
+              return f.column + " < " + f.value;
+            case "greaterThan":
+              return f.column + " > " + f.value;
+            case "lessOrEqual":
+              return f.column + " <= " + f.value;
+            case "greaterOrEqual":
+              return f.column + " >= " + f.value;
+            case "contains":
+              return f.column + " like '%" + f.value + "%'";
+            case "notContain":
+              return f.column + "not like '%" + f.value + "%'";
+            case "startsWith":
+              return f.column + "like '" + f.value + "%'";
+            case "includes":
+              return f.column + "INCLUDES ('" + f.value + "')";
+            case "excludes":
+              return f.column + "EXCLUDES ('" + f.value + "')";
+            case "within":
+              return "DISTANCE(" + f.column + ", GEOLOCATION(37.775,-122.418), 'mi') < " + f.value;
+            default:
+              return "";
+          }
+        });
+        if (filters?.length) {
+          if (!report.reportMetadata.reportBooleanFilter) {
+            query += " WHERE " + filters.join(" AND ");
+          } else {
+            query += report.reportMetadata.reportBooleanFilter.replace(/[0-9]+/g, m => {
+              let i = parseInt(m);
+              return filters[i];
+            });
+          }
+        }
+        let groupBy = [];
+        let sortBy = [];
+        if (report.reportMetadata.groupingsAcross) {
+          groupBy = report.reportMetadata.groupingsAcross;
+        }
+        if (report.reportMetadata.groupingsDown) {
+          groupBy.push(...(report.reportMetadata.groupingsDown));
+        }
+        sortBy = groupBy.flatMap(g => g.sortOrder ? [g.name + " " + g.sortOrder] : []);
+        groupBy = groupBy.flatMap(g => {
+          switch (g.dateGranularity) {
+            case "Month":
+              return ["CALENDAR_YEAR(" + g.name + ")", "CALENDAR_MONTH(" + g.name + ")"];
+            case "Day":
+              return "DAY_ONLY(" + g.name + ")";
+            case "Week":
+              return ["CALENDAR_YEAR(" + g.name + ")", "WEEK_IN_YEAR(" + g.name + ")"];
+            case "Quarter":
+              return ["CALENDAR_YEAR(" + g.name + ")", "CALENDAR_QUARTER(" + g.name + ")"];
+            case "Year":
+              return "CALENDAR_YEAR(" + g.name + ")";
+            case "FiscalQuarter":
+              return ["FISCAL_YEAR(" + g.name + ")", "FISCAL_QUARTER(" + g.name + ")"];
+            case "FiscalYear":
+              return "FISCAL_YEAR(" + g.name + ")";
+            case "MonthInYear":
+              return "CALENDAR_MONTH(" + g.name + ")";
+            case "DayInMonth":
+              return "DAY_IN_MONTH(" + g.name + ")";
+            case "FiscalPeriod":
+              return "FISCAL_QUARTER(" + g.name + ")";
+            case "FiscalWeek":
+              return "WEEK_IN_YEAR(" + g.name + ")";
+            default:
+              return g.name;
+          }
+        });
+        if (groupBy?.length) {
+          query += " GROUP BY " + groupBy.join(", ");
+        }
+        if (sortBy?.length) {
+          query += " ORDER BY " + sortBy.join(", ");
+        }
       }
       exportArg.set("query", query);
       importArg.set("sobject", e.contextSobject);
