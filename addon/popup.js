@@ -151,41 +151,45 @@ class App extends React.PureComponent {
       if (e.contextSobject == "Report") {
         let report = await sfConn.rest("/services/data/v" + apiVersion + "/analytics/reports/" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "/describe", {method: "GET"});
         let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.filter(o => o.joinType.toUpperCase() == "ROOT").shift()?.entityApiName;
-        let aggregates = report.reportMetadata.aggregates.map(agg => {
-          switch (agg) {
-            case "RowCount":
-              return "Count(Id)";
-            // case "Sum":
-            //   return "SUM(" + agg.column + ")";
-            // case "Average":
-            //   return "AVG(" + agg.column + ")";
-            // case "Maximum":
-            //   return "MAX(" + agg.column + ")";
-            // case "Minimum":
-            //   return "MIN(" + agg.column + ")";
-            // case "Unique":
-            //   return "COUNT_DISTINCT(" + agg.column + ")";
-            // case "Median":
-            //   return "";//NOT SUPPORTED
-            // case "Noop":
-            //   return "";
-            default:
-              //TODO agg can be a field id for custom field
-              if (agg.startsWith("a!")) {
-                return "AVG(" + agg.substring(2) + ")";
-              } else if (agg.startsWith("s!")) {
-                return "SUM(" + agg.substring(2) + ")";
-              } else if (agg.startsWith("m!")) {
-                return "MIN(" + agg.substring(2) + ")";
-              } else if (agg.startsWith("x!")) {
-                return "MAX(" + agg.substring(2) + ")";
-              } else if (agg.startsWith("u!")) {
-                return "COUNT_DISTINCT(" + agg.substring(2) + ")";
-              }
-              return "";
-          }
-        }).filter(agg => agg != "");
-        query = "//BETA\nSELECT " + report.reportMetadata.detailColumns.concat(aggregates).join(", ");
+        //TODO rewrite field to use link between object cf objects
+        // objectRelationships with same index => relatedObjects[].relatedEntity == same type
+
+        // let aggregates = report.reportMetadata.aggregates.map(agg => {
+        //   switch (agg) {
+        //     case "RowCount":
+        //       return "Count(Id)";
+        //     // case "Sum":
+        //     //   return "SUM(" + agg.column + ")";
+        //     // case "Average":
+        //     //   return "AVG(" + agg.column + ")";
+        //     // case "Maximum":
+        //     //   return "MAX(" + agg.column + ")";
+        //     // case "Minimum":
+        //     //   return "MIN(" + agg.column + ")";
+        //     // case "Unique":
+        //     //   return "COUNT_DISTINCT(" + agg.column + ")";
+        //     // case "Median":
+        //     //   return "";//NOT SUPPORTED
+        //     // case "Noop":
+        //     //   return "";
+        //     default:
+        //       //TODO agg can be a field id for custom field
+        //       if (agg.startsWith("a!")) {
+        //         return "AVG(" + agg.substring(2) + ")";
+        //       } else if (agg.startsWith("s!")) {
+        //         return "SUM(" + agg.substring(2) + ")";
+        //       } else if (agg.startsWith("m!")) {
+        //         return "MIN(" + agg.substring(2) + ")";
+        //       } else if (agg.startsWith("x!")) {
+        //         return "MAX(" + agg.substring(2) + ")";
+        //       } else if (agg.startsWith("u!")) {
+        //         return "COUNT_DISTINCT(" + agg.substring(2) + ")";
+        //       }
+        //       return "";
+        //   }
+        // }).filter(agg => agg != "");
+        //.concat(aggregates)
+        query = "//BETA \nSELECT " + report.reportMetadata.detailColumns.join(", ");
         query += " FROM " + sobjectName;
         let filters = report.reportMetadata.reportFilters.map(f => {
           let q = !isNaN(f.value) && !isNaN(parseFloat(f.value)) ? "" : "'";
@@ -239,6 +243,7 @@ class App extends React.PureComponent {
           query += " AND " + stdfltr.column + " < " + stdfltr.endDate;
         }
 
+        /*
         let groupBy = [];
         let sortBy = [];
         if (report.reportMetadata.groupingsAcross) {
@@ -282,6 +287,7 @@ class App extends React.PureComponent {
         if (sortBy?.length) {
           query += " ORDER BY " + sortBy.join(", ");
         }
+          */
       }
       exportArg.set("query", query);
       importArg.set("sobject", e.contextSobject);
