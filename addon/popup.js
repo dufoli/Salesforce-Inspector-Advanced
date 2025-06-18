@@ -150,26 +150,38 @@ class App extends React.PureComponent {
       }
       if (e.contextSobject == "Report") {
         let report = await sfConn.rest("/services/data/v" + apiVersion + "/analytics/reports/" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "/describe", {method: "GET"});
-        let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.shift()?.entityApiName;
+        let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.filter(o => o.joinType.toUpperCase() == "ROOT").shift()?.entityApiName;
         let aggregates = report.reportMetadata.aggregates.map(agg => {
           switch (agg) {
             case "RowCount":
               return "Count(Id)";
-            case "Sum":
-              return "SUM(" + agg.column + ")";
-            case "Average":
-              return "AVG(" + agg.column + ")";
-            case "Maximum":
-              return "MAX(" + agg.column + ")";
-            case "Minimum":
-              return "MIN(" + agg.column + ")";
-            case "Unique":
-              return "COUNT_DISTINCT(" + agg.column + ")";
-            case "Median":
-              return "";//NOT SUPPORTED
-            case "Noop":
-              return "";
+            // case "Sum":
+            //   return "SUM(" + agg.column + ")";
+            // case "Average":
+            //   return "AVG(" + agg.column + ")";
+            // case "Maximum":
+            //   return "MAX(" + agg.column + ")";
+            // case "Minimum":
+            //   return "MIN(" + agg.column + ")";
+            // case "Unique":
+            //   return "COUNT_DISTINCT(" + agg.column + ")";
+            // case "Median":
+            //   return "";//NOT SUPPORTED
+            // case "Noop":
+            //   return "";
             default:
+              //TODO agg can be a field id for custom field
+              if (agg.startsWith("a!")) {
+                return "AVG(" + agg.substring(2) + ")";
+              } else if (agg.startsWith("s!")) {
+                return "SUM(" + agg.substring(2) + ")";
+              } else if (agg.startsWith("m!")) {
+                return "MIN(" + agg.substring(2) + ")";
+              } else if (agg.startsWith("x!")) {
+                return "MAX(" + agg.substring(2) + ")";
+              } else if (agg.startsWith("u!")) {
+                return "COUNT_DISTINCT(" + agg.substring(2) + ")";
+              }
               return "";
           }
         }).filter(agg => agg != "");
@@ -208,14 +220,25 @@ class App extends React.PureComponent {
         });
         if (filters?.length) {
           if (!report.reportMetadata.reportBooleanFilter) {
-            query += " WHERE " + filters.join(" AND ");
+            query += " WHERE (" + filters.join(" AND ") + ")";
           } else {
-            query += report.reportMetadata.reportBooleanFilter.replace(/[0-9]+/g, m => {
+            query += " WHERE (" + report.reportMetadata.reportBooleanFilter.replace(/[0-9]+/g, m => {
               let i = parseInt(m);
               return filters[i];
-            });
+            }) + ")";
           }
         }
+        if (report.reportMetadata.standardDateFilter) {
+          let stdfltr = report.reportMetadata.standardDateFilter;
+          if (!filters?.length) {
+            query += " WHERE ";
+          } else {
+            query += " AND ";
+          }
+          query += stdfltr.column + " > " + stdfltr.startDate;
+          query += " AND " + stdfltr.column + " < " + stdfltr.endDate;
+        }
+
         let groupBy = [];
         let sortBy = [];
         if (report.reportMetadata.groupingsAcross) {
