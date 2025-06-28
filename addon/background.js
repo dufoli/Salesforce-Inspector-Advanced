@@ -78,6 +78,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       console.error("No browser object found");
     }
+  } else if (request.message == "refresh") {
+    let queryOptions = {active: true, lastFocusedWindow: true};
+    chrome.tabs.query(queryOptions, (tabs) => chrome.tabs.reload(tabs[0].id));
   }
   return false;
 });

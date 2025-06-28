@@ -5,6 +5,13 @@ import {setupLinks} from "./links.js";
 
 let h = React.createElement;
 
+let currentBrowser;
+if (typeof browser === "undefined") {
+  currentBrowser = chrome;
+} else {
+  currentBrowser = browser;
+}
+
 {
   parent.postMessage({
     insextInitRequest: true,
@@ -486,7 +493,7 @@ class App extends React.PureComponent {
     let text;
     text = "Access Token Expired";
     title = "Generate New Token";
-    url = `https://${sfHost}/services/oauth2/authorize?response_type=token&client_id=` + clientId + "&redirect_uri=" + browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + "/data-export.html";
+    url = `https://${sfHost}/services/oauth2/authorize?response_type=token&client_id=${clientId}&redirect_uri=${browser}-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html`;
     return {title, url, text};
   }
   setButtonTooltip(tooltip) {
@@ -1093,10 +1100,10 @@ class AllDataBoxUsers extends React.PureComponent {
       return;
     }
     //Optimistically attempt broad query (fullQuery) and fall back to minimalQuery to ensure some data is returned in most cases (e.g. profile cannot be queried by community users)
-    const fullQuerySelect = "SELECT Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, FederationIdentifier, ProfileId, Profile.Name, ContactId, IsPortalEnabled";
+    const fullQuerySelect = "SELECT Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, FederationIdentifier, ProfileId, Profile.Name, ContactId, IsPortalEnabled, UserPreferencesUserDebugModePref";
     //TODO implement a try catch to remove non existing fields ProfileId or IsPortalEnabled (experience is not enabled)
-    const mediumQuerySelect = "SELECT Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, FederationIdentifier, ProfileId, Profile.Name, ContactId";
-    const minimalQuerySelect = "SELECT Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, FederationIdentifier, ContactId";
+    const mediumQuerySelect = "SELECT Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, FederationIdentifier, ProfileId, Profile.Name, ContactId, UserPreferencesUserDebugModePref";
+    const minimalQuerySelect = "SELECT Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, FederationIdentifier, ContactId, UserPreferencesUserDebugModePref";
     const queryFrom = "FROM User WHERE Id='" + selectedUserId + "' LIMIT 1";
     const compositeQuery = toCompositeRequest({fullData: fullQuerySelect + " " + queryFrom, mediumData: mediumQuerySelect + " " + queryFrom, minimalData: minimalQuerySelect + " " + queryFrom});
 
@@ -1647,8 +1654,17 @@ class UserDetails extends React.PureComponent {
     this.enableDebugLog = this.enableDebugLog.bind(this);
     this.clickLoginIncognito = this.clickLoginIncognito.bind(this);
     this.clickResetPassword = this.clickResetPassword.bind(this);
+    this.toggleDebugAura = this.toggleDebugAura.bind(this);
   }
-
+  async toggleDebugAura() {
+    let {user} = this.props;
+    try {
+      await sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User/" + user.Id, {method: "PATCH", body: {UserPreferencesUserDebugModePref: !user.UserPreferencesUserDebugModePref}});
+      currentBrowser.runtime.sendMessage({message: "refresh"});
+    } catch (e) {
+      console.log("Failed to enable debug mode for Lightning component.", e);
+    }
+  }
   async enableDebugLog() {
 
     let {user} = this.props;
@@ -1804,7 +1820,7 @@ class UserDetails extends React.PureComponent {
   clickLoginIncognito() {
     let {sfHost, user} = this.props;
     const url = "https://" + sfHost + "/secur/frontdoor.jsp?sid=" + sfConn.sessionId + "&retURL=" + encodeURIComponent(this.getLoginAsLink(user.Id));
-    chrome.runtime.sendMessage({message: "incognito", url});
+    currentBrowser.runtime.sendMessage({message: "incognito", url});
   }
   clickResetPassword() {
     if (confirm("Reset password for this user?") == true) {
@@ -1816,6 +1832,7 @@ class UserDetails extends React.PureComponent {
 
   render() {
     let {user, linkTarget} = this.props;
+    let debugAuraLabel = user.UserPreferencesUserDebugModePref ? "Disable" : "Enable";
     return (
       h("div", {className: "all-data-box-inner"},
         h("div", {className: "all-data-box-data slds-m-bottom_xx-small"},
@@ -1867,7 +1884,8 @@ class UserDetails extends React.PureComponent {
           h("a", {href: this.getUserDetailLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral"}, "Details"), //identity
           h("a", {href: this.getUserPsetLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral", title: "Show / assign user's permission sets"}, "PSet"), //block_visitor or key or privately_shared or reset_password or unlock or user_role
           h("a", {href: this.getUserPsetGroupLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral", title: "Show / assign user's permission set groups"}, "PSetG"), //buyer_group_qualifier or groups
-          h("a", {href: "#", id: "enableDebugLog", disabled: false, onClick: this.enableDebugLog, className: "slds-button slds-button_neutral", title: "Enable user debug log"}, "Enable Logs")//bug
+          h("a", {href: "#", id: "enableDebugLog", disabled: false, onClick: this.enableDebugLog, className: "slds-button slds-button_neutral", title: "Enable user debug log"}, "Enable Logs"), //bug
+          h("a", {href: "#", id: "toggleDebugAura", disabled: false, onClick: this.toggleDebugAura, className: "slds-button slds-button_neutral", title: debugAuraLabel + " Aura (LC) debug Mode"}, debugAuraLabel + " LC debug mode")//bug
         ),
         h("div", {ref: "userButtons", className: "user-buttons center small-font top-space"},
           this.doSupportLoginAs(user) ? h("a", {href: this.getLoginAsLink(user.Id), target: linkTarget, className: "slds-button slds-button_neutral"}, "Try login as") : null, //integration or meet_focus_presenter or trailblazer_ext

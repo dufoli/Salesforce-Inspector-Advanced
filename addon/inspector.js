@@ -3,6 +3,12 @@ if (localStorage.getItem("apiVersion") == lastApiVersion) {
   localStorage.removeItem("apiVersion");
   //do not keep if last version is selected in order to update to last vrsion on update of SFI.
 }
+let currentBrowser;
+if (typeof browser === "undefined") {
+  currentBrowser = chrome;
+} else {
+  currentBrowser = browser;
+}
 export let apiVersion = localStorage.getItem("apiVersion") == null ? lastApiVersion : localStorage.getItem("apiVersion");
 export let sessionError;
 export let sfConn = {
@@ -26,7 +32,7 @@ export let sfConn = {
       this.sessionId = oldToken;
     } else {
       let message = await new Promise(resolve =>
-        chrome.runtime.sendMessage({message: "getSession", sfHost}, resolve));
+        currentBrowser.runtime.sendMessage({message: "getSession", sfHost}, resolve));
       if (message) {
         this.instanceHostname = getMyDomain(message.hostname);
         this.sessionId = message.key;
