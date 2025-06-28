@@ -880,6 +880,9 @@ export class TableModel {
       if (cell.recordId) {
         args.set("recordId", cell.recordId);
       }
+      if (cell.objectType == "AggregateResult") {
+        return;
+      }
       cell.links.push({withIcon: true, href: "inspect.html?" + args, label: "Show all data", className: "view-inspector", action: ""});
 
       let query = "SELECT Id FROM " + cell.objectType + " WHERE Id = '" + cell.recordId + "'";
