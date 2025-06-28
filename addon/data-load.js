@@ -540,12 +540,17 @@ export class TableModel {
     }
     for (let cellId = 0; cellId < row.cells.length; cellId++) {
       let cell = row.cells[cellId];
-      //do not allow edit of id
-      if (this.header[cellId] && this.header[cellId].name && this.header[cellId].name.toLowerCase() == "Id") {
+      //do not allow edit of id, CreatedById, LastModifiedById, createddate, lastmodifieddate
+      if (this.header[cellId] && this.header[cellId].name
+        && (this.header[cellId].name.toLowerCase() == "id"
+        || this.header[cellId].name.toLowerCase() == "createdbyid"
+        || this.header[cellId].name.toLowerCase() == "lastmodifiedbyid"
+        || this.header[cellId].name.toLowerCase() == "createddate"
+        || this.header[cellId].name.toLowerCase() == "lastmodifieddate")) {
         continue;
       }
       // do not allow edit if no id column
-      if (!this.data.table[0].some(c => c == "Id")) {
+      if (!this.header.some(c => c?.name != null && c?.name?.toLowerCase() == "id")) {
         continue;
       }
       //do not allow edit of object column
