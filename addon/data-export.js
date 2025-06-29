@@ -58,14 +58,9 @@ class Model {
     this.suggestionTop = 0;
     this.suggestionLeft = 0;
     this.columnIndex = {fields: []};
-    this.disableSuggestionOverText = localStorage.getItem("disableSuggestionOverText") === "true";
     this.activeSuggestion = -1;
     this.autocompleteResultBox = null;
-    if (history.disableSuggestionOverText) {
-      this.displaySuggestion = true;
-    } else {
-      this.displaySuggestion = false;
-    }
+    this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
     let queryTemplatesRawValue = localStorage.getItem("queryTemplates");
     if (queryTemplatesRawValue && queryTemplatesRawValue != "[]") {
@@ -138,9 +133,6 @@ class Model {
   }
   toggleVariable() {
     this.showVariable = !this.showVariable;
-  }
-  variableMessage() {
-    return "Paste 1 variable by line here";
   }
   setVariableData(text) {
     try {
@@ -2345,18 +2337,17 @@ class App extends React.Component {
     hostArg.set("tab", 3);
 
     let suggestionHelper = "";
-    if (!model.disableSuggestionOverText) {
-      if (model.displaySuggestion) {
-        if (model.autocompleteResults.isField && model.activeSuggestion == -1) {
-          suggestionHelper = " Press Ctrl+Space to insert all fields | Esc to hide suggestions";
-        } else if (model.autocompleteResults.isFieldValue && model.activeSuggestion == -1) {
-          suggestionHelper = " Press Ctrl+Space to display values used | Esc to hide suggestions";
-        } else {
-          suggestionHelper = " Press Esc to hide suggestions";
-        }
+
+    if (model.displaySuggestion) {
+      if (model.autocompleteResults.isField && model.activeSuggestion == -1) {
+        suggestionHelper = " Press Ctrl+Space to insert all fields | Esc to hide suggestions";
+      } else if (model.autocompleteResults.isFieldValue && model.activeSuggestion == -1) {
+        suggestionHelper = " Press Ctrl+Space to display values used | Esc to hide suggestions";
       } else {
-        suggestionHelper = " Press Ctrl+Space to display suggestions";
+        suggestionHelper = " Press Esc to hide suggestions";
       }
+    } else {
+      suggestionHelper = " Press Ctrl+Space to display suggestions";
     }
     let keywordColor = new Map([["select", "blue"], ["from", "blue"], ["where", "blue"], ["group", "blue"], ["by", "blue"],
       ["order", "blue"], ["limit", "blue"], ["and", "blue"], ["or", "blue"], ["not", "blue"], ["like", "blue"], ["in", "blue"],
@@ -2384,9 +2375,6 @@ class App extends React.Component {
             h("span", {className: "slds-assistive-text"}),
             h("div", {className: "slds-spinner__dot-a"}),
             h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "#", className: "top-btn", id: "variable-btn", title: "Variable-btn", onClick: this.onToggleVariable},
-            h("div", {className: "icon"})
           ),
           h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
             h("div", {className: "icon"})
@@ -2450,12 +2438,13 @@ class App extends React.Component {
               h("button", {tabIndex: 3, onClick: this.onCopyQuery, title: "Copy query url", className: "copy-id"}, "Export Query"),
               h("button", {tabIndex: 4, onClick: this.onQueryPlan, title: "Run Query Plan"}, "Query Plan"),
               h("a", {tabIndex: 5, className: "button", hidden: !model.autocompleteResults.sobjectName, href: model.showDescribeUrl(), target: "_blank", title: "Show field info for the " + model.autocompleteResults.sobjectName + " object"}, model.autocompleteResults.sobjectName + " Field Info"),
-              model.disableSuggestionOverText ? h("button", {tabIndex: 6, href: "#", className: model.expandAutocomplete ? "toggle contract" : "toggle expand", onClick: this.onToggleExpand, title: "Show all suggestions or only the first line"},
-                h("div", {className: "button-icon"}),
-                h("div", {className: "button-toggle-icon"})) : ""
+              h("button", {className: "variable-btn " + (model.showVariable ? "toggle expand" : "toggle contract"), id: "variable-btn", title: "Use list parametter in query", onClick: this.onToggleVariable},
+                h("div", {className: "icon"}),
+                h("div", {className: "button-toggle-icon"})
+              )
             ),
           ),
-          h("div", {ref: "autocompleteResultBox", className: "autocomplete-results" + (model.disableSuggestionOverText ? " autocomplete-results-under" : " autocomplete-results-over"), hidden: !model.displaySuggestion, style: model.disableSuggestionOverText ? {} : {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
+          h("div", {ref: "autocompleteResultBox", className: "autocomplete-results autocomplete-results-over", hidden: !model.displaySuggestion, style: {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
             model.autocompleteResults.results.map((r, ri) =>
               h("div", {className: "autocomplete-result" + (ri == model.activeSuggestion ? " active" : ""), key: r.value}, h("a", {tabIndex: 0, title: r.title, onMouseDown: e => { e.preventDefault(); model.autocompleteClick(r); model.didUpdate(); }, href: "#", className: r.autocompleteType + " " + r.dataType}, h("div", {className: "autocomplete-icon"}), r.value), " ")
             )
@@ -2469,11 +2458,11 @@ class App extends React.Component {
           h("p", {}, "Supports the full SOQL/SOSL language and graphql. The columns in the CSV output depend on the returned data. Using subqueries may cause the output to grow rapidly. Bulk API is not supported. Large data volumes may freeze or crash your browser.")
         ),
         h("div", {hidden: !model.showVariable, className: "variable-block"},
-          h("h3", {}, "batch Parameters"),
-          h("p", {}, "Paste Parameter data of SOQL then use it with $1 in SOQL query. Do not forget quote \"'\" around text field."),
+          h("h3", {}, "Batch Parameters"),
+          h("p", {}, "Paste parameter data of SOQL then use it with $1 in SOQL query. [...WHERE Id IN ($1)]"),
           h("span", {className: "conf-label"}, "Batch size"),
           h("input", {type: "number", value: model.batchSize, onChange: this.onBatchSizeChange, className: (model.batchSizeError() ? "confError" : "") + " batch-size"}),
-          h("textarea", {id: "data", value: model.variableMessage(), onPaste: this.onDataPaste, className: model.dataError ? "confError" : "", readOnly: true, rows: 1}),
+          h("textarea", {id: "data", value: "Paste 1 variable by line here.\nDo not forget quote \"'\" around text field.", onPaste: this.onDataPaste, className: model.dataError ? "confError" : "", readOnly: true, rows: 1}),
           h("div", {className: "conf-error", hidden: !model.variableDataError}, model.variableDataError),
           model.variableData.length > 0 ? model.variableData.slice(0, 4).concat(["..."]).map(c => h("div", {}, c)) : ""
         ),

@@ -132,6 +132,15 @@ textarea[hidden], div[hidden] {
   margin-top: 10px;
   margin-bottom: 5px;
 }
+.variable-block span {
+  margin-right: 5px;
+}
+.variable-block textarea {
+  min-height: 55px;
+  resize: none;
+  margin: 11px 0px;
+  color: #777;
+}
 
 #query {
   height: 5em;
@@ -498,7 +507,8 @@ button.toggle {
 }
 
 button.toggle .button-toggle-icon,
-button.toggle .button-icon {
+button.toggle .button-icon,
+button.toggle .icon {
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-size: 1rem;
   background-color: #706E6B;
@@ -517,6 +527,7 @@ button.toggle .button-icon {
 }
 
 button.toggle:hover .button-icon,
+button.toggle:hover .icon,
 button.toggle:hover .button-toggle-icon {
   background-color: #004487;
 }

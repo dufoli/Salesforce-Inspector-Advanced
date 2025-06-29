@@ -1370,10 +1370,7 @@ export class Editor extends React.Component {
       case " ":
         if (e.ctrlKey) {
           e.preventDefault();
-          if ((model.disableSuggestionOverText)) {
-            model.editorAutocompleteHandler({ctrlSpace: true});
-            model.didUpdate();
-          } if (model.displaySuggestion) {
+          if (model.displaySuggestion) {
             model.selectSuggestion();
           } else {
             model.showSuggestion();
@@ -1383,36 +1380,34 @@ export class Editor extends React.Component {
       case "ArrowRight":
       case "ArrowLeft":
         //naviguation reset active suggestion
-        if (model.displaySuggestion && !model.disableSuggestionOverText && model.activeSuggestion != -1) {
+        if (model.displaySuggestion && model.activeSuggestion != -1) {
           model.activeSuggestion = -1;
         }
         return;
       case "ArrowDown":
-        if (model.displaySuggestion && !model.disableSuggestionOverText) {
+        if (model.displaySuggestion) {
           if (model.nextSuggestion()) {
             e.preventDefault();
           }
         }
         return;
       case "ArrowUp":
-        if (model.displaySuggestion && !model.disableSuggestionOverText) {
+        if (model.displaySuggestion) {
           if (model.previousSuggestion()) {
             e.preventDefault();
           }
         }
         return;
       case "Enter":
-        if (model.displaySuggestion && !model.disableSuggestionOverText && model.activeSuggestion != -1) {
+        if (model.displaySuggestion && model.activeSuggestion != -1) {
           e.preventDefault();
           model.selectSuggestion();
         }
         break;
       case "Escape":
-        if (!model.disableSuggestionOverText) {
-          e.preventDefault();
-          model.activeSuggestion = -1;
-          model.hideSuggestion();
-        }
+        e.preventDefault();
+        model.activeSuggestion = -1;
+        model.hideSuggestion();
         return;
       case "Tab": {
         //TODO option to select 2 spaces, 4 spaces or tab \t
@@ -1447,7 +1442,7 @@ export class Editor extends React.Component {
             model.editor.setRangeText(tabChar, lineStart + mod, lineStart + mod, "preserve");
             mod += tabChar.length;
           }
-        } else if (model.displaySuggestion && !model.disableSuggestionOverText && model.activeSuggestion) {
+        } else if (model.displaySuggestion && model.activeSuggestion) {
           model.selectSuggestion();
         } else {
           model.editor.setRangeText(tabChar, selectionStart, selectionStart, "preserve");
@@ -1526,9 +1521,7 @@ export class Editor extends React.Component {
   }
   handleMouseUp(e) {
     let {model} = this.props;
-    if (model.disableSuggestionOverText) {
-      this.editorAutocompleteEvent(e);
-    } else if (!model.displaySuggestion) {
+    if (!model.displaySuggestion) {
       model.activeSuggestion = -1;
       // disable show suggestion on click
       //model.showSuggestion();
@@ -1536,13 +1529,11 @@ export class Editor extends React.Component {
   }
   onBlur(e) {
     let {model} = this.props;
-    if (!model.disableSuggestionOverText) {
-      model.activeSuggestion = -1;
-      if (e.relatedTarget && e.relatedTarget.parentElement && e.relatedTarget.parentElement.classList.contains("autocomplete-result")) {
-        model.displaySuggestion = false;//to avoid didUpdate that will be done in click of suggestion
-      } else {
-        model.hideSuggestion();
-      }
+    model.activeSuggestion = -1;
+    if (e.relatedTarget && e.relatedTarget.parentElement && e.relatedTarget.parentElement.classList.contains("autocomplete-result")) {
+      model.displaySuggestion = false;//to avoid didUpdate that will be done in click of suggestion
+    } else {
+      model.hideSuggestion();
     }
   }
   componentWillUnmount() {
@@ -1552,9 +1543,6 @@ export class Editor extends React.Component {
 
   componentDidUpdate() {
     let {model} = this.props;
-    if (model.disableSuggestionOverText) {
-      return;
-    }
     let caretEle = model.editorMirror.getElementsByClassName("editor_caret")[0];
     if (caretEle) {
       const rect = caretEle.getBoundingClientRect();

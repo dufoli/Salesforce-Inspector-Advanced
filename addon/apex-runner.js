@@ -52,14 +52,9 @@ class Model {
     this.scriptName = "";
     this.suggestionTop = 0;
     this.suggestionLeft = 0;
-    this.disableSuggestionOverText = localStorage.getItem("disableSuggestionOverText") === "true";
     this.activeSuggestion = -1;
     this.autocompleteResultBox = null;
-    if (history.disableSuggestionOverText) {
-      this.displaySuggestion = true;
-    } else {
-      this.displaySuggestion = false;
-    }
+    this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
     let scriptTemplatesRawValue = localStorage.getItem("scriptTemplates");
     if (scriptTemplatesRawValue && scriptTemplatesRawValue != "[]") {
@@ -1271,12 +1266,10 @@ class App extends React.Component {
     hostArg.set("host", model.sfHost);
     hostArg.set("tab", 5);
     let suggestionHelper = "";
-    if (!model.disableSuggestionOverText) {
-      if (model.displaySuggestion) {
-        suggestionHelper = " Press Esc to hide suggestions";
-      } else {
-        suggestionHelper = " Press Ctrl+Space to display suggestions";
-      }
+    if (model.displaySuggestion) {
+      suggestionHelper = " Press Esc to hide suggestions";
+    } else {
+      suggestionHelper = " Press Ctrl+Space to display suggestions";
     }
     let keywordColor = new Map([["do", "violet"], ["public", "blue"], ["private", "blue"], ["global", "blue"], ["class", "blue"], ["static", "blue"],
       ["interface", "blue"], ["extends", "blue"], ["while", "violet"], ["for", "violet"], ["try", "violet"], ["catch", "violet"],
@@ -1348,7 +1341,7 @@ class App extends React.Component {
               h("button", {tabIndex: 2, onClick: this.onCopyScript, title: "Copy script url", className: "copy-id"}, "Export Script")
             ),
           ),
-          h("div", {ref: "autocompleteResultBox", className: "autocomplete-results" + (model.disableSuggestionOverText ? " autocomplete-results-under" : " autocomplete-results-over"), hidden: !model.displaySuggestion, style: model.disableSuggestionOverText ? {} : {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
+          h("div", {ref: "autocompleteResultBox", className: "autocomplete-results autocomplete-results-over", hidden: !model.displaySuggestion, style: {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
             model.autocompleteResults.results.map((r, ri) =>
               h("div", {className: "autocomplete-result" + (ri == model.activeSuggestion ? " active" : ""), key: r.key ? r.key : r.value}, h("a", {tabIndex: 0, title: r.title, onMouseDown: e => { e.preventDefault(); model.autocompleteClick(r); model.didUpdate(); }, href: "#", className: r.autocompleteType + " " + r.dataType}, h("div", {className: "autocomplete-icon"}), r.title), " ")
             )
