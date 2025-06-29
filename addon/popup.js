@@ -57,7 +57,7 @@ function showApiName(e) {
 function generateFavIcon({sfHost}) {
   let fav = localStorage.getItem(sfHost + "_customFavicon");
   let genCustomIcon = localStorage.getItem("generateCustomFavicon");
-  if (!fav && genCustomIcon == "true") {
+  if (!fav && genCustomIcon != "false") {
     let org = sfHost.split(".", 2)[0];
     const letters = "0123456789ABCDEF";
     fav = "#";
