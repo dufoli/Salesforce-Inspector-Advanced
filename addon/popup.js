@@ -58,18 +58,18 @@ function generateFavIcon({sfHost}) {
   let fav = localStorage.getItem(sfHost + "_customFavicon");
   let genCustomIcon = localStorage.getItem("generateCustomFavicon");
   if (!fav && genCustomIcon == "true") {
-    let org = window.location.hostname.split(".", 2)[0];
+    let org = sfHost.split(".", 2)[0];
     const letters = "0123456789ABCDEF";
     fav = "#";
     if (org.indexOf("--") >= 0) {
-      fav += "0";//sandbox is not red-ish
+      fav += "8";//sandbox is not red-ish
       for (let i = 1; i < 6; i++) {
-        fav += letters[Math.floor(Math.random() * 16)];
+        fav += letters[6 + Math.floor(Math.random() * 10)];
       }
     } else {
       fav += "F";//prod is red-ish
       for (let i = 1; i < 6; i++) {
-        fav += letters[Math.floor(Math.random() * 16)];
+        fav += letters[6 + Math.floor(Math.random() * 10)];
       }
     }
     localStorage.setItem(sfHost + "_customFavicon", fav);
