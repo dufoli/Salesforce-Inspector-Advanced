@@ -1573,9 +1573,9 @@ export class Editor extends React.Component {
       let sentence = keywordMatch[1];
       if (keywordMatch[0] == "'") {
         color = "orange";
-        let endIndex = remaining.indexOf("'", keywordMatch.index + 1);
-        if (endIndex > 0) {
-          sentence = remaining.substring(keywordMatch.index, endIndex + 1);
+        let match = remaining.substring(keywordMatch.index + 1).match(/[^\\]'/);
+        if (match) {
+          sentence = remaining.substring(keywordMatch.index, keywordMatch.index + 1 + match.index + 2);
         } else {
           sentence = remaining.substring(keywordMatch.index);
         }

@@ -1544,7 +1544,7 @@ class Model {
     //skip subquery by checking that we have same number of open and close parenthesis before
     while ((commentMatch = commentRegEx.exec(remaining)) !== null) {
       switch (commentMatch[1]) {
-        case "//":
+        case "//":{
           finalQuery += remaining.substring(0, commentMatch.index);
           newQuery += remaining.substring(0, commentMatch.index + 2);
           remaining = remaining.substring(commentMatch.index + 2);
@@ -1557,7 +1557,8 @@ class Model {
             remaining = "";
           }
           break;
-        case "/*":
+        }
+        case "/*":{
           finalQuery += remaining.substring(0, commentMatch.index);
           newQuery += remaining.substring(0, commentMatch.index + 2);
           remaining = remaining.substring(commentMatch.index + 2);
@@ -1570,11 +1571,17 @@ class Model {
             remaining = "";
           }
           break;
-        case "'":
+        }
+        case "'": {
           finalQuery += remaining.substring(0, commentMatch.index + 1);
           newQuery += remaining.substring(0, commentMatch.index + 1);
           remaining = remaining.substring(commentMatch.index + 1);
-          endIndex = remaining.indexOf("'");
+          let match = remaining.match(/[^\\]'/);
+          if (match) {
+            endIndex = match.index + 1;
+          } else {
+            endIndex = -1;
+          }
           if (endIndex > 0) {
             finalQuery += remaining.substring(0, endIndex + 1);
             newQuery += remaining.substring(0, endIndex + 1);
@@ -1584,7 +1591,8 @@ class Model {
             remaining = "";
           }
           break;
-        default:
+        }
+        default: {
           //comma before from
           if (commentMatch[1] && commentMatch[1].includes("FROM")) {
             finalQuery += remaining.substring(0, commentMatch.index) + commentMatch[1].substring(1);
@@ -1596,6 +1604,7 @@ class Model {
             remaining = remaining.substring(commentMatch.index + commentMatch[1].length);
           }
           break;
+        }
       }
       //reset regex index
       commentRegEx = /(\/\/|\/\*|'|,\s*,|,\s*FROM\s+)/gi;
