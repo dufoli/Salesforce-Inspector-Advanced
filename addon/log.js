@@ -3,10 +3,11 @@ import {sfConn, apiVersion} from "./inspector.js";
 import {FlameChartComponent} from "./flamechart/wrappers/react/flame-chart-component.js";
 /* global initButton */
 
+const banNamespaces = ["ApexPages", "AppLauncher", "Approval", "Auth", "Cache", "Canvas", "ChatterAnswers", "CommerceBuyGrp", "CommerceExtension", "CommerceOrders", "CommercePayments", "CommerceTax", "ComplianceMgmt", "Compression", "ConnectApi", "Context", "Database", "Datacloud", "DataRetrieval", "DataSource", "DataWeave", "Dom", "embeddedai", "EventBus", "ExternalService", "Flow", "Flowtesting", "flowtesting", "FormulaEval", "fsccashflow", "Functions", "IndustriesDigitalLending", "industriesDigitalLending", "Invocable", "InvoiceWriteOff", "IsvPartners", "KbManagement", "LxScheduler", "Messaging", "Metadata", "PlaceQuote", "Pref_center", "Process", "QuickAction", "Reports", "RevSalesTrxn", "RevSignaling", "RichMessaging", "Salesforce_Backup", "Schema", "Search", "Sfc", "Sfdc_Checkout", "Sfdc_Enablement", "sfdc_enablement", "sfdc_surveys", "Site", "Slack", "Support", "System", "TerritoryMgmt", "TxnSecurity", "UserProvisioning", "VisualEditor", "Wave"];
 //documentation to implement profiler
 //https://www.developerforce.com/guides/fr/apex_fr/Content/code_setting_debug_log_levels.htm
 class LogParser {
-  constructor() {
+  constructor(model) {
     this.index = 0;//skip line 0 which contain version and log level for moment
     this.lineCount = 1;
     this.rootNode = null;
@@ -16,9 +17,56 @@ class LogParser {
     this.apexClasses = new Set();
     this.lastTimestampNano = 0;
     this.logLinePattern = /^[0-9]{2}:[0-9]{2}:[0-9]{2}/m;
+    this.apexClassBody = [];
+    this.apexClassName = "";
+    this.model = model;
   }
   addApexClass(cls) {
+    if (banNamespaces.includes(cls)) { //skip system namespace
+      return;
+    }
     this.apexClasses.add(cls);
+    if (this.apexClasses.length == 1) {
+      this.selectApexClass(cls);
+    }
+  }
+  visiteNode(currentNode, idx, arr) {
+    return this.visiteAllNode(currentNode, false, arr).filter(n => (n.lineNumber == idx));
+  }
+  visiteAllNode(currentNode, enable, arr) {
+    //filter the apex class with selected class
+    if (enable) {
+      arr.push(currentNode);
+    }
+    let childEnable = enable;
+    if (currentNode.apexClass != null) {
+      childEnable = (currentNode.apexClass == this.apexClassName);
+    }
+    if (currentNode.child != null) {
+      currentNode.child.reduce((arr, c) => this.visiteAllNode(c, childEnable, arr), arr);
+    }
+    return arr;
+  }
+  selectApexClass(apexClassName) {
+    sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT Id,Name, Status, NamespacePrefix, Body FROM ApexClass WHERE Name = '" + apexClassName + "'"), {}).then((data) => {
+      if (data.records.length > 0) {
+        this.apexClassName = apexClassName;
+        this.apexClassBody = data.records[0].Body.split("\n").map((l, i) => ({
+          line: l,
+          number: i + 1
+        }));
+        let nodes = this.visiteAllNode(this.rootNode, false, []);
+        nodes.filter(n => n.lineNumber).forEach((n) => {
+          if (this.apexClassBody[n.lineNumber - 1].color == null) {
+            this.apexClassBody[n.lineNumber - 1].color = "#90ff90";
+          }
+          if (n instanceof ExceptionThrownNode || n instanceof FatalErrorNode){
+            this.apexClassBody[n.lineNumber - 1].color = "#ff5555";
+          }
+        });
+        this.model.didUpdate();
+      }
+    });
   }
   parseLog(data) {
     this.lines = data.split("\n");
@@ -351,6 +399,18 @@ class LogParser {
           }
           break;
         }
+        case "EXCEPTION_THROWN": {
+          new ExceptionThrownNode(l, this, node);
+          break;
+        }
+        case "FATAL_ERROR": {
+          new FatalErrorNode(l, this, node);
+          break;
+        }
+        case "STATEMENT_EXECUTE": {
+          new StatementExecuteNode(l, this, node);
+          break;
+        }
 
         //missing node to parse
         case "APP_CONTAINER_INITIATED" :
@@ -375,10 +435,8 @@ class LogParser {
         case "EVENT_SERVICE_SUB_BEGIN":
         case "EVENT_SERVICE_SUB_DETAIL":
         case "EVENT_SERVICE_SUB_END":
-        case "EXCEPTION_THROWN":
         case "EXECUTION_FINISHED":
         case "EXECUTION_STARTED":
-        case "FATAL_ERROR":
         case "FLOW_ACTIONCALL_DETAIL":
         case "FLOW_ASSIGNMENT_DETAIL":
         case "FLOW_BULK_ELEMENT_DETAIL":
@@ -444,7 +502,6 @@ class LogParser {
         case "SLA_NULL_START_DATE":
         case "SLA_PROCESS_CASE":
         case "STACK_FRAME_VARIABLE_LIST":
-        case "STATEMENT_EXECUTE"://apex statement: nothing important
         case "STATIC_VARIABLE_LIST":
         case "SYSTEM_MODE_ENTER":
         case "SYSTEM_MODE_EXIT":
@@ -661,6 +718,14 @@ class ApexNode extends LogNode {
 class SystemMethodNode extends ApexNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "SYSTEM_METHOD_EXIT");
+    if (splittedLine.length > 3){
+      this.apexClass = splittedLine[3].split(".")[0];
+      this.logStartLine = logParser.index;
+    }
+  }
+  finished(splittedLine, logParser){
+    super.finished(splittedLine, logParser);
+    this.logEndLine = logParser.index;
   }
 }
 class MethodNode extends ApexNode {
@@ -1064,6 +1129,28 @@ class CumulativeProfilingNode extends LogNode {
     }
   }
 }
+class ExceptionThrownNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "error";
+    this.exceptionType = splittedLine[2];
+    this.exceptionMessage = splittedLine.slice(3).join("|");
+  }
+}
+class FatalErrorNode extends LogNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "error";
+    this.errorMessage = splittedLine.slice(3).join("|");
+  }
+}
+class StatementExecuteNode extends ApexNode {
+  constructor(splittedLine, logParser, node) {
+    super(splittedLine, logParser, node, null, true);
+    this.icon = "database";
+    this.title = splittedLine.slice(3).join("|");
+  }
+}
 
 class Model {
 
@@ -1071,12 +1158,10 @@ class Model {
     this.sfHost = sfHost;
     this.sfLink = "https://" + sfHost;
     this.userInfo = "...";
-    this.apexClassBody = [];
-    this.apexClassName = "";
     this.apexFilteredLogs = "";
     // URL parameters
     this.recordId = null;
-    this.logParser = new LogParser();
+    this.logParser = new LogParser(this);
     this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
     this.scroller = null;
 
@@ -1480,33 +1565,10 @@ class Model {
     this.logParser.parseLog(data);
     this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
   }
-  selectApexClass(apexClassName) {
-    sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT Id,Name, Status, NamespacePrefix, Body FROM ApexClass WHERE Name = '" + apexClassName + "'"), {}).then((data) => {
-      if (data.records.length > 0) {
-        this.apexClassName = apexClassName;
-        this.apexClassBody = data.records[0].Body.split("\n");
-        this.didUpdate();
-      }
-    });
-  }
-  visiteNode(currentNode, idx, arr) {
-    //node.child.map((c) => this.convert(c)),
-    //
-    //filter the apex class with selected class
-    if (currentNode.apexClass == null || currentNode.apexClass == this.apexClassName) {
-      if (idx == (currentNode.lineNumber || 0)) {
-        arr.push(currentNode);
-        return arr;
-      }
-    }
-    if (currentNode.child != null) {
-      currentNode.child.reduce((arr, c) => this.visiteNode(c, idx, arr), arr);
-    }
-    return arr;
-  }
+
   selectApexClassLine(idx) {
-    let nodes = this.visiteNode(this.logParser.rootNode, idx, []);
-    this.apexFilteredLogs = nodes.map(n => this.logParser.lines.slice(n.logStartLine, n.logEndLine)).join("\n");
+    let nodes = this.logParser.visiteNode(this.logParser.rootNode, idx, []);
+    this.apexFilteredLogs = nodes.map(n => this.logParser.lines.slice(n.logStartLine, n.logEndLine + 1)).join("\n");
     this.didUpdate();
   }
   selectTab(tabIndex) {
@@ -2057,8 +2119,6 @@ class RessourceView extends React.Component {
   }
   render() {
     let ressources = Array.from(this.regroupNode(this.model.logParser.rootNode, new Map()).values()).sort((n1, n2) => n2.count - n1.count);
-
-    let {model} = this.props;
     return h("div", {style: {overflow: "scroll", height: "inherit"}},
       h("table", {className: "slds-table slds-table_cell-buffer slds-table_bordered slds-table_striped", style: {wordBreak: "break-all"}},
         h("thead", {className: ""},
@@ -2086,25 +2146,50 @@ class ApexLogView extends React.Component {
     this.model = props.model;
     this.onSelectApexClass = this.onSelectApexClass.bind(this);
     this.onSelectLine = this.onSelectLine.bind(this);
+    this.onScroll = this.onScroll.bind(this);
+    this.lineNumbersRef = null;
+    this.contentRef = null;
   }
   onSelectApexClass(e) {
     let {model} = this.props;
-    model.selectApexClass(e.target.value);
+    model.logParser.selectApexClass(e.target.value);
   }
+
   onSelectLine(idx) {
     let {model} = this.props;
     model.selectApexClassLine(idx);
   }
+  componentDidMount() {
+    this.lineNumbersRef = this.refs.lineNumbersRef;
+    this.contentRef = this.refs.contentRef;
+  }
+  onScroll(e) {
+    const scrollTop = e.target.scrollTop;
+    if (this.lineNumbersRef == null || this.contentRef == null) {
+      return;
+    }
+    if (e.target === this.lineNumbersRef) {
+      this.contentRef.scrollTop = scrollTop;
+    } else if (e.target === this.contentRef) {
+      this.lineNumbersRef.scrollTop = scrollTop;
+    }
+  }
+
   render() {
     let {model} = this.props;
-    return h("div", {className: "slds-grid slds-gutters", style: {height: "inherit"}}, //className: "slds-tree_container"},
+    return h("div", {className: "slds-grid slds-gutters", style: {height: "inherit"}},
       h("div", {className: "slds-col slds-size_6-of-12", style: {height: "inherit"}},
-        h("select", {value: "", onChange: this.onSelectApexClass, className: "script-history", title: "Check documentation to customize templates"},
+        h("select", {name: "apexClassSelect", value: "", onChange: this.onSelectApexClass, className: "script-history", title: "Select Apex class"},
           h("option", {value: null, disabled: true, defaultValue: true, hidden: true}, "Apex class"),
           Array.from(model.logParser.apexClasses).map(q => h("option", {key: q, value: q}, q))
         ),
-        h("div", {style: {overflow: "scroll", height: "inherit"}},
-          model.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line))
+        h("div", {style: {display: "flex", height: "inherit", overflow: "hidden"}},
+          h("div", {ref: "lineNumbersRef", style: {width: "50px", scrollbarWidth: "none", overflowY: "scroll", textAlign: "right", paddingRight: "5px"}, onScroll: this.onScroll},
+            model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLineNumber" + lineIdx}, lineIdx + 1))
+          ),
+          h("div", {ref: "contentRef", style: {flex: 1, overflowY: "scroll", whiteSpace: "pre"}, onScroll: this.onScroll},
+            model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, style: {backgroundColor: line.color}, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line.line))
+          )
         )
       ),
       h("div", {className: "slds-col slds-size_6-of-12", style: {overflow: "scroll", height: "inherit", whiteSpace: "pre"}}, model.apexFilteredLogs)

@@ -16,6 +16,7 @@ class Model {
     this.initialScript = "";
     this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => {
       this.editorAutocompleteHandler({newDescribe: true});
+      this.enableLogs();
       //TODO refresh list of field
       this.didUpdate();
     });
@@ -81,7 +82,6 @@ class Model {
     this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
       this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
       this.userId = res.userId;
-      this.enableLogs();
     }));
 
     if (args.has("script")) {
