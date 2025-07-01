@@ -111,6 +111,7 @@ class OptionsTabSelector extends React.Component {
           {option: Option, props: {type: "toggle", title: "Display Query Execution Time", key: "displayQueryPerformance", default: true}},
           {option: Option, props: {type: "toggle", title: "Use SObject context on Data Export", key: "useSObjectContextOnDataImportLink", default: true}},
           {option: Option, props: {type: "toggle", title: "Skip technical comlumns", key: "skipTechnicalColumns", default: true}},
+          {option: Option, props: {type: "toggle", title: "convert date to local timezone", key: "convertToLocalTime", default: true}},
           {option: Option, props: {type: "text", title: "Date format", key: "dateFormat", placeholder: "yyyy-MM-dd"}},
           {option: Option, props: {type: "text", title: "Date time format", key: "datetimeFormat", placeholder: "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"}},
           {option: Option, props: {type: "option", title: "Decimal format", key: "decimalFormat", default: ".", values: [".", ","]}},
