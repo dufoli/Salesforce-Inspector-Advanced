@@ -314,6 +314,9 @@ export class TableModel {
     this.scrolledHeight = 0;
     this.scrolledWidth = 0;
     this.editedRows = new Map();//idx to {cellidx: {dataEditValue:}, cellIdx2: {dataEditValue:}}
+    this.state = {
+      skipRecalculate: true
+    };
   }
   setScrollerElement(scroller, scrolled) {
     this.scrolled = scrolled;
@@ -327,12 +330,16 @@ export class TableModel {
       && this.offsetHeight == this.scroller.offsetHeight
       && this.offsetWidth == this.scroller.offsetWidth
     ) {
+      this.state.skipRecalculate = true;
       return;
     }
     this.renderData({force: false});
   }
 
   recalculate(){
+    if (this.state.skipRecalculate) {
+      return;
+    }
     // Before this point we invalidate style and layout. After this point we recalculate style and layout, and we do not invalidate them again.
     if (this.rows.length > 0) {
       //thead
@@ -651,6 +658,7 @@ export class TableModel {
       this.rows = [];
       this.scrolledHeight = 0;
       this.scrolledWidth = 0;
+      this.state.skipRecalculate = true;
       return;
     }
 
@@ -659,11 +667,12 @@ export class TableModel {
       if (this.scrolledHeight != this.totalHeight || this.scrolledWidth != this.totalWidth){
         this.scrolledHeight = this.totalHeight;
         this.scrolledWidth = this.totalWidth;
+        this.state.skipRecalculate = true;
         this.didUpdate();
       }
       return;
     }
-
+    this.state.skipRecalculate = false;
     while (this.firstRowTop < this.scrollTop - this.bufferHeight && this.firstRowIdx < this.rowCount - 1) {
       this.firstRowTop += this.rowVisible[this.firstRowIdx] * this.rowHeights[this.firstRowIdx];
       this.firstRowIdx++;
@@ -814,6 +823,7 @@ export class TableModel {
       this.editedRows = new Map();
       this.cellMenuOpened = null;
       this.cellMenuToClose = null;
+      this.state.skipRecalculate = false;
       this.renderData({force: true});
     } else {
       // Data or visibility was changed
@@ -847,6 +857,7 @@ export class TableModel {
         }
         this.colVisible[c] = newVisible;
       }
+      this.state.skipRecalculate = false;
       this.renderData({force: true});
     }
   }
@@ -1236,7 +1247,7 @@ export class ScrollTable extends React.Component {
   }
   componentDidUpdate() {
     let {model} = this.props;
-    model.recalculate();
+    //model.recalculate();
   }
   render() {
     let {model} = this.props;
