@@ -1455,7 +1455,9 @@ class AllDataBoxShortcut extends React.PureComponent {
         const flowSelect = "SELECT LatestVersionId, ApiName, Label, ProcessType FROM FlowDefinitionView WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
         const profileSelect = "SELECT Id, Name, UserLicense.Name FROM Profile WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
         const permSetSelect = "SELECT Id, Name, Label, Type, LicenseId, License.Name, PermissionSetGroupId FROM PermissionSet WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const compositeQuery = toCompositeRequest({flowSelect, profileSelect, permSetSelect});
+        const networkSelect = "SELECT Id, Name, Status, UrlPathPrefix FROM Network WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
+        const apexSelect = "SELECT Id, Name, NamespacePrefix, Status FROM ApexClass WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
+        const compositeQuery = toCompositeRequest({flowSelect, profileSelect, permSetSelect, networkSelect, apexSelect});
 
         const searchResult = await sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery});
         let results = searchResult.compositeResponse.filter((elm) => elm.httpStatusCode == 200 && elm.body.records.length > 0);
@@ -1491,6 +1493,17 @@ class AllDataBoxShortcut extends React.PureComponent {
               }
               let endLink = enablePermSetSummary ? psetOrGroupId + "/summary" : "page?address=%2F" + psetOrGroupId;
               rec.link = "/lightning/setup/" + type + "/" + endLink;
+            } else if (rec.attributes.type === "Network"){
+              rec.link = `/sfsites/picasso/core/config/commeditor.jsp?servlet/networks/switch?networkId=${rec.Id}`;
+              rec.label = rec.Name;
+              let url = rec.UrlPathPrefix ?? "/";
+              rec.name = rec.Id + (url.startsWith("/") ? url : url);
+              rec.detail = rec.attributes.type + " (" + rec.Status + ")";
+            } else if (rec.attributes.type === "ApexClass"){ // ApiVersion, Status
+              rec.link = "/lightning/setup/ApexClasses/page?address=%2F" + rec.Id;
+              rec.label = rec.Name;
+              rec.name = rec.NamespacePrefix ? rec.NamespacePrefix + "__" + rec.Name : rec.Name;
+              rec.detail = rec.attributes.type + " • (" + rec.Status + ")";
             }
             result.push(rec);
           });
