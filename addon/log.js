@@ -26,7 +26,7 @@ class LogParser {
       return;
     }
     this.apexClasses.add(cls);
-    if (this.apexClasses.length == 1) {
+    if (this.apexClasses.size == 1) {
       this.selectApexClass(cls);
     }
   }
@@ -94,7 +94,8 @@ class LogParser {
         || c instanceof SystemConstructorNode
         || c instanceof VariableAssignmentNode
         || c instanceof MethodNode
-        || c instanceof SystemMethodNode) || c.duration > 10) {
+        || c instanceof SystemMethodNode
+        || c instanceof StatementExecuteNode) || c.duration > 10) {
         result.push(c);
       }
       if (c.child && c.child.length > 0) {
@@ -2188,11 +2189,11 @@ class ApexLogView extends React.Component {
             model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLineNumber" + lineIdx}, lineIdx + 1))
           ),
           h("div", {ref: "contentRef", style: {flex: 1, overflowY: "scroll", whiteSpace: "pre"}, onScroll: this.onScroll},
-            model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, style: {backgroundColor: line.color}, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line.line))
+            model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, style: {backgroundColor: line.color}, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line.line ? line.line : " "))
           )
         )
       ),
-      h("div", {className: "slds-col slds-size_6-of-12", style: {overflow: "scroll", height: "inherit", whiteSpace: "pre"}}, model.apexFilteredLogs)
+      h("div", {className: "slds-col slds-size_6-of-12", style: {overflow: "scroll", height: "inherit", whiteSpace: "pre"}}, model.apexFilteredLogs != "" ? model.apexFilteredLogs : "Click on a line of apex code to see associated logs")
     );
   }
 }
