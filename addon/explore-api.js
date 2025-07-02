@@ -242,56 +242,57 @@ class Model {
         }
       }
     }
-
-    // Build each of the discovered tables. Turn columns into a list, turn each row into a list matching the columns, and serialize as TSV.
-    // Note that the tables are built in the order they are discovered. This means that a child table is always built after its parent table.
-    // We can therefore re-use the build of the parent table when building the child table.
-    for (let tView of Object.values(tViews)) {
-      // Add own columns
-      tView.columnList = Object.keys(tView.columnMap).map(column => tView.name + column);
-      // Copy columns from parent table
-      if (tView.parent) {
-        tView.columnList = [...tView.columnList, ...tView.parent.columnList];
-      }
-      if (tView.rows && tView.rows.length == 0) {
-        continue;
-      }
-      let table = [tView.columnList];
-      // Add rows
-      for (let row of tView.rows) {
-        // Add cells to the row, matching the found columns
-        row.cells = Object.keys(tView.columnMap).map(column => {
-          // Find the value of the cell
-          let fields = column.split(".");
-          fields.splice(0, 1);
-          let value = row.value;
-          for (let field of fields) {
-            if (typeof value != "object") {
-              value = null;
-            }
-            if (value != null) {
-              value = value[field];
-            }
-          }
-          if (value instanceof Array) {
-            value = "[Array " + value.length + "]";
-          }
-          return value;
-        });
-        // Add columns from parent row
-        if (row.parent) {
-          row.cells = [...row.cells, ...row.parent.cells];
+    if (bodyParsed.length < 10000) {
+      // Build each of the discovered tables. Turn columns into a list, turn each row into a list matching the columns, and serialize as TSV.
+      // Note that the tables are built in the order they are discovered. This means that a child table is always built after its parent table.
+      // We can therefore re-use the build of the parent table when building the child table.
+      for (let tView of Object.values(tViews)) {
+        // Add own columns
+        tView.columnList = Object.keys(tView.columnMap).map(column => tView.name + column);
+        // Copy columns from parent table
+        if (tView.parent) {
+          tView.columnList = [...tView.columnList, ...tView.parent.columnList];
         }
-        table.push(row.cells);
+        if (tView.rows && tView.rows.length == 0) {
+          continue;
+        }
+        let table = [tView.columnList];
+        // Add rows
+        for (let row of tView.rows) {
+          // Add cells to the row, matching the found columns
+          row.cells = Object.keys(tView.columnMap).map(column => {
+            // Find the value of the cell
+            let fields = column.split(".");
+            fields.splice(0, 1);
+            let value = row.value;
+            for (let field of fields) {
+              if (typeof value != "object") {
+                value = null;
+              }
+              if (value != null) {
+                value = value[field];
+              }
+            }
+            if (value instanceof Array) {
+              value = "[Array " + value.length + "]";
+            }
+            return value;
+          });
+          // Add columns from parent row
+          if (row.parent) {
+            row.cells = [...row.cells, ...row.parent.cells];
+          }
+          table.push(row.cells);
+        }
+        let csvSignature = csvSerialize([
+          ["Salesforce Inspector - API Explorer"],
+          ["URL", this.title],
+          ["Rows", tView.name],
+          ["Extract time", new Date().toISOString()]
+        ], "\t") + "\r\n\r\n";
+        textViews.push({name: "Rows: " + tView.name + " (for copying to Excel)", value: csvSignature + csvSerialize(table, "\t")});
+        textViews.push({name: "Rows: " + tView.name + " (for viewing)", table});
       }
-      let csvSignature = csvSerialize([
-        ["Salesforce Inspector - API Explorer"],
-        ["URL", this.title],
-        ["Rows", tView.name],
-        ["Extract time", new Date().toISOString()]
-      ], "\t") + "\r\n\r\n";
-      textViews.push({name: "Rows: " + tView.name + " (for copying to Excel)", value: csvSignature + csvSerialize(table, "\t")});
-      textViews.push({name: "Rows: " + tView.name + " (for viewing)", table});
     }
     this.apiResponse = {
       status,
