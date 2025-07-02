@@ -1446,8 +1446,9 @@ class AllDataBoxShortcut extends React.PureComponent {
 
       let metadataShortcutSearch = localStorage.getItem("metadataShortcutSearch");
       if (metadataShortcutSearch == null) {
+        metadataShortcutSearch = true;
         //enable metadata search by default
-        localStorage.setItem("metadataShortcutSearch", true);
+        localStorage.setItem("metadataShortcutSearch", metadataShortcutSearch);
       }
 
       //search for metadata if user did not disabled it

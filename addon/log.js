@@ -1159,7 +1159,7 @@ class Model {
     this.sfHost = sfHost;
     this.sfLink = "https://" + sfHost;
     this.userInfo = "...";
-    this.apexFilteredLogs = "";
+    this.apexFilteredLogs = [];
     // URL parameters
     this.recordId = null;
     this.logParser = new LogParser(this);
@@ -1569,7 +1569,9 @@ class Model {
 
   selectApexClassLine(idx) {
     let nodes = this.logParser.visiteNode(this.logParser.rootNode, idx, []);
-    this.apexFilteredLogs = nodes.map(n => this.logParser.lines.slice(n.logStartLine, n.logEndLine + 1)).join("\n");
+    this.apexFilteredLogs = nodes.map(n => ({
+      line: this.logParser.lines.slice(n.logStartLine, n.logEndLine + 1),
+      lineNumber: n.logStartLine}));
     this.didUpdate();
   }
   selectTab(tabIndex) {
@@ -2160,6 +2162,10 @@ class ApexLogView extends React.Component {
     let {model} = this.props;
     model.selectApexClassLine(idx);
   }
+  onSelectLogLine(lineNumber) {
+    let {model} = this.props;
+    model.viewLogLine(lineNumber);
+  }
   componentDidMount() {
     this.lineNumbersRef = this.refs.lineNumbersRef;
     this.contentRef = this.refs.contentRef;
@@ -2193,7 +2199,7 @@ class ApexLogView extends React.Component {
           )
         )
       ),
-      h("div", {className: "slds-col slds-size_6-of-12", style: {overflow: "scroll", height: "inherit", whiteSpace: "pre"}}, model.apexFilteredLogs != "" ? model.apexFilteredLogs : "Click on a line of apex code to see associated logs")
+      h("div", {className: "slds-col slds-size_6-of-12", style: {overflow: "scroll", height: "inherit", whiteSpace: "pre"}}, model.apexFilteredLogs.length ? model.apexFilteredLogs.map((log, logIdx) => log.line.map((line, lineIdx) => h("div", {key: "apexLogLine" + logIdx + "n" + lineIdx, onClick: () => this.onSelectLogLine(log.lineNumber + lineIdx)}, line))) : "Click on a line of apex code to see associated logs")
     );
   }
 }
