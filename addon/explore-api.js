@@ -247,6 +247,8 @@ class Model {
       // Note that the tables are built in the order they are discovered. This means that a child table is always built after its parent table.
       // We can therefore re-use the build of the parent table when building the child table.
       for (let tView of Object.values(tViews)) {
+      //for (let field in tViews) {
+      //  let tView = tViews[field];
         // Add own columns
         tView.columnList = Object.keys(tView.columnMap).map(column => tView.name + column);
         // Copy columns from parent table

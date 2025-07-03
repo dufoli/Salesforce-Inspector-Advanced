@@ -156,10 +156,24 @@ class App extends React.PureComponent {
         query += " WHERE Id = '" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "'";
       }
       if (e.contextSobject == "Report") {
-        let report = await sfConn.rest("/services/data/v" + apiVersion + "/analytics/reports/" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "/describe", {method: "GET"});
-        let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.filter(o => o.joinType.toUpperCase() == "ROOT").shift()?.entityApiName;
-        //TODO rewrite field to use link between object cf objects
-        // objectRelationships with same index => relatedObjects[].relatedEntity == same type
+        let report = await sfConn.rest("/services/data/v" + apiVersion + "/analytics/reports/" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "/describe", {});
+        let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.filter(o => o.joinType.toUpperCase() == "ROOT").at(0)?.entityApiName;
+        let select = report.reportMetadata.detailColumns.filter(c => c.startsWith(sobjectName + ".")).map(c => c.substring(sobjectName.length + 1)).concat(
+          report.reportMetadata.groupingsDown.filter(g => !report.reportMetadata.detailColumns.includes(g.name) && g.name.startsWith(sobjectName + ".")).map(g => g.name.substring(sobjectName.length + 1))
+        ).join(", ");
+        for (let i = 0; i < report.reportTypeMetadata.apiCustomReportTypeDetail.objects.length; i++) {
+          let obj = report.reportTypeMetadata.apiCustomReportTypeDetail.objects[i];
+          if (obj.joinType.toUpperCase() == "ROOT") {
+            continue;
+          }
+          let qry = `SELECT Id, QualifiedApiName, RelationshipName, DurableId, EntityDefinitionId, Metadata FROM FieldDefinition WHERE EntityDefinitionId = '${obj.crtObjectName}' and DurableId = '${obj.crtObjectName}.${obj.foreignKeyField}'`;
+          let fields = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(qry), {});
+          let rel = fields.records[0];
+          select += ", (SELECT " + report.reportMetadata.detailColumns.filter(c => c.startsWith(obj.entityApiName + ".")).map(c => c.substring(obj.entityApiName.length + 1)).concat(
+            report.reportMetadata.groupingsDown.filter(g => !report.reportMetadata.detailColumns.includes(g.name) && g.name.startsWith(obj.entityApiName + ".")).map(g => g.name.substring(obj.entityApiName.length + 1))).join(", ");
+          select += " FROM " + rel.Metadata.relationshipName + (rel.RelationshipName.endsWith("__r") ? "__r" : "");
+        }
+        select += ")".repeat(report.reportTypeMetadata.apiCustomReportTypeDetail.objects.length - 1);
 
         // let aggregates = report.reportMetadata.aggregates.map(agg => {
         //   switch (agg) {
@@ -196,7 +210,7 @@ class App extends React.PureComponent {
         //   }
         // }).filter(agg => agg != "");
         //.concat(aggregates)
-        query = "//BETA \nSELECT " + report.reportMetadata.detailColumns.join(", ");
+        query = "//BETA \nSELECT " + select;
         query += " FROM " + sobjectName;
         let filters = report.reportMetadata.reportFilters.map(f => {
           let q = !isNaN(f.value) && !isNaN(parseFloat(f.value)) ? "" : "'";
@@ -241,15 +255,24 @@ class App extends React.PureComponent {
         }
         if (report.reportMetadata.standardDateFilter) {
           let stdfltr = report.reportMetadata.standardDateFilter;
-          if (!filters?.length) {
-            query += " WHERE ";
-          } else {
-            query += " AND ";
+          if (stdfltr.startDate != null || stdfltr.endDate != null) {
+            if (!filters?.length) {
+              query += " WHERE ";
+            } else {
+              query += " AND ";
+            }
+            if (stdfltr.startDate != null) {
+              query += stdfltr.column + " > " + stdfltr.startDate;
+            }
+            if (stdfltr.endDate != null) {
+              if (stdfltr.startDate != null) {
+                query += " AND ";
+              }
+              query += stdfltr.column + " < " + stdfltr.endDate;
+            }
           }
-          query += stdfltr.column + " > " + stdfltr.startDate;
-          query += " AND " + stdfltr.column + " < " + stdfltr.endDate;
         }
-
+        query = query.replace(/__c\./g, "__r.");
         /*
         let groupBy = [];
         let sortBy = [];
