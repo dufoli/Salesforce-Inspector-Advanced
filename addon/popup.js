@@ -330,6 +330,16 @@ class App extends React.PureComponent {
       limitsHref: "limits.html?" + limitsArg
     });
   }
+  onMouseMove(event) {
+    parent.postMessage({mouseX: event.clientX, mouseY: event.clientY}, "*");
+  }
+  endResizeMove(evt) {
+    window.removeEventListener("mousemove", this.onMouseMove);
+    window.removeEventListener("mouseup", this.endResizeMove);
+    if (!evt.skipMessage) {
+      parent.postMessage({trackMouseMove: false}, "*");
+    }
+  }
   onContextUrlMessage(e) {
     if (e.source == parent && e.data.insextUpdateRecordId) {
       let {locationHref} = e.data;
@@ -345,6 +355,13 @@ class App extends React.PureComponent {
       return;
     } else if (e.data.whereFlowIsUsed) {
       this.whereFlowIsUsed(JSON.parse(e.data.whereFlowIsUsed));
+    } else if (e.data.trackMouseMove != undefined) {
+      if (e.data.trackMouseMove) {
+        window.addEventListener("mousemove", this.onMouseMove);
+        window.addEventListener("mouseup", this.endResizeMove);
+      } else {
+        this.endResizeMove({skipMessage: true});
+      }
     } else if (e.data.showInvalidTokenBanner) {
       //TODO use model to store if displayed or not.
       const containerToShow = document.getElementById("invalidTokenBanner");

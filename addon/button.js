@@ -310,6 +310,16 @@ function initButton(sfHost, inInspector) {
           inInspector,
         }, "*");
       }
+      if (e.data.mouseX) {
+        let boundingClientRect = popupEl.getBoundingClientRect();
+        let evt = new CustomEvent("mousemove", {bubbles: true, cancelable: false});
+        evt.clientX = e.data.mouseX + boundingClientRect.left;
+        evt.clientY = e.data.mouseY + boundingClientRect.top;
+        onResizeMove(evt);
+      }
+      if (e.data.trackMouseMove == false) {
+        endResizeMove({skipMessage: true});
+      }
       if (e.data.insextClosePopup) {
         closePopup();
       }"field-api-name";
@@ -362,21 +372,42 @@ function initButton(sfHost, inInspector) {
           popupHeight = resizeHeight - (resizeY - event.clientY);
         }
         let popupWidth = resizeWidth - (event.clientX - resizeX);
+        let boundingClientRect = popupEl.getBoundingClientRect();
+        if (popupHeight > window.innerHeight - boundingClientRect.top - 50) {
+          popupHeight = window.innerHeight - boundingClientRect.top - 50;
+        }
+        if (popupWidth > window.innerWidth - 50) {
+          popupWidth = window.innerWidth - 50;
+        }
+        if (popupHeight < 0) {
+          popupHeight = 50;
+        }
+        if (popupWidth < 0) {
+          popupWidth = 50;
+        }
         localStorage.setItem("popupWidth", popupWidth);
         localStorage.setItem("popupHeight", popupHeight);
         popupWrapper.style.width = popupWidth + "px";
         popupWrapper.style.height = popupHeight + "px";
       }
     }
-    function endResizeMove() {
+    function endResizeMove(evt) {
       window.removeEventListener("mousemove", onResizeMove);
       window.removeEventListener("mouseup", endResizeMove);
+      if (!evt.skipMessage) {
+        popupEl.contentWindow.postMessage({
+          trackMouseMove: false
+        }, "*");
+      }
       resizeX = 0;
       resizeY = 0;
     }
     popupWrapper.addEventListener("mousedown", () => {
       window.addEventListener("mousemove", onResizeMove);
       window.addEventListener("mouseup", endResizeMove);
+      popupEl.contentWindow.postMessage({
+        trackMouseMove: true
+      }, "*");
     });
 
 
