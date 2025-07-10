@@ -90,6 +90,8 @@ class OptionsTabSelector extends React.Component {
           {option: Option, props: {type: "option", title: "Custom favicon (org specific)", key: this.sfHost + "_customFavicon", values: ["blue", "green", "orange", "pink", "purple", "red", "yellow"]}},
           {option: CustomLinkOption, props: {title: "Custom links (org specific)", key: this.sfHost + "_orgLinks"}},
           {option: Option, props: {type: "number", title: "Number of flow version to keep", key: "clearOlderFlowsKeep", placeholder: "5 by default", default: 5}},
+          {option: Option, props: {type: "number", title: "Height of popup menu", key: "popupHeight", placeholder: "600 by default", default: 600}},
+          {option: Option, props: {type: "number", title: "Width of popup menu", key: "popupWidth", placeholder: "280 by default", default: 280}},
         ]
       },
       {
@@ -107,13 +109,13 @@ class OptionsTabSelector extends React.Component {
         tabTitle: "Tab3",
         title: "Data Export",
         content: [
-          {option: CSVSeparatorOption, props: {key: 1}},
+          {option: Option, props: {type: "text", title: "csv file separator", key: "csvSeparator", suggestions: [",", ";", "|"], default: ","}},
           {option: Option, props: {type: "toggle", title: "Display Query Execution Time", key: "displayQueryPerformance", default: true}},
           {option: Option, props: {type: "toggle", title: "Use SObject context on Data Export", key: "useSObjectContextOnDataImportLink", default: true}},
           {option: Option, props: {type: "toggle", title: "Skip technical comlumns", key: "skipTechnicalColumns", default: true}},
           {option: Option, props: {type: "toggle", title: "convert date to local timezone", key: "convertToLocalTime", default: true}},
-          {option: Option, props: {type: "text", title: "Date format", key: "dateFormat", placeholder: "yyyy-MM-dd"}},
-          {option: Option, props: {type: "text", title: "Date time format", key: "datetimeFormat", placeholder: "yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm"}},
+          {option: Option, props: {type: "text", title: "Date format", key: "dateFormat", suggestions: ["yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy"]}},
+          {option: Option, props: {type: "text", title: "Date time format", key: "datetimeFormat", suggestions: ["yyyy-MM-ddTHH:mm:ss.SSS+/-HH:mm", "dd/MM/yyyy HH:mm:ss.SSS+/-HH:mm"]}},
           {option: Option, props: {type: "option", title: "Decimal format", key: "decimalFormat", default: ".", values: [".", ","]}},
           {option: QueryTemplatesOption, props: {title: "Query Templates", key: "queryTemplates", placeholder: "SELECT..."}},
           {option: QueryTemplatesOption, props: {title: "Saved Query History", key: "insextSavedQueryHistory", node: "query", withName: true, defaultValue: "{\"useToolingApi\": false}", placeholder: "SELECT..."}}
@@ -306,19 +308,86 @@ class Option extends React.Component {
     super(props);
     this.onChange = this.onChange.bind(this);
     this.onChangeToggle = this.onChangeToggle.bind(this);
+    this.onBlur = this.onBlur.bind(this);
+    this.onFocus = this.onFocus.bind(this);
+    this.onKeyDown = this.onKeyDown.bind(this);
+    this.onSuggestionClick = this.onSuggestionClick.bind(this);
+    this.onChange = this.onChange.bind(this);
     this.key = props.storageKey;
     this.type = props.type;
     this.label = props.label;
     this.placeholder = props.placeholder;
     let value = localStorage.getItem(this.key);
     if (props.default !== undefined && value === null) {
-      value = JSON.stringify(props.default);
+      if (props.default instanceof String) {
+        value = props.default;
+      } else {
+        value = JSON.stringify(props.default);
+      }
       localStorage.setItem(this.key, value);
     }
-    this.state = {[this.key]: this.type == "toggle" ? !!JSON.parse(value) : value};
+    this.state = {activeSuggestion: 0,
+      filteredSuggestions: [],
+      showSuggestions: false,
+      [this.key]: this.type == "toggle" ? !!JSON.parse(value) : value};
     this.title = props.title;
   }
-
+  onFocus() {
+    let {suggestions} = this.props;
+    this.setState({
+      activeSuggestion: 0,
+      filteredSuggestions: suggestions,
+      showSuggestions: true
+    });
+  }
+  onBlur() {
+    setTimeout(() => {
+      //no need to refresh if already refresh by click on value
+      if (!this.state || !this.state.showSuggestions) {
+        return;
+      }
+      this.setState({
+        activeSuggestion: 0,
+        filteredSuggestions: [],
+        showSuggestions: false
+      });
+    }, 100); // Set timeout for 500ms
+  }
+  onSuggestionClick(e) {
+    this.setState({
+      activeSuggestion: 0,
+      filteredSuggestions: [],
+      showSuggestions: false
+    });
+    this.setState({[this.key]: e.target.innerText});
+    localStorage.setItem(this.key, e.target.innerText);
+  }
+  onKeyDown(e){
+    const {activeSuggestion, filteredSuggestions} = this.state;
+    switch (e.keyCode) {
+      case 40:
+        if (activeSuggestion - 1 === filteredSuggestions.length) {
+          return;
+        }
+        this.setState({activeSuggestion: activeSuggestion + 1});
+        break;
+      case 38:
+        if (activeSuggestion === 0) {
+          return;
+        }
+        this.setState({activeSuggestion: activeSuggestion - 1});
+        break;
+      case 13:
+        this.setState({
+          activeSuggestion: 0,
+          showSuggestions: false
+        });
+        this.setState({[this.key]: filteredSuggestions[activeSuggestion]});
+        localStorage.setItem(this.key, filteredSuggestions[activeSuggestion]);
+        e.preventDefault();
+        break;
+    }
+  }
   onChangeToggle(e) {
     const enabled = e.target.checked;
     this.setState({[this.key]: enabled});
@@ -326,6 +395,7 @@ class Option extends React.Component {
   }
 
   onChange(e) {
+    let {suggestions} = this.props;
     let inputValue = e.target.value;
     this.setState({[this.key]: inputValue});
     if (this.type == "option" && inputValue == this.props.values[0]) {
@@ -333,10 +403,21 @@ class Option extends React.Component {
       return;
     }
     localStorage.setItem(this.key, inputValue);
+    const filteredSuggestions = suggestions.filter(
+      suggestion =>
+        suggestion.toLowerCase().indexOf(inputValue.toLowerCase()) > -1
+    );
+
+    this.setState({
+      activeSuggestion: 0,
+      filteredSuggestions,
+      showSuggestions: true
+    });
   }
 
   render() {
     const id = this.key;
+    let {activeSuggestion, filteredSuggestions, showSuggestions} = this.state;
     if (this.type == "toggle") {
       return h("div", {className: "slds-grid slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
         h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
@@ -361,7 +442,17 @@ class Option extends React.Component {
         ),
         h("div", {className: "slds-col slds-size_2-of-12 slds-form-element slds-grid slds-grid_align-end slds-grid_vertical-align-center slds-gutters_small"},
           h("div", {className: "slds-form-element__control slds-col slds-size_6-of-12"},
-            h("input", {type: this.type, id: "restHeaderInput", className: "slds-input", placeholder: this.placeholder, value: cleanInputValue(this.state[this.key]), onChange: this.onChange}),
+            h("input", {type: this.type, id: "restHeaderInput", className: "slds-input", placeholder: this.placeholder, value: cleanInputValue(this.state[this.key]), onChange: this.onChange, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
+            (showSuggestions && filteredSuggestions.length)
+              ? h("ul", {className: "suggestions"},
+                filteredSuggestions.map((suggestion, index) => {
+                  let SuggestionClass;
+                  if (index === activeSuggestion) {
+                    SuggestionClass = "suggestion-active";
+                  }
+                  return h("li", {className: SuggestionClass, key: suggestion, onMouseDown: this.onSuggestionClick}, suggestion);
+                })
+              ) : ""
           )
         )
       );
@@ -409,33 +500,6 @@ class APIKeyOption extends React.Component {
         h("div", {className: "slds-form-element__control slds-col slds-size_6-of-12"},
           h("input", {type: "text", id: "apiKeyInput", className: "slds-input", placeholder: "Consumer Key", value: cleanInputValue(this.state.apiKey), onChange: this.onChangeApiKey}),
         )
-      )
-    );
-  }
-}
-
-class CSVSeparatorOption extends React.Component {
-
-  constructor(props) {
-    super(props);
-    this.onChangeCSVSeparator = this.onChangeCSVSeparator.bind(this);
-    this.state = {csvSeparator: localStorage.getItem("csvSeparator") ? localStorage.getItem("csvSeparator") : ","};
-  }
-
-  onChangeCSVSeparator(e) {
-    let csvSeparator = e.target.value;
-    this.setState({csvSeparator});
-    localStorage.setItem("csvSeparator", csvSeparator);
-  }
-
-  render() {
-    return h("div", {className: "slds-grid slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
-      h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
-        h("span", {}, "CSV Separator")
-      ),
-      h("div", {className: "slds-col slds-size_7-of-12 slds-form-element slds-grid slds-grid_align-end slds-grid_vertical-align-center slds-gutters_small"}),
-      h("div", {className: "slds-col slds-size_1-of-12 slds-form-element slds-grid slds-grid_align-end slds-grid_vertical-align-center slds-gutters_small"},
-        h("input", {type: "text", id: "csvSeparatorInput", className: "slds-input slds-text-align_right slds-m-right_small", placeholder: "CSV Separator", value: cleanInputValue(this.state.csvSeparator), onChange: this.onChangeCSVSeparator})
       )
     );
   }
