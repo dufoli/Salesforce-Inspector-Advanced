@@ -337,7 +337,7 @@ class Option extends React.Component {
     this.setState({
       activeSuggestion: 0,
       filteredSuggestions: suggestions,
-      showSuggestions: true
+      showSuggestions: (suggestions != null)
     });
   }
   onBlur() {
@@ -403,10 +403,10 @@ class Option extends React.Component {
       return;
     }
     localStorage.setItem(this.key, inputValue);
-    const filteredSuggestions = suggestions.filter(
+    const filteredSuggestions = suggestions ? suggestions.filter(
       suggestion =>
         suggestion.toLowerCase().indexOf(inputValue.toLowerCase()) > -1
-    );
+    ) : [];
 
     this.setState({
       activeSuggestion: 0,
