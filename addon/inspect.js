@@ -89,7 +89,12 @@ class Model {
   recordHeading() {
     let parts;
     if (this.recordData) {
-      parts = [this.recordData.Name, this.recordData.Id];
+      let nameField = this.recordData.Name ? "Name" : (this.objectData?.fields ? this.objectData.fields.find(field => field.nameField).name : "");
+      let recordName = "";
+      if (nameField) {
+        recordName = this.recordData[nameField];
+      }
+      parts = [recordName, this.recordData.Id];
     } else if (this.objectData) {
       parts = [this.objectData.label, this.objectData.keyPrefix];
     } else {
