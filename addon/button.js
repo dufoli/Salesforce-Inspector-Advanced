@@ -259,11 +259,11 @@ function initButton(sfHost, inInspector) {
         closePopup();
       }
     });
+    let popupArrowOrientation = localStorage.getItem("popupArrowOrientation");
     let popupWrapper = document.createElement("div");
     let popupEl = document.createElement("iframe");
     popupEl.classList.add("insext-popup-iframe");
-    function onbuttonmove(event) {
-      let popupArrowOrientation;
+    function onButtonMove(event) {
       let popupArrowPosition;
       // if above the diagonal
       if (event.clientY > (event.clientX / document.documentElement.clientWidth) * document.documentElement.clientHeight) {
@@ -278,18 +278,18 @@ function initButton(sfHost, inInspector) {
       updateButtonCSSPropertiesIfNeeded(rootEl, btn, popupWrapper, popupArrowOrientation, popupArrowPosition);
 
     }
-    function endmove() {
-      window.removeEventListener("mousemove", onbuttonmove);
-      window.removeEventListener("mouseup", endmove);
+    function endMove() {
+      window.removeEventListener("mousemove", onButtonMove);
+      window.removeEventListener("mouseup", endMove);
     }
     btn.addEventListener("mousedown", () => {
-      window.addEventListener("mousemove", onbuttonmove);
-      window.addEventListener("mouseup", endmove);
+      window.addEventListener("mousemove", onButtonMove);
+      window.addEventListener("mouseup", endMove);
     });
 
     let popupSrc = chrome.runtime.getURL("popup.html");
     popupWrapper.className = "insext-popup";
-    popupWrapper.classList.add(localStorage.getItem("popupArrowOrientation") == "horizontal" ? "insext-popup-horizontal" : "insext-popup-vertical");
+    popupWrapper.classList.add(popupArrowOrientation == "horizontal" ? "insext-popup-horizontal" : "insext-popup-vertical");
 
     popupEl.src = popupSrc;
     addEventListener("message", e => {
@@ -373,12 +373,22 @@ function initButton(sfHost, inInspector) {
         }
         let popupWidth = resizeWidth - (event.clientX - resizeX);
         let boundingClientRect = popupEl.getBoundingClientRect();
-        if (popupHeight > window.innerHeight - boundingClientRect.top - 50) {
-          popupHeight = window.innerHeight - boundingClientRect.top - 50;
+        if (popupArrowOrientation == "vertical") {
+          if (popupHeight > window.innerHeight - boundingClientRect.top - 50) {
+            popupHeight = window.innerHeight - boundingClientRect.top - 50;
+          }
+          if (popupWidth > window.innerWidth - 50) {
+            popupWidth = window.innerWidth - 50;
+          }
+        } else if (popupArrowOrientation == "horizontal") {
+          if (popupHeight > window.innerHeight - 50) {
+            popupHeight = window.innerHeight - 50;
+          }
+          if (popupWidth > window.innerWidth - boundingClientRect.left - 50) {
+            popupWidth = window.innerWidth - boundingClientRect.left - 50;
+          }
         }
-        if (popupWidth > window.innerWidth - 50) {
-          popupWidth = window.innerWidth - 50;
-        }
+
         if (popupHeight < 0) {
           popupHeight = 50;
         }
