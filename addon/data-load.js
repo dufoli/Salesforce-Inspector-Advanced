@@ -922,6 +922,9 @@ export class TableModel {
       let queryArgs = new URLSearchParams();
       queryArgs.set("host", self.sfHost);
       queryArgs.set("query", query);
+      if (self.data.isTooling) {
+        queryArgs.set("useToolingApi", "1");
+      }
       cell.links.push({withIcon: true, href: "data-export.html?" + queryArgs, label: "Query Record", className: "query-record", action: ""});
 
       if (cell.objectType == "ApexLog") {
