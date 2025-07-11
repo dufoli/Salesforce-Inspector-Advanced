@@ -9,8 +9,12 @@
         <name>ApexClass</name>
     </types>
     <types>
+        <members>SfInspector</members>
+        <name>PermissionSet</name>
+    </types>
+    <types>
         <members>Account</members>
         <name>Settings</name>
     </types>
-    <version>58.0</version>
+    <version>64.0</version>
 </Package>
