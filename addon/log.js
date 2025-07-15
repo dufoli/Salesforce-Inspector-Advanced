@@ -699,7 +699,8 @@ class CodeUnitLogNode extends LogNode {
     super(splittedLine, logParser, node, "CODE_UNIT_FINISHED");
     this.title = "code unit";
     if (splittedLine.length > 4 && splittedLine[4].endsWith(")")){
-      this.apexClass = splittedLine[4].substring(0, splittedLine[4].lastIndexOf("."));
+      this.apexClass = splittedLine[4].substring(0, splittedLine[4].indexOf("("));
+      this.apexClass = this.apexClass.substring(0, this.apexClass.lastIndexOf("."));
       logParser.addApexClass(this.apexClass);
       this.logStartLine = logParser.index;
     }
