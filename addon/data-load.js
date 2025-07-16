@@ -276,7 +276,6 @@ export class TableModel {
   constructor(sfHost, reactCallback) {
     this.reactCallback = reactCallback;
     this.headerCallout = localStorage.getItem("createUpdateRestCalloutHeaders") ? JSON.parse(localStorage.getItem("createUpdateRestCalloutHeaders")) : "{}";
-    this.convertToLocalTime = localStorage.getItem("convertToLocalTime") != "false";
     this.sfHost = sfHost;
     this.data = null;
     this.initialRowHeight = 15; // constant: The initial estimated height of a row before it is rendered
@@ -763,8 +762,6 @@ export class TableModel {
           dataCell.objectTypes = [];
           dataCell.label = cell;
           dataCell.linkable = true;
-        } else if (typeof cell == "string" && this.isDateTimeToConvert(cell)) {
-          dataCell.label = this.convertDatetimeToLocalTime(cell);
         } else if (cell == null) {
           dataCell.label = "";
         } else {
@@ -779,25 +776,6 @@ export class TableModel {
       this.rows.push(dataRow);
     }
     this.didUpdate();
-  }
-  isDateTimeToConvert(text) {
-    if (!this.convertToLocalTime) {
-      return false;
-    }
-    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?([+-]\d{4})$/.test(text);
-  }
-  convertDatetimeToLocalTime(text) {
-    let dt = new Date(text);
-    let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
-    dt.setMinutes(dt.getMinutes() - tzOffset);
-    let finalDate = dt.toISOString().replace("Z", "");
-    finalDate += (tzOffset > 0 ? "-" : "+");
-    tzOffset = Math.abs(tzOffset);
-    let offsetHours = Math.floor(tzOffset / 60);
-    let offsetMinutes = tzOffset % 60;
-    finalDate += String(offsetHours).padStart(2, "0");
-    finalDate += String(offsetMinutes).padStart(2, "0");
-    return finalDate;
   }
 
   dataChange(newData) {

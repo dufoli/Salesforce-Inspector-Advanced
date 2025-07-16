@@ -1875,6 +1875,7 @@ function RecordTable(vm) {
   let dateFormat = localStorage.getItem("dateFormat");
   let datetimeFormat = localStorage.getItem("datetimeFormat");
   let decimalFormat = localStorage.getItem("decimalFormat");
+  let convertToLocalTime = localStorage.getItem("convertToLocalTime") != "false";
   if (decimalFormat != "." && decimalFormat != ",") {
     decimalFormat = ".";
     localStorage.setItem("decimalFormat", decimalFormat);
@@ -2005,6 +2006,8 @@ function RecordTable(vm) {
         row[c] = convertDate(record[field], dateFormat);
       } else if (columnType.get(field) == "datetime" && datetimeFormat) {
         row[c] = convertDate(record[field], datetimeFormat);
+      } else if (columnType.get(field) == "datetime" && convertToLocalTime) {
+        row[c] = convertDtToLocalTime(record[field]);
       } else if ((columnType.get(field) == "decimal" || columnType.get(field) == "currency") && decimalFormat && decimalFormat != ".") {
         row[c] = record[field] ? record[field].toString().replace(".", decimalFormat) : record[field];
       } else {
@@ -2015,11 +2018,29 @@ function RecordTable(vm) {
       }
     }
   }
+  function convertDtToLocalTime(field) {
+    let dt = new Date(field);
+    let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
+    dt.setMinutes(dt.getMinutes() - tzOffset);
+    let finalDate = dt.toISOString().replace("Z", "");
+    finalDate += (tzOffset > 0 ? "-" : "+");
+    tzOffset = Math.abs(tzOffset);
+    let offsetHours = Math.floor(tzOffset / 60);
+    let offsetMinutes = tzOffset % 60;
+    finalDate += String(offsetHours).padStart(2, "0");
+    finalDate += String(offsetMinutes).padStart(2, "0");
+    return finalDate;
+  }
   function convertDate(field, format) {
     if (!field) {
       return "";
     }
     let dt = new Date(field);
+    let pad = (n, d) => ("000" + n).slice(-d);
+    if (!convertToLocalTime) {
+      let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
+      dt.setMinutes(dt.getMinutes() + tzOffset);
+    }
     let formatedDate = "";
     let remaining = format;
     while (remaining) {
@@ -2044,6 +2065,23 @@ function RecordTable(vm) {
       } else if (remaining.match(/^SSS/)) {
         remaining = remaining.substring(3);
         formatedDate += ("00" + dt.getMilliseconds()).slice(-3);
+      } else if (remaining.match(/^\+/)) { //+0000
+        remaining = remaining.substring(1);
+        formatedDate += (dt.getTimezoneOffset() <= 0 ? "+" : "-");
+      } else if (remaining.match(/^FF/)) { //+0000
+        remaining = remaining.substring(2);
+        if (convertToLocalTime) {
+          formatedDate += pad(Math.floor(Math.abs(dt.getTimezoneOffset()) / 60), 2);
+        } else {
+          formatedDate += "00";
+        }
+      } else if (remaining.match(/^ff/)) {
+        remaining = remaining.substring(2);
+        if (convertToLocalTime) {
+          formatedDate += pad(Math.abs(dt.getTimezoneOffset()) % 60, 2);
+        } else {
+          formatedDate += "00";
+        }
       } else {
         formatedDate += remaining[0];
         remaining = remaining.substring(1);
