@@ -58,7 +58,7 @@ In order to rich this goal, I have take a closer look to the full backlog of ori
 ## Roadmap
 
 > [!IMPORTANT]
-> Roadmap is here : https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/5
+> Roadmap is here : https://github.com/dufoli/Salesforce-Inspector-Advanced/milestones
 
 ## Documentation
 
