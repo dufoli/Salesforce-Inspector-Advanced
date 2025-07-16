@@ -1,23 +1,33 @@
 # Release Notes
+## Version 1.33
+- Popup > user: enable lwc debug [issue 220](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/220)
+- Popup: data export on report create a SOQL with same column (in Beta) [issue 216](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/216)
+- Data export: use local culture for timezone [issue 212](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/212)
+- Shortcut: include experience cloud site list [issue 70](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/70)
+- Data export: make parameter button more visible, make some column not editable, hide menu on aggregate result [issue 214](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/214)
+- Log: apex class view: display line number and color in green line with logs, click on apex view log go to raw log [issue 221](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/221)
+- Popup: Resize popup bug if mouse is too fast [issue 150](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/150)
+- Option: Auto suggestion box on csv separator, date format, datetime format, decimal format [issue 223](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/223)
+- Popup: Add button to export listview data in popup [issue 215](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/215)
 
 ## Version 1.32
-Import: Fixed metadata relationship by setting string type.
-Import: Fixed import of JSON.
-Import: Fixed metadata relation import.
-Editor: Permit naviguation with up and down arrow when no suggestions are shown.
-Editor: Added undo and redo functionality with ctrl+z and ctrl+y.
-Inspect: Fixed filter on object with summary field.
-Data Export: Added support for keywords in suggestions.
-Data Export: Added bulk update with fixed value functionality.
-Data export: Clean query from common mistakes on export.
-Data Export: Fixed batch size number on query with parameters.
-User: Added reset password functionality.
-Log: Linked on click in flame chart or profiler to log line.
-Log: Added Apex view to display related logs to an Apex class line.
-Log: Added Ressource view to list SOQL, SOSL, DML and callout with count
-Security: Identified client Salesforce Inspector Advanced in logs.
-Security: Fixed potential SOQL injection and XSS vulnerabilities.
-Security: Restricted access to resources in the manifest.
+- Import: Fixed metadata relationship by setting string type.
+- Import: Fixed import of JSON.
+- Import: Fixed metadata relation import.
+- Editor: Permit naviguation with up and down arrow when no suggestions are shown.
+- Editor: Added undo and redo functionality with ctrl+z and ctrl+y.
+- Inspect: Fixed filter on object with summary field.
+- Data Export: Added support for keywords in suggestions.
+- Data Export: Added bulk update with fixed value functionality.
+- Data export: Clean query from common mistakes on export.
+- Data Export: Fixed batch size number on query with parameters.
+- User: Added reset password functionality.
+- Log: Linked on click in flame chart or profiler to log line.
+- Log: Added Apex view to display related logs to an Apex class line.
+- Log: Added Ressource view to list SOQL, SOSL, DML and callout with count
+- Security: Identified client Salesforce Inspector Advanced in logs.
+- Security: Fixed potential SOQL injection and XSS vulnerabilities.
+- Security: Restricted access to resources in the manifest.
 
 ## Version 1.31
 > [!IMPORTANT]
