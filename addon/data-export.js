@@ -2019,6 +2019,9 @@ function RecordTable(vm) {
     }
   }
   function convertDtToLocalTime(field) {
+    if (!field) {
+      return "";
+    }
     let dt = new Date(field);
     let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
     dt.setMinutes(dt.getMinutes() - tzOffset);
