@@ -1869,7 +1869,7 @@ class LogTreeviewNode extends React.Component {
     return h("tr", attributes,
       h("th", {className: "slds-tree__item", "data-label": "Item", scope: "row"},
         h("button", {className: "slds-button slds-button_icon slds-button_icon-x-small slds-m-right_x-small", hidden: (this.node.child.length == 0), "aria-hidden": true, tabIndex: -1, title: "Expand", onClick: this.toggleExpand},
-          h("svg", {className: "slds-button__icon slds-button__icon_small", "aria-hidden": true},
+          h("svg", {className: "slds-button__icon slds-button_icon-small", "aria-hidden": true},
             h("use", {xlinkHref: "symbols.svg#chevronright"})
           ),
           h("span", {className: "slds-assistive-text"}, "Expand " + this.node.title),
