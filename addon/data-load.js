@@ -525,9 +525,6 @@ export class RecordTable {
     finalDate += String(offsetMinutes).padStart(2, "0");
     return finalDate;
   }
-  setFilter(fltr) {
-    this.filter = fltr;
-  }
   async addToTable(expRecords) {
     this.records = this.records.concat(expRecords);
     if (this.table.length == 0 && expRecords.length > 0) {
@@ -553,7 +550,6 @@ export class RecordTable {
     this.rowVisibilities = [];
     this.totalSize = -1;
   }
-
   updateVisibility(fltr) {
     this.filter = fltr;
     let countOfVisibleRecords = 0;
@@ -622,6 +618,7 @@ export class TableModel {
     this.state = {
       skipRecalculate: true
     };
+    this.bgColors = new Map();
   }
   setScrollerElement(scroller, scrolled) {
     this.scrolled = scrolled;
@@ -688,6 +685,9 @@ export class TableModel {
         td = td.nextElementSibling;
       }
     }
+  }
+  getBackgroundColor(rowIdx, cellIdx) {
+    return this.bgColors.get(`${rowIdx}-${cellIdx}`);
   }
   doSaveAll(){
     let cnt = this.editedRows.size;
@@ -1111,8 +1111,10 @@ export class TableModel {
       this.cellMenuOpened = null;
       this.cellMenuToClose = null;
       this.state.skipRecalculate = false;
+      this.bgColors = new Map();
       this.renderData({force: true});
     } else {
+      this.bgColors = this.data.bgColors ?? new Map();
       // Data or visibility was changed
       let newRowCount = this.data.rowVisibilities.length;
       for (let r = this.rowCount; r < newRowCount; r++) {
@@ -1418,7 +1420,7 @@ class ScrollTableCell extends React.Component {
     model.cancelEditCell(this.row.id, this.cell.id);
   }
   render() {
-    let {cell, rowHeight, colWidth, previousCell} = this.props;
+    let {cell, rowHeight, colWidth, previousCell, row, model} = this.props;
     let {activeSuggestion, showSuggestions} = this.state;
     let cellLabel = cell.label?.toString();
     if (cellLabel == "[object Object]") {
@@ -1429,11 +1431,16 @@ class ScrollTableCell extends React.Component {
       cellDataEditValue = "";
     }
     let className = "scrolltable-cell";
+    let cellStyle = {minWidth: colWidth + "px", height: rowHeight + "px"};
+    let bgColor = model.getBackgroundColor(row.idx, cell.idx);
+    if (bgColor) {
+      cellStyle.backgroundColor = bgColor;
+    }
     if (cell.isEditing){
       if (previousCell != null && previousCell.dataEditValue != cell.dataEditValue) {
         className += " scrolltable-cell-diff";
       }
-      return h("td", {className, style: {minWidth: colWidth + "px", height: rowHeight + "px"}},
+      return h("td", {className, style: cellStyle},
         h("textarea", {value: cellDataEditValue, onChange: this.onDataEditValueInput, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
         h("a", {href: "about:blank", onClick: this.onCancelEdit, className: "undo-button"}, "\u21B6"),
         (showSuggestions && cell.filteredSuggestions && cell.filteredSuggestions.length)
@@ -1450,7 +1457,7 @@ class ScrollTableCell extends React.Component {
       if (previousCell != null && previousCell.label != cell.label) {
         className += " scrolltable-cell-diff";
       }
-      return h("td", {className, style: {minWidth: colWidth + "px", height: rowHeight + "px"}},
+      return h("td", {className, style: cellStyle},
         cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("div", {style: {height: "100%"}, onDoubleClick: this.onTryEdit}, cellLabel),
         cell.showMenu ? h("div", {className: "pop-menu"},
           cell.links.map((l, idx) => {

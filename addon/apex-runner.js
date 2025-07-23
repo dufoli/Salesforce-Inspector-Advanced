@@ -14,19 +14,6 @@ class Model {
       {name: "LogLength", title: "Length"},
       {name: "LogUser", hidden: true},
     ]});
-    this.resultTableCallback = (d) => {
-      if (d != null) {
-        let c = d.columnIdx.get("LogLength");
-        //skip header line
-        for (let i = 1; i < d.table.length; i++) {
-          const row = d.table[i];
-          if (row[c]){
-            row[c] = makeReadableSize(row[c]);
-          }
-        }
-      }
-      this.tableModel.dataChange(d);
-    };
     this.tableJobModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
       {name: "JobType", title: "Job type"},
       {name: "ApexClass", hidden: true},
@@ -56,22 +43,7 @@ class Model {
       {name: "NumLinesCovered", title: "Lines covered"},
       {name: "NumLinesUncovered", title: "Lines uncovered"}
     ]});
-    this.resultCoverageTableCallback = (d) => {
-      if (d != null){
-        let c = d.header.length;
-        d.columnIdx.set("Coverage", c);
-        d.header[c] = "Coverage";
-        d.colVisibilities.push(true);
-        //skip header line
-        for (let i = 1; i < d.table.length; i++) {
-          const row = d.table[i];
-          let NumLinesCovered = row[d.columnIdx.get("NumLinesCovered")];
-          let NumLinesUncovered = row[d.columnIdx.get("NumLinesUncovered")];
-          row[c] = Math.floor((NumLinesCovered * 100) / (NumLinesCovered + NumLinesUncovered)) + "%";
-        }
-      }
-      this.tableCoverageModel.dataChange(d);
-    };
+    this.resultsFilter = "";
     this.editor = null;
     this.historyOffset = -1;
     this.runningTestId = null;
@@ -160,7 +132,17 @@ class Model {
 
   }
   updatedLogs() {
-    this.resultTableCallback(this.logs);
+    if (this.logs != null) {
+      let c = this.logs.columnIdx.get("LogLength");
+      //skip header line
+      for (let i = 1; i < this.logs.table.length; i++) {
+        const row = this.logs.table[i];
+        if (row[c]){
+          row[c] = makeReadableSize(row[c]);
+        }
+      }
+    }
+    this.tableModel.dataChange(this.logs);
   }
   updatedJobs() {
     this.tableJobModel.dataChange(this.jobs);
@@ -170,16 +152,26 @@ class Model {
   }
   updatedCoverages() {
     if (this.coverages != null){
-      let c = this.coverages.header.length;
-      this.coverages.columnIdx.set("Coverage", c);
-      this.coverages.header[c] = "Coverage";
-      this.coverages.colVisibilities.push(true);
+      let c;
+      if (this.coverages.columnIdx.has("Coverage")) {
+        c = this.coverages.columnIdx.get("Coverage");
+      } else {
+        c = this.coverages.header.length;
+        this.coverages.columnIdx.set("Coverage", c);
+        this.coverages.header[c] = "Coverage";
+        this.coverages.colVisibilities.push(true);
+        this.coverages.bgColors = new Map();
+      }
       //skip header line
       for (let i = 1; i < this.coverages.table.length; i++) {
         const row = this.coverages.table[i];
         let NumLinesCovered = row[this.coverages.columnIdx.get("NumLinesCovered")];
         let NumLinesUncovered = row[this.coverages.columnIdx.get("NumLinesUncovered")];
-        row[c] = Math.floor((NumLinesCovered * 100) / (NumLinesCovered + NumLinesUncovered)) + "%";
+        let pct = Math.floor((NumLinesCovered * 100) / (NumLinesCovered + NumLinesUncovered));
+        if (pct < 75) {
+          this.coverages.bgColors.set(`${i}-${c}`, "Salmon");
+        }
+        row[c] = pct + "%";
       }
     }
     this.tableCoverageModel.dataChange(this.coverages);
@@ -1119,7 +1111,25 @@ class Model {
         vm.logs = null;
       });
   }
-
+  setResultsFilter(value) {
+    this.resultsFilter = value;
+    if (this.jobs) {
+      this.jobs.updateVisibility(value);
+      this.updatedJobs();
+    }
+    if (this.logs) {
+      this.logs.updateVisibility(value);
+      this.updatedLogs();
+    }
+    if (this.tests) {
+      this.tests.updateVisibility(value);
+      this.updatedTests();
+    }
+    if (this.coverages) {
+      this.coverages.updateVisibility(value);
+      this.updatedCoverages();
+    }
+  }
   recalculateSize() {
     // Investigate if we can use the IntersectionObserver API here instead, once it is available.
     this.tableModel.viewportChange();
@@ -1156,6 +1166,7 @@ class App extends React.Component {
     this.onTabSelect = this.onTabSelect.bind(this);
     this.runTests = this.runTests.bind(this);
     this.deleteAllLog = this.deleteAllLog.bind(this);
+    this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
 
     this.state = {
       selectedTabId: 1
@@ -1344,6 +1355,11 @@ class App extends React.Component {
       model.didUpdate();
     }
   }
+  onResultsFilterInput(e) {
+    let {model} = this.props;
+    model.setResultsFilter(e.target.value);
+    model.didUpdate();
+  }
   openEmptyLog() {
     let queryEmptyLogArgs = new URLSearchParams();
     let {model} = this.props;
@@ -1485,7 +1501,6 @@ class App extends React.Component {
       ),
       h("div", {className: "area", id: "result-area"},
         h("div", {className: "result-bar"},
-          h("h1", {}, "Execute Result"),
           h("div", {className: "slds-tabs_default flex-area", style: {height: "inherit"}},
             h("ul", {className: "options-tab-container slds-tabs_default__nav", role: "tablist"},
               h("li", {className: "options-tab slds-text-align_center slds-tabs_default__item" + (this.state.selectedTabId === 1 ? " slds-is-active" : ""), title: "Logs", tabIndex: 1, role: "presentation", onClick: this.onTabSelect},
@@ -1503,6 +1518,7 @@ class App extends React.Component {
             ),
           ),
           h("span", {className: "result-status flex-right"},
+            h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput}),
             h("span", {}, model.executeStatus),
             h("button", {className: "cancel-btn", disabled: !model.isWorking, onClick: this.onStopExecute}, "Stop polling logs"),
             h("button", {onClick: this.openEmptyLog}, "Open empty logs"),
