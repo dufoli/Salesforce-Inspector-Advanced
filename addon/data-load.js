@@ -272,9 +272,315 @@ interface Table {
 
 let h = React.createElement;
 
+export class RecordTable {
+  constructor(setStatus, vm) {
+    this.records = [];
+    this.table = [];
+    this.rowVisibilities = [];
+    this.colVisibilities = [true];
+    this.countOfVisibleRecords = null;
+    this.isTooling = false;
+    this.totalSize = -1;
+    this.columnIdx = new Map();
+    this.header = ["_"];
+    this.columnType = new Map();
+    this.skipTechnicalColumns = localStorage.getItem("skipTechnicalColumns") !== "false";
+    this.dateFormat = localStorage.getItem("dateFormat");
+    this.datetimeFormat = localStorage.getItem("datetimeFormat");
+    this.decimalFormat = localStorage.getItem("decimalFormat");
+    this.convertToLocalTime = localStorage.getItem("convertToLocalTime") != "false";
+    if (this.decimalFormat != "." && this.decimalFormat != ",") {
+      this.decimalFormat = ".";
+      localStorage.setItem("decimalFormat", this.decimalFormat);
+    }
+    this.filter = "";
+    this.setStatus = setStatus;
+    this.vm = vm;
+  }
+  convertDate(field, format) {
+    if (!field) {
+      return "";
+    }
+    let dt = new Date(field);
+    let pad = (n, d) => ("000" + n).slice(-d);
+    if (!this.convertToLocalTime) {
+      let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
+      dt.setMinutes(dt.getMinutes() + tzOffset);
+    }
+    let formatedDate = "";
+    let remaining = format;
+    while (remaining) {
+      if (remaining.match(/^yyyy/i)) {
+        remaining = remaining.substring(4);
+        formatedDate += dt.getFullYear();
+      } else if (remaining.match(/^MM/)) {
+        remaining = remaining.substring(2);
+        formatedDate += ("0" + (dt.getMonth() + 1)).slice(-2);
+      } else if (remaining.match(/^dd/i)) {
+        remaining = remaining.substring(2);
+        formatedDate += ("0" + dt.getDate()).slice(-2);
+      } else if (remaining.match(/^HH/)) {
+        remaining = remaining.substring(2);
+        formatedDate += ("0" + dt.getHours()).slice(-2);
+      } else if (remaining.match(/^mm/)) {
+        remaining = remaining.substring(2);
+        formatedDate += ("0" + dt.getMinutes()).slice(-2);
+      } else if (remaining.match(/^ss/)) {
+        remaining = remaining.substring(2);
+        formatedDate += ("0" + dt.getSeconds()).slice(-2);
+      } else if (remaining.match(/^SSS/)) {
+        remaining = remaining.substring(3);
+        formatedDate += ("00" + dt.getMilliseconds()).slice(-3);
+      } else if (remaining.match(/^\+/)) { //+0000
+        remaining = remaining.substring(1);
+        formatedDate += (dt.getTimezoneOffset() <= 0 ? "+" : "-");
+      } else if (remaining.match(/^FF/)) { //+0000
+        remaining = remaining.substring(2);
+        if (this.convertToLocalTime) {
+          formatedDate += pad(Math.floor(Math.abs(dt.getTimezoneOffset()) / 60), 2);
+        } else {
+          formatedDate += "00";
+        }
+      } else if (remaining.match(/^ff/)) {
+        remaining = remaining.substring(2);
+        if (this.convertToLocalTime) {
+          formatedDate += pad(Math.abs(dt.getTimezoneOffset()) % 60, 2);
+        } else {
+          formatedDate += "00";
+        }
+      } else {
+        formatedDate += remaining[0];
+        remaining = remaining.substring(1);
+      }
+    }
+    return formatedDate;
+  }
+  cellToString(cell) {
+    if (cell == null) {
+      return "";
+    } else if (typeof cell == "object" && cell.attributes && cell.attributes.type) {
+      return "[" + cell.attributes.type + "]";
+    } else {
+      return "" + cell;
+    }
+  }
+  csvSerialize(separator) {
+    return this.getVisibleTable().map(row => row.map(cell => "\"" + this.cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
+  }
+  csvIdSerialize(separator) {
+    let idIdx = this.table[0].findIndex(header => header.toLowerCase() === "id");
+    return this.getVisibleTable().map(row => row.filter((c, i) => (i == 0 || i == idIdx)).map(cell => "\"" + this.cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
+  }
+  isVisible(row) {
+    return !this.filter || row.some(cell => this.cellToString(cell).toLowerCase().includes(this.filter.toLowerCase()));
+  }
+  async discoverQueryColumns(record, vm) {
+    let fields = vm.columnIndex.fields;
+    let sobjectDescribe = null;
+    //TODO we will need parent model of rt maybe
+    if (record.attributes && record.attributes.type) {
+      let sobjectName = record.attributes.type;
+      //TODO maybe we will need to wait that cache is already filled on describe
+      sobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, sobjectName).sobjectDescribe;
+    }
+    for (let field of fields) {
+      let fieldName = "";
+      let fieldType = "";
+      if (field.name) {
+        let fieldNameSplitted = field.name.split(".");
+        let subRecord = record;
+        let currentSobjectDescribe = sobjectDescribe;
+        for (let i = 0; i < fieldNameSplitted.length; i++) {
+          const currentFieldName = fieldNameSplitted[i];
+          // 1. try to collect name with describe
+          if (currentSobjectDescribe) {
+            let arr = currentSobjectDescribe.fields
+              .filter(sobjField => sobjField.relationshipName && sobjField.relationshipName.toLowerCase() == currentFieldName.toLowerCase())
+              .map(sobjField => (sobjField));
+            if (arr.length > 0) {
+              if (arr[0].referenceTo) {
+                //only take first referenceTo
+                currentSobjectDescribe = await new Promise(resolve =>
+                  vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0], resolve));
+
+                //currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0]).sobjectDescribe;
+                fieldName = fieldName ? fieldName + "." + arr[0].relationshipName : arr[0].relationshipName;
+                if (!this.columnType.has(fieldName)) {
+                  this.columnType.set(fieldName, arr[0].type);
+                }
+                continue;
+              }
+            }
+            arr = currentSobjectDescribe.fields
+              .filter(sobjField => sobjField.name.toLowerCase() == currentFieldName.toLowerCase())
+              .map(sobjField => (sobjField));
+            if (arr.length > 0) {
+              fieldName = fieldName ? fieldName + "." + arr[0].name : arr[0].name;
+              fieldType = arr[0].type;
+              if (!this.columnType.has(fieldName)) {
+                this.columnType.set(fieldName, fieldType);
+              }
+              break;
+            }
+          }
+          // 2. try to collect name with record structure
+          for (let f in subRecord) {
+            if (f && currentFieldName && f.toLowerCase() == currentFieldName.toLowerCase()) {
+              subRecord = subRecord[f];
+              fieldName = fieldName ? fieldName + "." + f : f;
+              break;
+            }
+          }
+        }
+      }
+      if (fieldName && !this.columnIdx.has(fieldName)) {
+        let c = this.header.length;
+        this.columnIdx.set(fieldName, c);
+        for (let row of this.table) {
+          row.push(undefined);
+        }
+        this.header[c] = fieldName;
+        // hide object column
+        this.colVisibilities.push((!field.fields));
+        if (fieldName.includes(".")) {
+          let splittedField = fieldName.split(".");
+          splittedField.slice(0, splittedField.length - 1).map(col => {
+            if (!this.skipTechnicalColumns && !this.columnIdx.has(col)) {
+              let c = this.header.length;
+              this.columnIdx.set(col, c);
+              for (let row of this.table) {
+                row.push(undefined);
+              }
+              this.header[c] = col;
+              //hide parent column
+              this.colVisibilities.push((false));
+            }
+          });
+        }
+      }
+    }
+  }
+  discoverColumns(record, prefix, row) {
+    for (let field in record) {
+      if (field == "attributes") {
+        continue;
+      }
+      let column = prefix + field;
+      //remove totalsize, done and records column
+      //start
+      if (typeof record[field] == "object" && record[field] != null) {
+        if (record[field]["records"] != null) {
+          record[field] = record[field]["records"];
+        } else if (this.skipTechnicalColumns && record[field] != null) {
+          this.discoverColumns(record[field], column + ".", row);
+          continue;
+        }
+      }
+      if (Array.isArray(record[field])) {
+        this.discoverColumns(record[field], column + ".", row);
+        continue;
+      }
+      //end
+      let c;
+      if (this.columnIdx.has(column)) {
+        c = this.columnIdx.get(column);
+      } else {
+        c = this.header.length;
+        this.columnIdx.set(column, c);
+        for (let r of this.table) {
+          r.push(undefined);
+        }
+        this.header[c] = column;
+        this.colVisibilities.push(true);
+      }
+      if (this.columnType.get(field) == "date" && this.dateFormat) {
+        row[c] = this.convertDate(record[field], this.dateFormat);
+      } else if (this.columnType.get(field) == "datetime" && this.datetimeFormat) {
+        row[c] = this.convertDate(record[field], this.datetimeFormat);
+      } else if (this.columnType.get(field) == "datetime" && this.convertToLocalTime) {
+        row[c] = this.convertDtToLocalTime(record[field]);
+      } else if ((this.columnType.get(field) == "decimal" || this.columnType.get(field) == "currency") && this.decimalFormat && this.decimalFormat != ".") {
+        row[c] = record[field] ? record[field].toString().replace(".", this.decimalFormat) : record[field];
+      } else {
+        row[c] = record[field];
+      }
+      if (typeof record[field] == "object" && record[field] != null) {
+        this.discoverColumns(record[field], column + ".", row);
+      }
+    }
+  }
+  convertDtToLocalTime(field) {
+    if (!field) {
+      return "";
+    }
+    let dt = new Date(field);
+    let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
+    dt.setMinutes(dt.getMinutes() - tzOffset);
+    let finalDate = dt.toISOString().replace("Z", "");
+    finalDate += (tzOffset > 0 ? "-" : "+");
+    tzOffset = Math.abs(tzOffset);
+    let offsetHours = Math.floor(tzOffset / 60);
+    let offsetMinutes = tzOffset % 60;
+    finalDate += String(offsetHours).padStart(2, "0");
+    finalDate += String(offsetMinutes).padStart(2, "0");
+    return finalDate;
+  }
+  setFilter(fltr) {
+    this.filter = fltr;
+  }
+  async addToTable(expRecords) {
+    this.records = this.records.concat(expRecords);
+    if (this.table.length == 0 && expRecords.length > 0) {
+      this.table.push(this.header);
+      this.rowVisibilities.push(true);
+    }
+    for (let record of expRecords) {
+      let row = new Array(this.header.length);
+      row[0] = record;
+      this.table.push(row);
+      this.rowVisibilities.push(this.isVisible(row));
+      if (this.vm){
+        await this.discoverQueryColumns(record, this.vm);
+      }
+      this.discoverColumns(record, "", row);
+    }
+  }
+  resetTable() {
+    this.records = [];
+    this.table = [];
+    this.columnIdx = new Map();
+    this.header = ["_"];
+    this.rowVisibilities = [];
+    this.totalSize = -1;
+  }
+
+  updateVisibility(fltr) {
+    this.filter = fltr;
+    let countOfVisibleRecords = 0;
+    for (let r = 1/* always show header */; r < this.table.length; r++) {
+      this.rowVisibilities[r] = this.isVisible(this.table[r]);
+      if (this.isVisible(this.table[r])) countOfVisibleRecords++;
+    }
+    this.countOfVisibleRecords = countOfVisibleRecords;
+    if (this.setStatus) {
+      this.setStatus("Filtered " + countOfVisibleRecords + " records out of " + this.records.length + " records");
+    }
+  }
+  getVisibleTable() {
+    if (this.filter) {
+      let filteredTable = [];
+      for (let i = 0; i < this.table.length; i++) {
+        if (this.rowVisibilities[i]) { filteredTable.push(this.table[i]); }
+      }
+      return filteredTable;
+    }
+    return this.table;
+  }
+}
 export class TableModel {
-  constructor(sfHost, reactCallback) {
+  constructor(sfHost, reactCallback, options = {}) {
     this.reactCallback = reactCallback;
+    this.options = options;
     this.headerCallout = localStorage.getItem("createUpdateRestCalloutHeaders") ? JSON.parse(localStorage.getItem("createUpdateRestCalloutHeaders")) : "{}";
     this.sfHost = sfHost;
     this.data = null;
@@ -708,6 +1014,9 @@ export class TableModel {
       if (this.colVisible[c] == 0) {
         continue;
       }
+      if (this.options.columns && this.options.columns.find(co => co.name == this.data.table[0][c])?.title) {
+        head[c] = this.options.columns.find(co => co.name == this.data.table[0][c]).title;
+      }
       this.header.push({name: head[c], idx: c, id: this.header.length});
     }
     this.rows = [];
@@ -833,7 +1142,11 @@ export class TableModel {
         if (c < this.firstColIdx) {
           this.firstColLeft += visibilityChange * this.colWidths[c];
         }
-        this.colVisible[c] = newVisible;
+        if (this.options.columns && this.options.columns.find(co => co.name == this.data.table[0][c])?.hidden) {
+          this.colVisible[c] = 0;
+        } else {
+          this.colVisible[c] = newVisible;
+        }
       }
       this.state.skipRecalculate = false;
       this.renderData({force: true});

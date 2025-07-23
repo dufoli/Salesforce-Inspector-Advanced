@@ -1,7 +1,7 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {Enumerable, DescribeInfo, copyToClipboard, ScrollTable, TableModel, s, Editor, QueryHistory} from "./data-load.js";
+import {Enumerable, DescribeInfo, copyToClipboard, ScrollTable, TableModel, s, Editor, QueryHistory, RecordTable} from "./data-load.js";
 import {csvParse} from "./csv-parse.js";
 
 class Model {
@@ -111,7 +111,7 @@ class Model {
       return;
     }
     // Recalculate visibility
-    this.exportedData.updateVisibility();
+    this.exportedData.updateVisibility(value);
     this.updatedExportedData();
   }
   setQueryName(value) {
@@ -1692,7 +1692,7 @@ class Model {
   }
   doExport() {
     let vm = this; // eslint-disable-line consistent-this
-    let exportedData = new RecordTable(vm);
+    let exportedData = new RecordTable(st => { vm.exportStatus = st; }, vm);
     exportedData.isTooling = vm.queryTooling;
     exportedData.describeInfo = vm.describeInfo;
     exportedData.sfHost = vm.sfHost;
@@ -1841,7 +1841,7 @@ class Model {
   }
   doQueryPlan(){
     let vm = this; // eslint-disable-line consistent-this
-    let exportedData = new RecordTable(vm);
+    let exportedData = new RecordTable(st => { vm.exportStatus = st; }, vm);
 
     vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?explain=" + encodeURIComponent(vm.editor.value)).then(async res => {
       await exportedData.addToTable(res.plans);
@@ -1865,294 +1865,6 @@ class Model {
     // Investigate if we can use the IntersectionObserver API here instead, once it is available.
     this.tableModel.viewportChange();
   }
-}
-
-function RecordTable(vm) {
-  let columnIdx = new Map();
-  let columnType = new Map();
-  let header = ["_"];
-  let skipTechnicalColumns = localStorage.getItem("skipTechnicalColumns") !== "false";
-  let dateFormat = localStorage.getItem("dateFormat");
-  let datetimeFormat = localStorage.getItem("datetimeFormat");
-  let decimalFormat = localStorage.getItem("decimalFormat");
-  let convertToLocalTime = localStorage.getItem("convertToLocalTime") != "false";
-  if (decimalFormat != "." && decimalFormat != ",") {
-    decimalFormat = ".";
-    localStorage.setItem("decimalFormat", decimalFormat);
-  }
-  // try to respect the right order of column by matching query column and record column
-  async function discoverQueryColumns(record, fields) {
-    let sobjectDescribe = null;
-    //TODO we will need parent model of rt maybe
-    if (record.attributes && record.attributes.type) {
-      let sobjectName = record.attributes.type;
-      //TODO maybe we will need to wait that cache is already filled on describe
-      sobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, sobjectName).sobjectDescribe;
-    }
-    for (let field of fields) {
-      let fieldName = "";
-      let fieldType = "";
-      if (field.name) {
-        let fieldNameSplitted = field.name.split(".");
-        let subRecord = record;
-        let currentSobjectDescribe = sobjectDescribe;
-        for (let i = 0; i < fieldNameSplitted.length; i++) {
-          const currentFieldName = fieldNameSplitted[i];
-          // 1. try to collect name with describe
-          if (currentSobjectDescribe) {
-            let arr = currentSobjectDescribe.fields
-              .filter(sobjField => sobjField.relationshipName && sobjField.relationshipName.toLowerCase() == currentFieldName.toLowerCase())
-              .map(sobjField => (sobjField));
-            if (arr.length > 0) {
-              if (arr[0].referenceTo) {
-                //only take first referenceTo
-                currentSobjectDescribe = await new Promise(resolve =>
-                  vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0], resolve));
-
-                //currentSobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, arr[0].referenceTo[0]).sobjectDescribe;
-                fieldName = fieldName ? fieldName + "." + arr[0].relationshipName : arr[0].relationshipName;
-                if (!columnType.has(fieldName)) {
-                  columnType.set(fieldName, arr[0].type);
-                }
-                continue;
-              }
-            }
-            arr = currentSobjectDescribe.fields
-              .filter(sobjField => sobjField.name.toLowerCase() == currentFieldName.toLowerCase())
-              .map(sobjField => (sobjField));
-            if (arr.length > 0) {
-              fieldName = fieldName ? fieldName + "." + arr[0].name : arr[0].name;
-              fieldType = arr[0].type;
-              if (!columnType.has(fieldName)) {
-                columnType.set(fieldName, fieldType);
-              }
-              break;
-            }
-          }
-          // 2. try to collect name with record structure
-          for (let f in subRecord) {
-            if (f && currentFieldName && f.toLowerCase() == currentFieldName.toLowerCase()) {
-              subRecord = subRecord[f];
-              fieldName = fieldName ? fieldName + "." + f : f;
-              break;
-            }
-          }
-        }
-      }
-      if (fieldName && !columnIdx.has(fieldName)) {
-        let c = header.length;
-        columnIdx.set(fieldName, c);
-        for (let row of rt.table) {
-          row.push(undefined);
-        }
-        header[c] = fieldName;
-        // hide object column
-        rt.colVisibilities.push((!field.fields));
-        if (fieldName.includes(".")) {
-          let splittedField = fieldName.split(".");
-          splittedField.slice(0, splittedField.length - 1).map(col => {
-            if (!skipTechnicalColumns && !columnIdx.has(col)) {
-              let c = header.length;
-              columnIdx.set(col, c);
-              for (let row of rt.table) {
-                row.push(undefined);
-              }
-              header[c] = col;
-              //hide parent column
-              rt.colVisibilities.push((false));
-            }
-          });
-        }
-      }
-    }
-  }
-  function discoverColumns(record, prefix, row) {
-    for (let field in record) {
-      if (field == "attributes") {
-        continue;
-      }
-      let column = prefix + field;
-      //remove totalsize, done and records column
-      if (typeof record[field] == "object" && record[field] != null) {
-        if (record[field]["records"] != null) {
-          record[field] = record[field]["records"];
-        } else if (skipTechnicalColumns && record[field] != null) {
-          discoverColumns(record[field], column + ".", row);
-          continue;
-        }
-      }
-      if (Array.isArray(record[field])) {
-        discoverColumns(record[field], column + ".", row);
-        continue;
-      }
-      if (typeof record[field] == "object" && columnType.get(column) == "reference" && record[field] == null && skipTechnicalColumns) {
-        console.log("skip column " + column);
-        console.log(columnType.get(column));
-        continue;
-      }
-      let c;
-      if (columnIdx.has(column)) {
-        c = columnIdx.get(column);
-      } else {
-        c = header.length;
-        columnIdx.set(column, c);
-        for (let row of rt.table) {
-          row.push(undefined);
-        }
-        header[c] = column;
-        rt.colVisibilities.push(true);
-      }
-      if (columnType.get(field) == "date" && dateFormat) {
-        row[c] = convertDate(record[field], dateFormat);
-      } else if (columnType.get(field) == "datetime" && datetimeFormat) {
-        row[c] = convertDate(record[field], datetimeFormat);
-      } else if (columnType.get(field) == "datetime" && convertToLocalTime) {
-        row[c] = convertDtToLocalTime(record[field]);
-      } else if ((columnType.get(field) == "decimal" || columnType.get(field) == "currency") && decimalFormat && decimalFormat != ".") {
-        row[c] = record[field] ? record[field].toString().replace(".", decimalFormat) : record[field];
-      } else {
-        row[c] = record[field];
-      }
-      if (typeof record[field] == "object" && record[field] != null) {
-        discoverColumns(record[field], column + ".", row);
-      }
-    }
-  }
-  function convertDtToLocalTime(field) {
-    if (!field) {
-      return "";
-    }
-    let dt = new Date(field);
-    let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
-    dt.setMinutes(dt.getMinutes() - tzOffset);
-    let finalDate = dt.toISOString().replace("Z", "");
-    finalDate += (tzOffset > 0 ? "-" : "+");
-    tzOffset = Math.abs(tzOffset);
-    let offsetHours = Math.floor(tzOffset / 60);
-    let offsetMinutes = tzOffset % 60;
-    finalDate += String(offsetHours).padStart(2, "0");
-    finalDate += String(offsetMinutes).padStart(2, "0");
-    return finalDate;
-  }
-  function convertDate(field, format) {
-    if (!field) {
-      return "";
-    }
-    let dt = new Date(field);
-    let pad = (n, d) => ("000" + n).slice(-d);
-    if (!convertToLocalTime) {
-      let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
-      dt.setMinutes(dt.getMinutes() + tzOffset);
-    }
-    let formatedDate = "";
-    let remaining = format;
-    while (remaining) {
-      if (remaining.match(/^yyyy/i)) {
-        remaining = remaining.substring(4);
-        formatedDate += dt.getFullYear();
-      } else if (remaining.match(/^MM/)) {
-        remaining = remaining.substring(2);
-        formatedDate += ("0" + (dt.getMonth() + 1)).slice(-2);
-      } else if (remaining.match(/^dd/i)) {
-        remaining = remaining.substring(2);
-        formatedDate += ("0" + dt.getDate()).slice(-2);
-      } else if (remaining.match(/^HH/)) {
-        remaining = remaining.substring(2);
-        formatedDate += ("0" + dt.getHours()).slice(-2);
-      } else if (remaining.match(/^mm/)) {
-        remaining = remaining.substring(2);
-        formatedDate += ("0" + dt.getMinutes()).slice(-2);
-      } else if (remaining.match(/^ss/)) {
-        remaining = remaining.substring(2);
-        formatedDate += ("0" + dt.getSeconds()).slice(-2);
-      } else if (remaining.match(/^SSS/)) {
-        remaining = remaining.substring(3);
-        formatedDate += ("00" + dt.getMilliseconds()).slice(-3);
-      } else if (remaining.match(/^\+/)) { //+0000
-        remaining = remaining.substring(1);
-        formatedDate += (dt.getTimezoneOffset() <= 0 ? "+" : "-");
-      } else if (remaining.match(/^FF/)) { //+0000
-        remaining = remaining.substring(2);
-        if (convertToLocalTime) {
-          formatedDate += pad(Math.floor(Math.abs(dt.getTimezoneOffset()) / 60), 2);
-        } else {
-          formatedDate += "00";
-        }
-      } else if (remaining.match(/^ff/)) {
-        remaining = remaining.substring(2);
-        if (convertToLocalTime) {
-          formatedDate += pad(Math.abs(dt.getTimezoneOffset()) % 60, 2);
-        } else {
-          formatedDate += "00";
-        }
-      } else {
-        formatedDate += remaining[0];
-        remaining = remaining.substring(1);
-      }
-    }
-    return formatedDate;
-  }
-  function cellToString(cell) {
-    if (cell == null) {
-      return "";
-    } else if (typeof cell == "object" && cell.attributes && cell.attributes.type) {
-      return "[" + cell.attributes.type + "]";
-    } else {
-      return "" + cell;
-    }
-  }
-  let isVisible = (row, filter) => !filter || row.some(cell => cellToString(cell).toLowerCase().includes(filter.toLowerCase()));
-  let rt = {
-    records: [],
-    table: [],
-    rowVisibilities: [],
-    colVisibilities: [true],
-    countOfVisibleRecords: null,
-    isTooling: false,
-    totalSize: -1,
-    async addToTable(expRecords) {
-      rt.records = rt.records.concat(expRecords);
-      if (rt.table.length == 0 && expRecords.length > 0) {
-        rt.table.push(header);
-        rt.rowVisibilities.push(true);
-      }
-      let filter = vm.resultsFilter;
-      for (let record of expRecords) {
-        let row = new Array(header.length);
-        row[0] = record;
-        rt.table.push(row);
-        rt.rowVisibilities.push(isVisible(row, filter));
-        await discoverQueryColumns(record, vm.columnIndex.fields);
-        discoverColumns(record, "", row);
-      }
-    },
-    csvSerialize: separator => rt.getVisibleTable().map(row => row.map(cell => "\"" + cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n"),
-    csvIdSerialize(separator) {
-      let idIdx = rt.table[0].findIndex(header => header.toLowerCase() === "id");
-      return rt.getVisibleTable().map(row => row.filter((c, i) => (i == 0 || i == idIdx)).map(cell => "\"" + cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
-    },
-    updateVisibility() {
-      let filter = vm.resultsFilter;
-      let countOfVisibleRecords = 0;
-      for (let r = 1/* always show header */; r < rt.table.length; r++) {
-        rt.rowVisibilities[r] = isVisible(rt.table[r], filter);
-        if (isVisible(rt.table[r], filter)) countOfVisibleRecords++;
-      }
-      this.countOfVisibleRecords = countOfVisibleRecords;
-      vm.exportStatus = "Filtered " + countOfVisibleRecords + " records out of " + rt.records.length + " records";
-    },
-    getVisibleTable() {
-      if (vm.resultsFilter) {
-        let filteredTable = [];
-        for (let i = 0; i < rt.table.length; i++) {
-          if (rt.rowVisibilities[i]) { filteredTable.push(rt.table[i]); }
-        }
-        return filteredTable;
-      }
-      return rt.table;
-    }
-  };
-  return rt;
 }
 
 let h = React.createElement;

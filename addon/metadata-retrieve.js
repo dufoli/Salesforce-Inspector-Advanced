@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {RecordTable} from "./data-load.js";
 /* global initButton */
 
 
@@ -74,9 +75,6 @@ class Model {
     });
   }
 
-  csvSerialize(table, separator) {
-    return table.map(row => row.map(text => "\"" + ("" + (text == null ? "" : text)).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
-  }
   async downloadDataModel() {
     this.progress = "working";
     let query = "SELECT QualifiedApiName FROM EntityDefinition ORDER BY QualifiedApiName";
@@ -104,7 +102,7 @@ class Model {
     let BOM = "\uFEFF";
     let rt = new RecordTable();
     rt.addToTable(fieldsFesult.rows);
-    let bb = new Blob([BOM, this.csvSerialize(rt.table, separator)], {type: "text/csv;charset=utf-8"});
+    let bb = new Blob([BOM, rt.csvSerialize(separator)], {type: "text/csv;charset=utf-8"});
     downloadLink.href = window.URL.createObjectURL(bb);
     downloadLink.click();
     this.progress = "done";
@@ -448,63 +446,6 @@ class ObjectSelector extends React.Component {
       h("input", {type: "checkbox", checked: metadataObject.selected, onChange: this.onChange}),
       metadataObject.directoryName
     ));
-  }
-}
-
-class RecordTable {
-  /*
-  We don't want to build our own SOQL parser, so we discover the columns based on the data returned.
-  This means that we cannot find the columns of cross-object relationships, when the relationship field is null for all returned records.
-  We don't care, because we don't need a stable set of columns for our use case.
-  */
-  constructor() {
-    this.columnIdx = new Map();
-    this.header = ["_"];
-    this.records = [];
-    this.table = [];
-    this.rowVisibilities = [];
-    this.colVisibilities = [true];
-    this.countOfVisibleRecords = null;
-    this.isTooling = false;
-    this.totalSize = -1;
-  }
-  discoverColumns(record, prefix, row) {
-    for (let field in record) {
-      if (field == "attributes") {
-        continue;
-      }
-      let column = prefix + field;
-      let c;
-      if (this.columnIdx.has(column)) {
-        c = this.columnIdx.get(column);
-      } else {
-        c = this.header.length;
-        this.columnIdx.set(column, c);
-        for (let row of this.table) {
-          row.push(undefined);
-        }
-        this.header[c] = column;
-        this.colVisibilities.push(true);
-      }
-      row[c] = record[field];
-      if (typeof record[field] == "object" && record[field] != null) {
-        this.discoverColumns(record[field], column + ".", row);
-      }
-    }
-  }
-  addToTable(expRecords) {
-    this.records = this.records.concat(expRecords);
-    if (this.table.length == 0 && expRecords.length > 0) {
-      this.table.push(this.header);
-      this.rowVisibilities.push(true);
-    }
-    for (let record of expRecords) {
-      let row = new Array(this.header.length);
-      row[0] = record;
-      this.table.push(row);
-      this.rowVisibilities.push(true);
-      this.discoverColumns(record, "", row);
-    }
   }
 }
 

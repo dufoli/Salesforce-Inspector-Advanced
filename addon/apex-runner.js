@@ -1,17 +1,81 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {Enumerable, DescribeInfo, ScrollTable, TableModel, Editor, QueryHistory} from "./data-load.js";
+import {Enumerable, DescribeInfo, ScrollTable, TableModel, Editor, QueryHistory, RecordTable} from "./data-load.js";
 
 class Model {
   constructor({sfHost, args}) {
     this.sfHost = sfHost;
-    this.tableModel = new TableModel(sfHost, this.didUpdate.bind(this));
-    this.resultTableCallback = (d) => this.tableModel.dataChange(d);
-    this.tableJobModel = new TableModel(sfHost, this.didUpdate.bind(this));
-    this.resultJobTableCallback = (d) => this.tableJobModel.dataChange(d);
+    this.tableModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
+      {name: "StartTime", title: "Start time"},
+      {name: "LogLength", title: "Length"},
+      {name: "LogUser.Name", title: "User"},
+      {name: "LogLength", title: "Length"},
+      {name: "LogLength", title: "Length"},
+      {name: "LogUser", hidden: true},
+    ]});
+    this.resultTableCallback = (d) => {
+      if (d != null) {
+        let c = d.columnIdx.get("LogLength");
+        //skip header line
+        for (let i = 1; i < d.table.length; i++) {
+          const row = d.table[i];
+          if (row[c]){
+            row[c] = makeReadableSize(row[c]);
+          }
+        }
+      }
+      this.tableModel.dataChange(d);
+    };
+    this.tableJobModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
+      {name: "JobType", title: "Job type"},
+      {name: "ApexClass", hidden: true},
+      {name: "ApexClass.Name", title: "Apex class"},
+      {name: "CreatedBy", hidden: true},
+      {name: "CreatedBy.Name", title: "Created by"},
+      {name: "CompletedDate", title: "Completed at"},
+      {name: "CreatedDate", title: "Created at"},
+      {name: "ExtendedStatus", title: "Detail status"},
+      {name: "TotalJobItems", title: "Total"},
+      {name: "JobItemsProcessed", title: "Processed"},
+      {name: "NumberOfErrors", title: "Errors"},
+    ]});
+    this.tableTestModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
+      {name: "AsyncApexJobId", title: "Job id"},
+      {name: "ApexClass", hidden: true},
+      {name: "ApexClass.Name", title: "Apex class"},
+      {name: "MethodName", title: "Method"},
+      {name: "ApexTestRunResultId", hidden: true},
+      {name: "Outcome", title: "Outcome"},
+      {name: "Message", title: "Message"},
+      {name: "StackTrace", title: "Stack trace"}
+    ]});
+    this.tableCoverageModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
+      {name: "ApexClassOrTrigger", hidden: true},
+      {name: "ApexClassOrTrigger.Name", title: "ApexClass / Trigger"},
+      {name: "NumLinesCovered", title: "Lines covered"},
+      {name: "NumLinesUncovered", title: "Lines uncovered"}
+    ]});
+    this.resultCoverageTableCallback = (d) => {
+      if (d != null){
+        let c = d.header.length;
+        d.columnIdx.set("Coverage", c);
+        d.header[c] = "Coverage";
+        d.colVisibilities.push(true);
+        //skip header line
+        for (let i = 1; i < d.table.length; i++) {
+          const row = d.table[i];
+          let NumLinesCovered = row[d.columnIdx.get("NumLinesCovered")];
+          let NumLinesUncovered = row[d.columnIdx.get("NumLinesUncovered")];
+          row[c] = Math.floor((NumLinesCovered * 100) / (NumLinesCovered + NumLinesUncovered)) + "%";
+        }
+      }
+      this.tableCoverageModel.dataChange(d);
+    };
     this.editor = null;
     this.historyOffset = -1;
+    this.runningTestId = null;
+    this.testStatus = "PENDING";
     this.historyStack = [];//text + timestamp
     this.initialScript = "";
     this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => {
@@ -35,6 +99,8 @@ class Model {
     this.executeError = null;
     this.logs = null;
     this.jobs = null;
+    this.tests = null;
+    this.coverages = null;
     function compare(a, b) {
       return a.script == b.script;
     }
@@ -97,7 +163,26 @@ class Model {
     this.resultTableCallback(this.logs);
   }
   updatedJobs() {
-    this.resultJobTableCallback(this.jobs);
+    this.tableJobModel.dataChange(this.jobs);
+  }
+  updatedTests() {
+    this.tableTestModel.dataChange(this.tests);
+  }
+  updatedCoverages() {
+    if (this.coverages != null){
+      let c = this.coverages.header.length;
+      this.coverages.columnIdx.set("Coverage", c);
+      this.coverages.header[c] = "Coverage";
+      this.coverages.colVisibilities.push(true);
+      //skip header line
+      for (let i = 1; i < this.coverages.table.length; i++) {
+        const row = this.coverages.table[i];
+        let NumLinesCovered = row[this.coverages.columnIdx.get("NumLinesCovered")];
+        let NumLinesUncovered = row[this.coverages.columnIdx.get("NumLinesUncovered")];
+        row[c] = Math.floor((NumLinesCovered * 100) / (NumLinesCovered + NumLinesUncovered)) + "%";
+      }
+    }
+    this.tableCoverageModel.dataChange(this.coverages);
   }
   setscriptName(value) {
     this.scriptName = value;
@@ -850,6 +935,7 @@ class Model {
 
   async pollLogs(vm) {
     await this.queryLogsAndJobs(vm);
+    await this.queryTestResults(vm);
     let pollId = 1;
     let handshake = await sfConn.rest("/cometd/" + apiVersion, {
       method: "POST",
@@ -880,13 +966,17 @@ class Model {
         {
           "channel": "/meta/subscribe",
           "subscription": "/systemTopic/Logging",
-          "id": pollId.toString(),
+          "id": (pollId++).toString(),
+          "clientId": handshake.clientId
+        }, {
+          "channel": "/meta/subscribe",
+          "subscription": "/systemTopic/TestResult",
+          "id": (pollId++).toString(),
           "clientId": handshake.clientId
         }],
       bodyType: "json",
       headers: {}
     });
-    pollId++;
 
     if (subResponse == null || !Array.isArray(subResponse) || !subResponse[0].successful) {
       console.log("subscription failed");
@@ -916,6 +1006,22 @@ class Model {
         console.log("polling failed");
         return;
       }
+      /**
+     [
+    {
+        "clientId": "32o1j87opqgok6ekw51i9pev3sje",
+        "advice": {
+            "interval": 2000,
+            "multiple-clients": true,
+            "reconnect": "retry",
+            "timeout": 110000
+        },
+        "channel": "/meta/connect",
+        "id": "8",
+        "successful": true
+    }
+]
+     */
       let rspFailed = response.find(rsp => rsp == null || (rsp.data == null && !rsp.successful));
       if (rspFailed) {
         vm.executeStatus = "Error";
@@ -931,11 +1037,50 @@ class Model {
       if (response.find(rsp => rsp != null && rsp.data != null && rsp.channel == "/systemTopic/Logging")) {
         await this.queryLogsAndJobs(vm);
       }
-
-      //TODO table to query job in run
-      // SELECT Id, ApexClass.Name, JobType, CreatedDate, CompletedDate, Status, ExtendedStatus,JobItemsProcessed,LastProcessed,LastProcessedOffset,MethodName,NumberOfErrors,TotalJobItems FROM AsyncApexJob
-
+      if (response.find(rsp => rsp != null && rsp.data != null && rsp.channel == "/systemTopic/TestResult")) {
+        await this.queryTestResults(vm);
+      }
     }
+  }
+  async queryTestResults(vm) {
+    let tests;
+    let querytests;
+    if (this.runningTestId) {
+      tests = new RecordTable();
+      tests.describeInfo = vm.describeInfo;
+      tests.sfHost = vm.sfHost;
+      querytests = `SELECT AsyncApexJobId, ApexClass.Name,  MethodName, ApexTestRunResultId, Outcome, Message, StackTrace FROM ApexTestResult WHERE AsyncApexJobId = '${this.runningTestId}'`;
+      this.tests = null;
+    }
+    let coverages = new RecordTable();
+    coverages.describeInfo = vm.describeInfo;
+    coverages.sfHost = vm.sfHost;
+    let querycoverages = "SELECT ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered FROM ApexCodeCoverageAggregate WHERE ApexClassOrTriggerId != NULL AND ApexClassOrTrigger.Name != NULL AND (NumLinesCovered > 0 OR NumLinesUncovered > 0) AND NumLinesCovered != NULL AND NumLinesUncovered != NULL ORDER BY ApexClassOrTrigger.Name";
+    this.coverages = null;
+    vm.updatedCoverages();
+    if (this.runningTestId) {
+      vm.updatedTests();
+      await vm.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(querytests), {}), vm, tests, () => {
+        vm.tests = tests;
+        vm.updatedTests();
+      }).catch(error => {
+        console.error(error);
+        vm.isWorking = false;
+        vm.executeStatus = "Error";
+        vm.executeError = "UNEXPECTED EXCEPTION:" + error;
+        vm.tests = null;
+      });
+    }
+    await vm.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(querycoverages), {}), vm, coverages, () => {
+      vm.coverages = coverages;
+      vm.updatedCoverages();
+    }).catch(error => {
+      console.error(error);
+      vm.isWorking = false;
+      vm.executeStatus = "Error";
+      vm.executeError = "UNEXPECTED EXCEPTION:" + error;
+      vm.coverages = null;
+    });
   }
   async queryLogsAndJobs(vm) {
     let logs = new RecordTable();
@@ -979,99 +1124,11 @@ class Model {
     // Investigate if we can use the IntersectionObserver API here instead, once it is available.
     this.tableModel.viewportChange();
     this.tableJobModel.viewportChange();
-  }
-}
-
-function RecordTable() {
-  /*
-  We don't want to build our own SOQL parser, so we discover the columns based on the data returned.
-  This means that we cannot find the columns of cross-object relationships, when the relationship field is null for all returned records.
-  We don't care, because we don't need a stable set of columns for our use case.
-  */
-  let columnIdx = new Map();
-  let header = ["_"];
-  function makeReadableSize(size) {
-    let isize = parseInt(size);
-    if (isNaN(isize)){
-      return size + " kb";
-    } else if (isize > 1048576) {
-      return (isize / 1048576).toFixed(2) + " Mb";
-    } else if (isize > 1024) {
-      return (isize / 1024).toFixed(2) + " kb";
-    }
-    return isize + " b";
-  }
-  function discoverColumns(record, prefix, row) {
-    for (let field in record) {
-      if (field == "attributes") {
-        continue;
-      }
-      let column = prefix + field;
-      let c;
-      if (columnIdx.has(column)) {
-        c = columnIdx.get(column);
-      } else {
-        c = header.length;
-        columnIdx.set(column, c);
-        for (let row of rt.table) {
-          row.push(undefined);
-        }
-        //TODO move it elswhere is complicated but dirty to put it here so find better solution !
-        if (column == "StartTime") {
-          header[c] = "Start time";
-        } else if (column == "LogLength") {
-          header[c] = "Length";
-        } else if (column == "LogUser.Name") {
-          header[c] = "User";
-        } else {
-          header[c] = column;
-        }
-
-        //skip LogUser collumn for logs
-        rt.colVisibilities.push(column != "LogUser");
-      }
-      if (column == "LogLength") {
-        row[c] = makeReadableSize(record[field]);
-      } else {
-        row[c] = record[field];
-      }
-      if (typeof record[field] == "object" && record[field] != null) {
-        discoverColumns(record[field], column + ".", row);
-      }
+    if (this.testStatus != "PENDING") {
+      this.tableTestModel.viewportChange();
+      this.tableCoverageModel.viewportChange();
     }
   }
-  let rt = {
-    records: [],
-    table: [],
-    rowVisibilities: [],
-    colVisibilities: [true],
-    countOfVisibleRecords: null,
-    isTooling: false,
-    totalSize: -1,
-    addToTable(expRecords) {
-      rt.records = rt.records.concat(expRecords);
-      if (rt.table.length == 0 && expRecords.length > 0) {
-        rt.table.push(header);
-        rt.rowVisibilities.push(true);
-      }
-      for (let record of expRecords) {
-        let row = new Array(header.length);
-        row[0] = record;
-        rt.table.push(row);
-        rt.rowVisibilities.push(true);
-        discoverColumns(record, "", row);
-      }
-    },
-    resetTable() {
-      rt.records = [];
-      rt.table = [];
-      columnIdx = new Map();
-      header = ["_"];
-      rt.rowVisibilities = [];
-      rt.totalSize = -1;
-    }
-  };
-  return rt;
 }
 
 let h = React.createElement;
@@ -1097,6 +1154,8 @@ class App extends React.Component {
     this.onClick = this.onClick.bind(this);
     this.openEmptyLog = this.openEmptyLog.bind(this);
     this.onTabSelect = this.onTabSelect.bind(this);
+    this.runTests = this.runTests.bind(this);
+    this.deleteAllLog = this.deleteAllLog.bind(this);
 
     this.state = {
       selectedTabId: 1
@@ -1113,6 +1172,12 @@ class App extends React.Component {
     }
     if (model && model.tableJobModel) {
       model.tableJobModel.onClick();
+    }
+    if (model && model.testStatus != "PENDING" && model.tableTestModel) {
+      model.tableTestModel.onClick();
+    }
+    if (model && model.testStatus != "PENDING" && model.tableCoverageModel) {
+      model.tableCoverageModel.onClick();
     }
   }
   onSelectHistoryEntry(e) {
@@ -1214,6 +1279,70 @@ class App extends React.Component {
     let {model} = this.props;
     model.stopExecute();
     model.didUpdate();
+  }
+  deleteAllLog(e){
+    let {model} = this.props;
+    sfConn.rest(`/services/data/v${apiVersion}/query/?q=SELECT+Id+FROM+Apexlog`, {}).then(result => {
+      let separator = getSeparator();
+      let data = `"_"${separator}"Id"\r\n`;
+      data += result.records.map(r => `"[Apexlog]"${separator}"${r.Id}"`).join("\r\n");
+      let encodedData = window.btoa(data);
+      let args = new URLSearchParams();
+      args.set("host", model.sfHost);
+      args.set("data", encodedData);
+      window.open("data-import.html?" + args, getLinkTarget(e));
+    }).catch(error => {
+      console.error(error);
+    });
+  }
+  runTests() {
+    let {model} = this.props;
+    if (model.runningTestId) {
+      if (confirm("Are you sure you want to cancel running tests?")){
+        sfConn.rest(`/services/data/v${apiVersion}/query/?q=SELECT+Id,+ExtendedStatus,+Status+FROM+ApexTestQueueItem+WHERE+Status+!=+'Completed'+AND+ParentJobId+=+'${model.runningTestId}'`, {}).then(result => {
+          let composite = {"compositeRequest": result.records.map((r, i) => ({"method": "POST",
+            "url": `/services/data/v${apiVersion}/sobjects/ApexTestQueueItem/${r.Id}`,
+            "referenceId": `cancelTest${i}`,
+            "body": {"Status": "Aborted"}
+          }))};
+          sfConn.rest(`/services/data/v${apiVersion}/composite`, {method: "POST", body: composite, headers: {"Content-Type": "application/json"}}).then(() => {
+            model.runningTestId = null;
+          });
+        }).catch(error => {
+          console.error(error);
+        });
+      }
+      return;
+    }
+    if (confirm("Are you sure you want to run tests? This will run all tests in the org.")) {
+      model.testStatus = "STARTED";
+      let jsonBody = {
+        //"classNames": "comma-separated list of class names",
+        //"classids": "comma-separated list of class IDs",
+        //"suiteNames": "comma-separated list of test suite names",
+        //"suiteids": "comma-separated list of test suite IDs",
+        //"maxFailedTests": -1,
+        "testLevel": "RunLocalTests", //RunSpecifiedTests, RunAllTestsInOrg
+        //"skipCodeCoverage": "boolean value"
+      };
+      sfConn.rest("/services/data/v" + apiVersion + "/tooling/runTestsAsynchronous/", {method: "POST", body: jsonBody}).then(result => {
+        model.runningTestId = result;
+        model.testStatus = "RUNNING";
+      }).catch(error => {
+        if (error.message && error.message.startsWith("ALREADY_IN_PROCESS")) {
+          model.testStatus = error.message;
+          let qry = "SELECT Id, JobType, Status FROM AsyncApexJob WHERE JobType = 'TestRequest' and status IN ('Processing', 'Holding', 'Preparing')";
+          sfConn.rest(`/services/data/v${apiVersion}/query/?q=${encodeURIComponent(qry)}`, {}).then(result => {
+            if (result && result.records && result.records.length > 0) {
+              model.runningTestId = result;
+              model.testStatus = "RUNNING";
+            }
+          });
+        }
+        console.error(error);
+      });
+      model.didUpdate();
+    }
   }
   openEmptyLog() {
     let queryEmptyLogArgs = new URLSearchParams();
@@ -1364,6 +1493,12 @@ class App extends React.Component {
               ),
               h("li", {className: "options-tab slds-text-align_center slds-tabs_default__item" + (this.state.selectedTabId === 2 ? " slds-is-active" : ""), title: "Jobs", tabIndex: 2, role: "presentation", onClick: this.onTabSelect},
                 h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: 2, id: "tab-default-2__item"}, "Jobs")
+              ),
+              h("li", {className: "options-tab slds-text-align_center slds-tabs_default__item" + (this.state.selectedTabId === 3 ? " slds-is-active" : ""), title: "Test", tabIndex: 3, role: "presentation", onClick: this.onTabSelect},
+                h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: 3, id: "tab-default-3__item"}, "Tests")
+              ),
+              h("li", {className: "options-tab slds-text-align_center slds-tabs_default__item" + (this.state.selectedTabId === 4 ? " slds-is-active" : ""), title: "Code Converage", tabIndex: 4, role: "presentation", onClick: this.onTabSelect},
+                h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: 4, id: "tab-default-4__item"}, "Coverage")
               )
             ),
           ),
@@ -1371,6 +1506,8 @@ class App extends React.Component {
             h("span", {}, model.executeStatus),
             h("button", {className: "cancel-btn", disabled: !model.isWorking, onClick: this.onStopExecute}, "Stop polling logs"),
             h("button", {onClick: this.openEmptyLog}, "Open empty logs"),
+            h("button", {onClick: this.deleteAllLog, className: "delete-btn"}, "Delete all logs"),
+            h("button", {onClick: this.runTests, disabled: (model.testStatus == "STARTED")}, model.runningTestId ? "Stop Unit Tests" : "Run Unit Tests"),
           ),
         ),
         h("textarea", {className: "result-text", readOnly: true, value: model.executeError || "", hidden: model.executeError == null}),
@@ -1379,6 +1516,13 @@ class App extends React.Component {
         ),
         h("div", {className: "scrolltable-wrapper", hidden: (model.executeError != null || this.state.selectedTabId != 2)},
           h(ScrollTable, {model: model.tableJobModel})
+        ),
+        model.testStatus != "PENDING" && model.testStatus != "STARTED" && model.testStatus != "RUNNING" ? model.testStatus : "",
+        h("div", {className: "scrolltable-wrapper", hidden: (model.executeError != null || this.state.selectedTabId != 3)},
+          h(ScrollTable, {model: model.tableTestModel})
+        ),
+        h("div", {className: "scrolltable-wrapper", hidden: (model.executeError != null || this.state.selectedTabId != 4)},
+          h(ScrollTable, {model: model.tableCoverageModel})
         )
       )
     );
@@ -1405,4 +1549,30 @@ class App extends React.Component {
 
   });
 
+}
+function getLinkTarget(e) {
+  if (localStorage.getItem("openLinksInNewTab") == "true" || (e?.ctrlKey || e?.metaKey)) {
+    return "_blank";
+  } else {
+    return "_top";
+  }
+}
+
+function getSeparator() {
+  let separator = ",";
+  if (localStorage.getItem("csvSeparator")) {
+    separator = localStorage.getItem("csvSeparator");
+  }
+  return separator;
+}
+function makeReadableSize(size) {
+  let isize = parseInt(size);
+  if (isNaN(isize)){
+    return size + " kb";
+  } else if (isize > 1048576) {
+    return (isize / 1048576).toFixed(2) + " Mb";
+  } else if (isize > 1024) {
+    return (isize / 1024).toFixed(2) + " kb";
+  }
+  return isize + " b";
 }
