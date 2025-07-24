@@ -464,13 +464,21 @@ function initButton(sfHost, inInspector) {
       }, "*");
       rootEl.classList.add("insext-active");
       // These event listeners are only enabled when the popup is active to avoid interfering with Salesforce when not using the inspector
-      addEventListener("click", outsidePopupClick);
+      //addEventListener("click", outsidePopupClick);
+      addEventListener("popstate", onLocationChange);
+      addEventListener("mouseup", outsidePopupClick);
       popupEl.focus();
     }
     function closePopup() {
       rootEl.classList.remove("insext-active");
-      removeEventListener("click", outsidePopupClick);
+      //removeEventListener("click", outsidePopupClick);
+      removeEventListener("popstate", onLocationChange);
+      removeEventListener("mouseup", outsidePopupClick);
       popupEl.blur();
+    }
+    function onLocationChange(e) {
+      closePopup();
+      openPopup();
     }
     function outsidePopupClick(e) {
       // Close the popup when clicking outside it
