@@ -1,4 +1,4 @@
-let lastApiVersion = "63.0";
+let lastApiVersion = "64.0";
 if (localStorage.getItem("apiVersion") == lastApiVersion) {
   localStorage.removeItem("apiVersion");
   //do not keep if last version is selected in order to update to last vrsion on update of SFI.
