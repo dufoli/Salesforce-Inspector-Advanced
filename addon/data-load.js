@@ -1287,6 +1287,7 @@ class ScrollTableCell extends React.Component {
     this.onClick = this.onClick.bind(this);
     this.downloadFile = this.downloadFile.bind(this);
     this.copyToClipboard = this.copyToClipboard.bind(this);
+    this.abordJob = this.abordJob.bind(this);
     this.onCancelEdit = this.onCancelEdit.bind(this);
     this.onDataEditValueInput = this.onDataEditValueInput.bind(this);
     this.onFocus = this.onFocus.bind(this);
@@ -1313,14 +1314,16 @@ class ScrollTableCell extends React.Component {
   }
 
   abordJob(e){
-    let script = "System.abortJob('" + e.target.href + "')";
+    e.preventDefault();
+    let script = "System.abortJob('" + this.cell.recordId + "');";
     sfConn.rest("/services/data/v" + apiVersion + "/tooling/executeAnonymous/?anonymousBody=" + encodeURIComponent(script), {})
       .catch(error => { console.error(error); });
   }
   downloadFile(e){
-    sfConn.rest(e.target.href, {responseType: "text/csv"}).then(data => {
+    e.preventDefault();
+    sfConn.rest(this.cell.recordId, {responseType: "text/csv"}).then(data => {
       let downloadLink = document.createElement("a");
-      downloadLink.download = e.target.href.split("/")[6];
+      downloadLink.download = this.cell.recordId.split("/")[6];
       let BOM = "\uFEFF";
       let bb = new Blob([BOM, data], {type: "text/csv;charset=utf-8"});
       downloadLink.href = window.URL.createObjectURL(bb);
