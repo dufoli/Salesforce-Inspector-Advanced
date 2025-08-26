@@ -64,7 +64,22 @@ class LogParser {
             this.apexClassBody[n.lineNumber - 1].color = "#ff5555";
           }
         });
-        this.model.didUpdate();
+        this.model.didUpdate(() => {
+          if (this.model.apexLineNumber == null) {
+            return;
+          }
+          let offsetHeight = this.model.contentRef ? this.model.contentRef.offsetHeight : 0;
+          let scrollLogIdx = (this.model.apexLineNumber * this.model.lineHeight) - (offsetHeight / 2);
+          if (scrollLogIdx > 0 && scrollLogIdx < this.contentHeight - offsetHeight) {
+            if (this.model.lineNumbersRef != null) {
+              this.model.lineNumbersRef.scrollTop = scrollLogIdx;
+              //model.lineNumbersRef.scrollTo(0, scrollLogIdx);
+            }
+            if (this.model.contentRef) {
+              this.model.contentRef.scrollTop = scrollLogIdx;
+            }
+          }
+        });
       }
     });
   }
@@ -1170,8 +1185,23 @@ class Model {
     // URL parameters
     this.recordId = null;
     this.logParser = new LogParser(this);
-    this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
+    //this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys()); //this.logParser.lineCount = rowCount
     this.scroller = null;
+    this.bufferHeight = 500; // constant: The number of pixels to render above and below the current viewport
+    this.offsetHeight = 0;
+    this.filteredLines = []; //data.table
+    this.contentWidth = 0;//totalWidth
+    this.contentHeight = 0; //totalHeight
+    this.scrolled = null;
+    this.lineHeight = 20; // rowHeight
+    this.viewportStart = 0; //firstRowIdx  The index of the first rendered line
+    this.viewportEnd = 0; //lastRowIdx The index of the last rendered line
+    this.scrollTop = 0;
+    this.scrollLeft = 0;
+    this.lines = []; // rows
+    this.linesTop = 0;// firstRowTop The distance from the top of the table to the top of the first rendered row
+    this.linesBottom = 0; // lastRowTop The distance from the top of the table to the bottom of the last rendered row (the top of the row below the last rendered row)
+    this.scrolledHeight = 0;
 
     //full log text data
     this.logData = "";
@@ -1189,9 +1219,11 @@ class Model {
     this.resizeColumnpageX = null;
     this.resizeColumnWidth = null;
     this.resizeNextColumnWidth = null;
-    this.EnrichLog = [];
     this.timeout = null;
     this.selectedTabId = 1;
+    this.lineNumbersRef = null;
+    this.contentRef = null;
+    this.apexLineNumber = null;
 
     this.column = [
       {
@@ -1310,47 +1342,18 @@ class Model {
       })
       .catch(err => console.log("error handling failed", err));
   }
-  recalculculSearch() {
-    let searchIdx = 0;
-    let lastSearchIdx = 0;
-    this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
-    if (this.logSearch) {
-      this.EnrichLog = [];
-      searchIdx = this.logData.indexOf(this.logSearch);
-      while (searchIdx >= 0) {
-        if (lastSearchIdx < this.logData.length && lastSearchIdx != searchIdx) {
-          this.EnrichLog.push({value: this.logData.substring(lastSearchIdx, searchIdx)});
-        }
-        //handle case sensitive or not later but use substring instead model.logSearch to be sure to respect the case.
-        this.EnrichLog.push({value: this.logData.substring(searchIdx, searchIdx + this.logSearch.length), cls: "highlight"});
-        lastSearchIdx = searchIdx + this.logSearch.length;
-        searchIdx = this.logData.indexOf(this.logSearch, searchIdx + this.logSearch.length);
+  recalculFilter() {
+    this.filteredLines = [];
+    let lineNumber = 0;
+    for (let line of this.logParser.lines) {
+      if (!this.logFilter || line.indexOf(this.logFilter) >= 0) {
+        this.filteredLines.push({value: line, lineNumber});
+        //this.lineNumbers.push(lineNumber);
       }
-      if (lastSearchIdx < this.logData.length && lastSearchIdx != searchIdx) {
-        this.EnrichLog.push({value: this.logData.substring(lastSearchIdx)});
-      }
-    } else {
-      this.EnrichLog = [{value: this.logData}];
+      lineNumber++;
     }
-  }
-  recalculculFilter() {
-    if (this.logFilter) {
-      this.EnrichLog = [];
-      this.lineNumbers = [];
-      let lineNumber = 0;
-      let lines = this.logData.split("\n");
-      for (let line of lines) {
-        let searchIdx = line.indexOf(this.logFilter);
-        if (searchIdx >= 0) {
-          this.EnrichLog.push({value: line + "\n"});
-          this.lineNumbers.push(lineNumber);
-        }
-        lineNumber++;
-      }
-    } else {
-      this.EnrichLog = [{value: this.logData}];
-      this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
-    }
+    this.contentHeight = (this.filteredLines ? this.filteredLines.length : 0) * this.lineHeight;
+    this.renderData({force: true});
   }
   setLogSearch(value) {
     this.logSearch = value;
@@ -1362,7 +1365,7 @@ class Model {
       clearTimeout(this.timeout);
     }
     this.timeout = setTimeout(() => {
-      self.recalculculSearch();
+      //self.recalculculSearch();
       this.hideNodesBySearch(value);
       this.didUpdate();
     }, 500);
@@ -1383,7 +1386,7 @@ class Model {
       clearTimeout(this.timeout);
     }
     this.timeout = setTimeout(() => {
-      self.recalculculFilter();
+      self.recalculFilter();
       this.hideNodesByFilter(value);
       this.didUpdate();
     }, 500);
@@ -1394,9 +1397,77 @@ class Model {
     }
     this.scrollLog(0);
   }
+  setScrollerElement(scroller, scrolled) {
+    this.scrolled = scrolled;
+    this.scroller = scroller;
+  }
   setLogInput(logInput) {
     this.logInput = logInput;
   }
+  //called after render
+  viewportChange() {
+    if (this.scrollTop == this.scroller.scrollTop
+      && this.offsetHeight == this.scroller.offsetHeight
+    ) {
+      //this.state.skipRecalculate = true;
+      return;
+    }
+    this.renderData({force: false});
+  }
+
+
+  renderData({force}) {
+    this.scrollTop = this.scroller.scrollTop;
+    this.scrollLeft = this.scroller.scrollLeft;
+    this.offsetHeight = this.scroller.offsetHeight;
+    this.offsetWidth = this.scroller.offsetWidth;
+
+    if (this.filteredLines.length == 0) {
+      this.lines = [];
+      this.scrolledHeight = 0;
+      //this.state.skipRecalculate = true;
+      return;
+    }
+
+    if (!force && this.linesTop <= this.scrollTop && (this.linesBottom >= this.scrollTop + this.offsetHeight || this.viewportEnd == this.filteredLines.length)) {
+      if (this.scrolledHeight != this.contentHeight){
+        this.scrolledHeight = this.contentHeight;
+        //this.state.skipRecalculate = true;
+        this.didUpdate();
+      }
+      return;
+    }
+    //this.state.skipRecalculate = false;
+    while (this.linesTop < this.scrollTop - this.bufferHeight && this.viewportStart < this.filteredLines.length - 1) {
+      this.linesTop += this.lineHeight;
+      this.viewportStart++;
+    }
+    while (this.linesTop > this.scrollTop - this.bufferHeight && this.viewportStart > 0) {
+      this.viewportStart--;
+      this.linesTop -= this.lineHeight;
+    }
+
+    this.viewportEnd = this.viewportStart;
+    this.linesBottom = this.linesTop;
+    while (this.linesBottom < this.scrollTop + this.offsetHeight + this.bufferHeight && this.viewportEnd < this.filteredLines.length) {
+      this.linesBottom += this.lineHeight;
+      this.viewportEnd++;
+    }
+
+    this.lines = [];
+    this.scrolledHeight = this.contentHeight;
+
+    for (let r = (this.viewportStart > 0 ? this.viewportStart : 1); r < this.viewportEnd; r++) {
+
+
+      let row = this.filteredLines[r];
+      row.id = this.lines.length;
+      row.idx = r;
+      this.lines.push(row);
+    }
+    this.didUpdate();
+  }
+
   setSearchInput(searchInput) {
     this.searchInput = searchInput;
   }
@@ -1435,8 +1506,8 @@ class Model {
         vm.forceScroll = true;
       }
     }
-    this.didUpdate();
-    //this.logviewScrollLog();
+    let self = this;
+    this.didUpdate(() => self.logviewScrollLog());
   }
   scrollLog(searchIdx) {
     let vm = this; // eslint-disable-line consistent-this
@@ -1455,8 +1526,8 @@ class Model {
         vm.forceScroll = true;
       }
     }
-    this.didUpdate();
-    //this.logviewScrollLog();
+    let self = this;
+    this.didUpdate(() => self.logviewScrollLog());
   }
   startLoading() {
     if (this.recordId == null){
@@ -1569,9 +1640,22 @@ class Model {
 
   parseLog(data) {
     this.logData = data;
-    this.EnrichLog = [{value: data}];
     this.logParser.parseLog(data);
-    this.lineNumbers = Array.from(Array(this.logParser.lineCount).keys());
+    this.recalculFilter();
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    context.font = "13px monospace";//TODO font size
+    this.contentWidth = 0;
+    for (let i = 0; i < this.filteredLines.length; i++) {
+      const metrics = context.measureText(this.filteredLines[i].value);
+      if (metrics.width > this.contentWidth) {
+        this.contentWidth = Math.floor(metrics.width);
+      }
+    }
+    this.contentHeight = this.lineHeight * this.filteredLines.length;
+    this.renderData({force: true});
+    //this.contentHeight = this.filteredLines.length * (this.scrolled ? this.scrolled.style.lineHeight : 13); //13px is the default line height
+    this.didUpdate();
   }
 
   selectApexClassLine(idx) {
@@ -1588,7 +1672,7 @@ class Model {
     this.selectTab(1);
     this.logLine = logLine;
     this.logSearch = "";
-    this.recalculculSearch();
+    //this.recalculculSearch();
     this.hideNodesBySearch("");
     this.forceScroll = true;
     let self = this;
@@ -1597,24 +1681,24 @@ class Model {
   logviewScrollLog() {
     let logView = this.logData;
     let currentSearchIdx = this.searchIndex;
-    let rowHeight = 14;
-    let scrollerOffsetHeight = 0;
-    let totalHeight = (this.logParser ? this.logParser.lineCount : 0) * rowHeight;
+    //let scrollerOffsetHeight = 0;
+    //let contentHeight = (this.filteredLines ? this.filteredLines.length : 0) * this.lineHeight;
 
     if (this.scroller != null) {
-      scrollerOffsetHeight = this.scroller.offsetHeight;
+      //scrollerOffsetHeight = this.scroller.offsetHeight;
       if (this.logLine != -1 && this.forceScroll) {
-        let scrollLogIdx = (this.logLine * rowHeight) - (scrollerOffsetHeight / 2);
-        if (scrollLogIdx > 0 && scrollLogIdx < totalHeight - scrollerOffsetHeight) {
+        let scrollLogIdx = (this.logLine * this.lineHeight) - (this.offsetHeight / 2);
+        if (scrollLogIdx > 0 && scrollLogIdx < this.contentHeight - this.offsetHeight) {
           this.forceScroll = false;
           this.logLine = -1;
           this.scroller.scrollTo(0, scrollLogIdx);
         }
       } else if (currentSearchIdx != -1 && currentSearchIdx < logView.length && this.forceScroll) {
         let lineNum = logView.substring(0, currentSearchIdx).split("\n").length;
-        let scrollLogIdx = (lineNum * rowHeight) - (scrollerOffsetHeight / 2);
-        if (scrollLogIdx > 0 && scrollLogIdx < totalHeight - scrollerOffsetHeight) {
+        let scrollLogIdx = (lineNum * this.lineHeight) - (this.offsetHeight / 2);
+        if (scrollLogIdx > 0 && scrollLogIdx < this.contentHeight - this.offsetHeight) {
           this.forceScroll = false;
+          //TODO calculate the horizontal scroll
           this.scroller.scrollTo(0, scrollLogIdx);
         }
       }
@@ -1948,22 +2032,69 @@ class Profiler extends React.Component {
 class LogViewer extends React.Component {
   constructor(props) {
     super(props);
+    this.model = props.model;
     this.keywordColor = props.keywordColor;
     this.keywordCaseSensitive = props.keywordCaseSensitive;
-
-    //this.scrollTo = this.onShowStatusChange.bind(this);
-    this.scrollTop = 0;
-    this.scrollLeft = 0;
-    this.offsetHeight = 0;
-    this.offsetWidth = 0;
-
     this.renderNode = this.renderNode.bind(this);
+    this.onScroll = this.onScroll.bind(this);
+    this.apexLineNumberClick = this.apexLineNumberClick.bind(this);
+  }
+  visiteNode(currentNode, logLineNumber, acc) {
+    if (acc.skip) {
+      return acc;
+    }
+    if (acc.node != null && acc.apexClass != null) {
+      return acc;
+    }
+    if (currentNode.logStartLine == logLineNumber || currentNode.logEndLine == logLineNumber) {
+      acc.node = currentNode;
+      acc.skip = true;
+      acc.apexLineNumber = currentNode.lineNumber;
+      if (acc.apexClass != null && this.model.logParser.apexClasses.has(acc.apexClass)) {
+        acc.apexClass = currentNode.apexClass;
+      }
+      return acc;
+    }
+    if (logLineNumber > currentNode.logStartLine && (acc.maxNode == null || acc.maxNode.logStartLine < currentNode.logStartLine)) {
+      acc.maxNode = currentNode;
+    }
+    if (acc.node != null && acc.apexClass == null && currentNode.apexClass != null && this.model.logParser.apexClasses.has(currentNode.apexClass)) {
+      acc.apexClass = currentNode.apexClass;
+      return acc;
+    }
+    if (currentNode.child != null && currentNode.child.length > 0) {
+      currentNode.child.reduce((acc, c) => this.visiteNode(c, logLineNumber, acc), acc);
+      //HEAP_ALLOCATE => no node so we need to get last node clode to this line and parse line number for text.
+      if (logLineNumber < currentNode.logStartLine && acc.maxNode != null) {
+        acc.node = acc.maxNode;
+        acc.apexLineNumber = null;
+      }
+    }
+    acc.skip = false;
+    return acc;
+  }
+  apexLineNumberClick(logLineNumber) {
+    let {model} = this.props;
+    model.selectTab(4);
+    let lineText = model.logParser.lines[logLineNumber];
+    let apexLineNumber = lineText.match(/\|\[(\d+)\]/i);
+    if (apexLineNumber && apexLineNumber.length > 0) {
+      apexLineNumber = parseInt(apexLineNumber[1], 10);
+    }
+    let result = {};
+    this.visiteNode(model.logParser.rootNode, logLineNumber, result);
+    model.apexLineNumber = result.apexLineNumber != null ? result.apexLineNumber : apexLineNumber;
+    model.logParser.selectApexClass(result.apexClass);
+  }
+  onScroll() {
+    let {model} = this.props;
+    model.viewportChange();
+    //model.didUpdate();
   }
   componentDidMount() {
     let {model} = this.props;
     let log = this.refs.log;
-    model.scroller = this.refs.scroller;
-
+    model.setScrollerElement(this.refs.scroller, this.refs.scrolled);
     model.setLogInput(log);
     function resize() {
       model.winInnerHeight = window.innerHeight;
@@ -1972,29 +2103,40 @@ class LogViewer extends React.Component {
     model.winInnerHeight = window.innerHeight;
     window.addEventListener("resize", resize);
   }
-  dataChange() {
 
-  }
   componentDidUpdate() {
     let {model} = this.props;
-    model.logviewScrollLog();
+    model.viewportChange();
+    //model.logviewScrollLog();
   }
 
   renderNode(txtNode, i) {
-    let {keywordColor, keywordCaseSensitive} = this.props;
+    let {keywordColor, keywordCaseSensitive, model} = this.props;
     let remaining = txtNode.value;
 
     let keywords = [];
+    if (model.logSearch) {
+      keywords.push(model.logSearch);
+    }
     for (let keyword of keywordColor.keys()) {
       keywords.push(keyword);
     }
 
-    let keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b", (keywordCaseSensitive ? "" : "i"));
+    let keywordRegEx = new RegExp("(" + keywords.join("|") + "|\\|\\[\\d+\\])", (keywordCaseSensitive ? "" : "i"));
     let keywordMatch;
-    let color = null;
     let children = [];
     while ((keywordMatch = keywordRegEx.exec(remaining)) !== null) {
-      color = keywordColor.get(keywordMatch[1]);
+      let attribute = {};
+      let color = keywordColor.get(keywordMatch[1]);
+      if (color) {
+        attribute.style = {color};
+      }
+      if (model.logSearch === keywordMatch[1]) {
+        attribute.className = "highlight";
+      }
+      if (keywordMatch[1].startsWith("|[") && keywordMatch[1].endsWith("]")) {
+        attribute.onClick = () => this.apexLineNumberClick(txtNode.lineNumber);
+      }
       let sentence = keywordMatch[1];
       let endIndex = keywordMatch.index + sentence.length;
       children.push(remaining.substring(0, keywordMatch.index));
@@ -2003,42 +2145,52 @@ class LogViewer extends React.Component {
       } else {
         remaining = ""; // no remaining
       }
-      children.push(h("span", {style: {color}}, sentence));
+      children.push(h("span", attribute, sentence));
     }
     if (remaining) {
       children.push(remaining);
     }
-    if (txtNode.cls) {
-      return h("span", {key: "TxtNode" + i, className: txtNode.cls}, children);
-    } else {
-      return children;
-    }
+    return children;
   }
 
   render() {
     let {model} = this.props;
-
-    // Scroll
-    let rowHeight = 14; // constant: The initial estimated height of a row before it is rendered
-    let scrollerOffsetHeight = 0;
-    let scrollerScrollTop = 0;
-    if (model.scroller != null) {
-      scrollerScrollTop = model.scroller.scrollTop;
-      scrollerOffsetHeight = model.scroller.offsetHeight;
-    }
-
-    //return h("div", {className: "editor", ref: "scroller", onScroll: onScrollerScroll, style: {offsetHeight: scrollerOffsetHeight, scrollTop: scrollerScrollTop, maxHeight: (model.winInnerHeight - 160) + "px"}},
-    return h("div", {className: "editor", ref: "scroller", style: {offsetHeight: scrollerOffsetHeight, scrollTop: scrollerScrollTop, maxHeight: (model.winInnerHeight - 212) + "px"}},
-      //h("div", {className: "scrolled"}, style: {height: scrolledHeight, top: scrolledTop}},
-      h("div", {className: "line-numbers", style: {lineHeight: rowHeight + "px"}},
-        //Array(lastRowIdx - firstRowIdx).fill(null).map((e, i) => h("span", {key: "LineNumber" + i}, i + firstRowIdx))
-        model.lineNumbers.map((e) => e + "\n")
+//offsetHeight: model.scrollerOffsetHeight, scrollTop: model.scrollerScrollTop, maxHeight: (model.winInnerHeight - 210) + "px", lineHeight: model.lineHeight + "px"
+    return h("div", {className: "editor", onScroll: this.onScroll, ref: "scroller", style: {maxHeight: (model.winInnerHeight - 210) + "px", lineHeight: model.lineHeight + "px"}},
+      //h("div", {style: "overflow: hidden; position: relative; width: 3px; height: 0px; top: 540px; left: 335.4px;"},
+      //h("textarea", {autocorrect: "off", autocapitalize: "off" spellcheck: "false", tabIndex: "0", style: "position: absolute; bottom: -1em; padding: 0px; width: 1000px; height: 1em; outline: none;"})
+      //),
+      h("div", {className: "scrolltable-scrolled", ref: "scrolled", style: {height: model.scrolledHeight + "px", width: model.contentWidth + "px"}},
+        h("div", {style: {cursor: "text", marginLeft: "50px", top: model.linesTop + "px", left: "0px"}},
+          model.lines.map((line, index) =>
+            h("div", {style: {position: "relative"}, key: "line" + index},
+              h("pre", {className: "editor-line", role: "presentation"},
+                h("span", {role: "presentation", style: {paddingRight: "0.1px"}}, this.renderNode(line, index)),
+              ),
+            )
+          ),
+        ),
       ),
-      h("div", {id: "log-text", ref: "log", style: {lineHeight: rowHeight + "px"}},
-        model.EnrichLog.map(this.renderNode)
-      )//, readOnly: true
-      //)
+      h("div", {className: "scrolltable-scrolled editor-gutters", style: {left: "0px", height: `${model.contentHeight}px`}},
+        h("div", {className: "editor-linenumbers", style: {width: "48px", top: model.linesTop + "px", left: "0px"}},
+          model.lines.map((line, index) => h("div", {className: "", style: {left: "-50px"}, key: "lineNumber" + index},
+            h("div", {className: "editor-linenumber", style: {left: 0, width: "21px"}}, (line.lineNumber))
+          )),
+        ),
+      ),
     );
+    //return h("div", {className: "editor", ref: "scroller", onScroll: onScrollerScroll, style: {offsetHeight: scrollerOffsetHeight, scrollTop: scrollerScrollTop, maxHeight: (model.winInnerHeight - 160) + "px"}},
+    // return h("div", {className: "editor", ref: "scroller", style: {offsetHeight: scrollerOffsetHeight, scrollTop: scrollerScrollTop, maxHeight: (model.winInnerHeight - 212) + "px"}},
+    //   //h("div", {className: "scrolled"}, style: {height: scrolledHeight, top: scrolledTop}},
+    //   h("div", {className: "line-numbers", style: {lineHeight: rowHeight + "px"}},
+    //     //Array(viewportEnd - viewportStart).fill(null).map((e, i) => h("span", {key: "LineNumber" + i}, i + viewportStart))
+    //     model.lineNumbers.map((e) => e + "\n")
+    //   ),
+    //   h("div", {id: "log-text", ref: "log", style: {lineHeight: rowHeight + "px"}},
+    //     model.EnrichLog.map(this.renderNode)
+    //   )//, readOnly: true
+    //   //)
+    // );
   }
 }
 
@@ -2067,6 +2219,7 @@ class FileUpload extends React.Component {
     const reader = new FileReader();
     reader.addEventListener("load", (event) => {
       model.parseLog(event.target.result);
+      model.recalculFilter();
       model.didUpdate();
     });
     reader.readAsText(this.state.logFile);
@@ -2157,11 +2310,10 @@ class ApexLogView extends React.Component {
     this.onSelectApexClass = this.onSelectApexClass.bind(this);
     this.onSelectLine = this.onSelectLine.bind(this);
     this.onScroll = this.onScroll.bind(this);
-    this.lineNumbersRef = null;
-    this.contentRef = null;
   }
   onSelectApexClass(e) {
     let {model} = this.props;
+    model.apexLineNumber = null;
     model.logParser.selectApexClass(e.target.value);
   }
 
@@ -2174,18 +2326,20 @@ class ApexLogView extends React.Component {
     model.viewLogLine(lineNumber);
   }
   componentDidMount() {
-    this.lineNumbersRef = this.refs.lineNumbersRef;
-    this.contentRef = this.refs.contentRef;
+    let {model} = this.props;
+    model.lineNumbersRef = this.refs.lineNumbersRef;
+    model.contentRef = this.refs.contentRef;
   }
   onScroll(e) {
+    let {model} = this.props;
     const scrollTop = e.target.scrollTop;
-    if (this.lineNumbersRef == null || this.contentRef == null) {
+    if (model.lineNumbersRef == null || model.contentRef == null) {
       return;
     }
-    if (e.target === this.lineNumbersRef) {
-      this.contentRef.scrollTop = scrollTop;
-    } else if (e.target === this.contentRef) {
-      this.lineNumbersRef.scrollTop = scrollTop;
+    if (e.target === model.lineNumbersRef) {
+      model.contentRef.scrollTop = scrollTop;
+    } else if (e.target === model.contentRef) {
+      model.lineNumbersRef.scrollTop = scrollTop;
     }
   }
 
@@ -2193,7 +2347,7 @@ class ApexLogView extends React.Component {
     let {model} = this.props;
     return h("div", {className: "slds-grid slds-gutters", style: {height: "inherit"}},
       h("div", {className: "slds-col slds-size_6-of-12", style: {height: "inherit"}},
-        h("select", {name: "apexClassSelect", value: "", onChange: this.onSelectApexClass, className: "script-history", title: "Select Apex class"},
+        h("select", {name: "apexClassSelect", value: model.logParser.apexClassName, onChange: this.onSelectApexClass, className: "script-history", title: "Select Apex class"},
           h("option", {value: null, disabled: true, defaultValue: true, hidden: true}, "Apex class"),
           Array.from(model.logParser.apexClasses).map(q => h("option", {key: q, value: q}, q))
         ),

@@ -722,7 +722,7 @@ export class TableModel {
           cell.dataEditValue = null;
           cell.isEditing = false;
         });
-
+        //TODO reset height and width of cell
         if (cnt == 0) {
           this.didUpdate();
         }
@@ -811,6 +811,7 @@ export class TableModel {
         cell.isEditing = false;
       }
     });
+    //TODO reset height and width of cell
     this.didUpdate();
   }
   cancelEditCell(rowId, cellId) {
@@ -824,6 +825,7 @@ export class TableModel {
       c.dataEditValue = null;
       c.isEditing = false;
     }
+    //TODO reset height and width of cell
     this.didUpdate();
   }
   setEditCell(rowId, cellId, newValue){
@@ -1551,7 +1553,7 @@ export class ScrollTable extends React.Component {
   }
   componentDidUpdate() {
     let {model} = this.props;
-    //model.recalculate();
+    model.recalculate();
   }
   render() {
     let {model} = this.props;
