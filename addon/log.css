@@ -132,46 +132,7 @@
     background-size: contain !important;
     background-position: 0px 48px !important;
   }
-  #user-info {
-    background: #f7f9fb;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    flex-wrap: wrap;
-  }
-  
-  #user-info h1 {
-    padding: 0 6px 0 10px;
-  }
-  
-  #user-info span {
-    font-size: 1em;
-  }
-  .sf-link {
-    background-color: rgb(6, 28, 63);
-    border-radius: 3px;
-    line-height: 1.8em;
-    text-decoration: none;
-    display: inline-block;
-    padding: 2px;
-    color: white;
-    padding-right: 1em;
-  }
-  
-  .sf-link svg {
-    width: 1.8em;
-    ;
-    height: 1.8em;
-    ;
-    display: block;
-    margin-left: 1px;
-    margin-right: 1em;
-    float: left;
-    background-color: #ef7ead;
-    border-radius: 2px;
-    fill: white;
-  }
+
   .area {
     background-color: #F8F8F8;
     padding: 8px 12px;
@@ -211,12 +172,28 @@
     color: #506882;
     vertical-align: top;
   }
-
+  .scrolltable-scrolled {
+    position: relative;
+  }
+  
+  .scrolltable-scrolled>div {
+    border-collapse: collapse;
+    position: absolute;
+  }
   .editor {
     overflow: auto;
-    display: flex;
+    flex: 1 1 0;
+    background-color: #fff;
+    border-top: 1px solid #DDDBDA;
+    /*display: flex;*/
     border-radius: 0.25rem;
-    border: 1px solid #DDDBDA;
+    font-family: monospace;
+    color: black;
+    direction: ltr;
+    position: relative;
+  }
+  .editor div, .editor span {
+    vertical-align: top;
   }
   /*.scrolled {
     display: flex;
@@ -290,3 +267,55 @@
   height: 100%;
   border: 1px solid var(--secondary-color);
 }
+
+.editor-gutters,
+.editor-linenumber {
+  -moz-box-sizing: content-box;
+  box-sizing: content-box;
+}
+
+.editor-gutters {
+  border-right: 1px solid #ddd;
+  background-color: #f7f7f7;
+  white-space: nowrap;
+  position: absolute; left: 0; top: 0;
+  min-height: 100%;
+  z-index: 3;
+}
+.editor-linenumbers {
+  background-color: #eee;
+}
+.editor-linenumber {
+  padding: 0 3px 0 5px;
+  min-width: 20px;
+  text-align: right;
+  color: #999;
+  white-space: nowrap;
+}
+
+.editor-line {
+  padding: 0 4px;
+  /* Reset some styles that the rest of the page might have set */
+  -moz-border-radius: 0; -webkit-border-radius: 0; border-radius: 0;
+  border-width: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  margin: 0;
+  white-space: pre;
+  word-wrap: normal;
+  line-height: inherit;
+  color: inherit;
+  z-index: 2;
+  position: relative;
+  overflow: visible;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-variant-ligatures: contextual;
+  font-variant-ligatures: contextual;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: normal;
+}
+
+.editor-line::selection, .editor-line > span::selection, .editor-line > span > span::selection { background: #d7d4f0; }
+.editor-line::-moz-selection, .editor-line > span::-moz-selection, .editor-line > span > span::-moz-selection { background: #d7d4f0; }
