@@ -2149,6 +2149,7 @@ class LogViewer extends React.Component {
       }
       if (keywordMatch[1].startsWith("|[") && keywordMatch[1].endsWith("]")) {
         attribute.onClick = () => this.apexLineNumberClick(txtNode.lineNumber);
+        attribute.className = "linkable";
       }
       let sentence = keywordMatch[1];
       let endIndex = keywordMatch.index + sentence.length;
