@@ -1644,7 +1644,7 @@ class Model {
     this.recalculFilter();
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
-    context.font = "13px monospace";//TODO font size
+    context.font = "13px monospace";
     this.contentWidth = 0;
     for (let i = 0; i < this.filteredLines.length; i++) {
       const metrics = context.measureText(this.filteredLines[i].value);
@@ -1681,26 +1681,39 @@ class Model {
   logviewScrollLog() {
     let logView = this.logData;
     let currentSearchIdx = this.searchIndex;
-    //let scrollerOffsetHeight = 0;
-    //let contentHeight = (this.filteredLines ? this.filteredLines.length : 0) * this.lineHeight;
 
     if (this.scroller != null) {
-      //scrollerOffsetHeight = this.scroller.offsetHeight;
       if (this.logLine != -1 && this.forceScroll) {
-        let scrollLogIdx = (this.logLine * this.lineHeight) - (this.offsetHeight / 2);
-        if (scrollLogIdx > 0 && scrollLogIdx < this.contentHeight - this.offsetHeight) {
+        let scrollTop = (this.logLine * this.lineHeight) - (this.offsetHeight / 2);
+        if (scrollTop > 0 && scrollTop < this.contentHeight - this.offsetHeight) {
           this.forceScroll = false;
           this.logLine = -1;
-          this.scroller.scrollTo(0, scrollLogIdx);
+          this.scroller.scrollTo(0, scrollTop);
         }
       } else if (currentSearchIdx != -1 && currentSearchIdx < logView.length && this.forceScroll) {
         let lineNum = logView.substring(0, currentSearchIdx).split("\n").length;
-        let scrollLogIdx = (lineNum * this.lineHeight) - (this.offsetHeight / 2);
-        if (scrollLogIdx > 0 && scrollLogIdx < this.contentHeight - this.offsetHeight) {
-          this.forceScroll = false;
-          //TODO calculate the horizontal scroll
-          this.scroller.scrollTo(0, scrollLogIdx);
+        let line = logView.substring(0, currentSearchIdx);
+        line = line.substring(line.lastIndexOf("\n") + 1);
+        let scrollTop = (lineNum * this.lineHeight) - (this.offsetHeight / 2);
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        context.font = "13px monospace";
+        const metrics = context.measureText(line);
+        let scrollLeft = Math.floor(metrics.width) - (this.offsetWidth / 2);
+        if (scrollTop < 0) {
+          scrollTop = 0;
         }
+        if (scrollTop > this.contentHeight - this.offsetHeight) {
+          scrollTop = this.contentHeight - this.offsetHeight;
+        }
+        if (scrollLeft < 0) {
+          scrollLeft = 0;
+        }
+        if (scrollLeft > this.contentWidth - this.offsetWidth) {
+          scrollLeft = this.contentWidth - this.offsetWidth;
+        }
+        this.forceScroll = false;
+        this.scroller.scrollTo(scrollLeft, scrollTop);
       }
     }
   }
