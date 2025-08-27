@@ -82,7 +82,10 @@
   #user-info span {
     font-size: 1em;
   }
-  
+  .linkable {
+    color: #0b5cab;
+    cursor: pointer;
+  }
   .sf-link {
     background-color: rgb(6, 28, 63);
     border-radius: 3px;
