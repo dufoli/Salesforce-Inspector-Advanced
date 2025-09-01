@@ -811,7 +811,7 @@ class Model {
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
     // \s*[<>=!]+\s*('?[^'\s]*)$
-    let isFieldValue = query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,)*('?[^'\s]*)$/i);
+    let isFieldValue = query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,\s*)*('?\S*'?)$/i);
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
@@ -819,6 +819,12 @@ class Model {
       contextEnd = fieldEnd - fieldName.length;
       selStart -= isFieldValue[3].length;
     }
+    let isTypeOfWhen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+([a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+\S*$/i);
+    let isTypeOfThen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+(?:[a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+(\S*)\s+THEN\s+\S*$/i);
+    let isTypeOfEnd = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+(?:[a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+(\S*)\s+THEN\s+\S*\s+$/i);
+    let isAfterOrderBy = query.substring(0, selStart).match(/[\n\s()]+ORDER\s+BY\s*/i);
+    let isAfterGroupBy = query.substring(0, selStart).match(/[\n\s()]+GROUP\s+BY\s*/i);
+
     /*
     contextSobjectDescribes is a set of describe results for the relevant context sobjects.
     Example: "select Subject, Who.Name from Task"
@@ -827,7 +833,9 @@ class Model {
     The context sobjects for "Name" is {"Contact", "Lead"}.
     */
     let contextPath = query.substring(0, contextEnd).match(/[a-zA-Z0-9_.]*$/)[0];
-
+    if (isTypeOfThen) {
+      sobjectName = isTypeOfThen[1];
+    }
     let {sobjectStatus, sobjectDescribe} = vm.describeInfo.describeSobject(useToolingApi, sobjectName);
     if (!sobjectDescribe) {
       switch (sobjectStatus) {
@@ -864,16 +872,36 @@ class Model {
     }
     let contextSobjectDescribes = new Enumerable([sobjectDescribe]);
     let sobjectStatuses = new Map(); // Keys are error statuses, values are an object name with that status. Only one object name in the value, since we only show one error message.
+    let lastIsPolymorph = false;
     if (contextPath) {
       let contextFields = contextPath.split(".");
       contextFields.pop(); // always empty
       for (let referenceFieldName of contextFields) {
         let newContextSobjectDescribes = new Set();
-        for (let referencedSobjectName of contextSobjectDescribes
+        let refTos = contextSobjectDescribes
           .flatMap(contextSobjectDescribe => contextSobjectDescribe.fields)
           .filter(field => field.relationshipName && field.relationshipName.toLowerCase() == referenceFieldName.toLowerCase())
-          .flatMap(field => field.referenceTo)
-        ) {
+          .flatMap(field => field.referenceTo).toArray();
+        if (refTos.length > 10) {
+          vm.autocompleteResults = {
+            sobjectName,
+            contextPath,
+            title: "Field suggestions:",
+            results: [{value: "Id", title: "Id", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "id"},
+              {value: "Type", title: "Type", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "string"},
+              {value: "Name", title: "Name", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "string"},
+              {value: "CreatedBy.", title: "CreatedBy", suffix: "", rank: 2, autocompleteType: "relationshipName", dataType: ""},
+              {value: "LastModifiedBy.", title: "LastModifiedBy", suffix: "", rank: 2, autocompleteType: "relationshipName", dataType: ""},
+              {value: "LastModifiedById", title: "LastModifiedById", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "reference"},
+              {value: "CreatedById", title: "CreatedById", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "reference"},
+              {value: "CreatedDate", title: "CreatedDate", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "datetime"},
+              {value: "LastModifiedDate", title: "LastModifiedDate", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: "datetime"}
+            ]
+          };
+          return;
+        }
+        lastIsPolymorph = (refTos.length > 1);
+        for (let referencedSobjectName of refTos) {
           let {sobjectStatus, sobjectDescribe} = vm.describeInfo.describeSobject(useToolingApi, referencedSobjectName);
           if (sobjectDescribe) {
             newContextSobjectDescribes.add(sobjectDescribe);
@@ -926,18 +954,18 @@ class Model {
       };
       return;
     }
-    let isAfterOrderBy = query.substring(0, selStart).match(/[\n\s()]+ORDER\s+BY\s*/i);
-    let isAfterGroupBy = query.substring(0, selStart).match(/[\n\s()]+GROUP\s+BY\s*/i);
-    let isAfterHaving = query.substring(0, selStart).match(/[\n\s()]+(HAVING)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+[^\s]*$/i);
-    let isOperator = isAfterWhere && (isAfterHaving || (!isAfterOrderBy && !isAfterGroupBy && query.substring(0, selStart).match(/[\n\s()]+(AND|WHERE|OR)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+[^\s]*$/i)));
+    let isAfterHaving = query.substring(0, selStart).match(/[\n\s()]+(HAVING)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+\S*$/i);
+    let isOperator = isAfterWhere && (isAfterHaving || (!isAfterOrderBy && !isAfterGroupBy && query.substring(0, selStart).match(/[\n\s()]+(AND|WHERE|OR)[\n\s()]+[a-zA-Z0-9.-_()]+[\n\s()]+\S*$/i)));
     let isBooleanOperator = isAfterWhere && !isAfterOrderBy && !isAfterGroupBy && !isFieldValue && !isOperator && query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,)*('?[^'\s]*'?)\s+$/i);
+
     if (isFieldValue) {
       //check if fieldname is polymorphique field
       if (fieldName.toLowerCase() == "type"
         && contextPath != null
         && (contextPath.toLowerCase().endsWith("who.")
         || contextPath.toLowerCase().endsWith("what.")
-        || contextPath.toLowerCase().endsWith("owner."))) {
+        || contextPath.toLowerCase().endsWith("owner.")
+        || contextPath.toLowerCase().endsWith("LinkedEntity."))) {
         this.autocompleteObject(vm, ctrlSpace);
         return;
       }
@@ -1047,6 +1075,27 @@ class Model {
       };
       return;
     }
+    if (isTypeOfWhen) {
+      let fieldName = isTypeOfWhen[1];
+      vm.autocompleteResults = {
+        sobjectName,
+        isField: false,
+        contextPath,
+        title: "typeof suggestions:",
+        results: contextSobjectDescribes
+          .flatMap(sobjectDescribe => sobjectDescribe.fields)
+          .filter(field => field.type != "address" && field.relationshipName && field.relationshipName.toLowerCase() == fieldName.toLowerCase())
+          .flatMap(function* (field) {
+            for (let refto of field.referenceTo) {
+              yield {value: refto, title: refto, suffix: " THEN  END", rank: 1, autocompleteType: "object", dataType: ""};
+            }
+          })
+          .toArray()
+          .sort(this.resultsSort(searchTerm))
+      };
+      return;
+    }
+
     let operators = [];
     if (isOperator) {
       operators.push({value: "IN", title: "IN", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
@@ -1076,6 +1125,12 @@ class Model {
         {value: "LIMIT", title: "LIMIT", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "ORDER", title: "ORDER BY", suffix: " BY", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "ROLLUP", title: "ROLLUP", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+    } else if (isTypeOfEnd) {
+      operators.push({value: "WHEN", title: "WHEN", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+      operators.push({value: "END", title: "END", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""});
+    }
+    if (lastIsPolymorph) {
+      operators.push({value: "type", title: "type", suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 1, autocompleteType: "fieldName", dataType: "string"});
     }
     let prepend = new Enumerable(operators)
       .filter(fn => fn.value.toLowerCase().startsWith(searchTerm.toLowerCase()));
@@ -1105,6 +1160,9 @@ class Model {
           yield {value: field.name, title: field.label, suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: field.type};
           if (field.relationshipName) {
             yield {value: field.relationshipName + ".", title: field.label, suffix: "", rank: 2, autocompleteType: "relationshipName", dataType: ""};
+            if (field.referenceTo != null && field.referenceTo.length > 1) {
+              yield {value: "TYPEOF " + field.relationshipName, title: "TYPEOF " + field.label, suffix: " WHEN ", rank: 3, autocompleteType: "variable", dataType: ""};
+            }
           }
         })
         .filter(field => field.value.toLowerCase().includes(searchTerm.toLowerCase()) || field.title.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -1350,7 +1408,7 @@ class Model {
   }
   parseSubQuery(ctx) {
     // If we are in a subquery, try to detect that.
-    let subQueryRegExp = /\((\s*select.*)(\sfrom\s+)([a-z0-9_]*)(\s*.*)\)/gmi;
+    let subQueryRegExp = /\((\s*select.*?)(\sfrom\s+)([a-z0-9_]*)(\s*.*)\)/gi;
     let subQuery = ctx.query;
     let fromKeywordMatch;
     while ((fromKeywordMatch = subQueryRegExp.exec(subQuery)) !== null) {
