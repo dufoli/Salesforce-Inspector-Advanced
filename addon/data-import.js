@@ -74,11 +74,13 @@ class Model {
       this.setData(data);
       this.updateAvailableActions();
       this.importAction = this.importType.endsWith("__mdt") ? "deleteMetadata" : "delete";
-      this.importActionName = this.importType.endsWith("__mdt") ? "Delete Metadata" : "Delete";
       this.skipAllUnknownFields();
     }
     if (args.has("action")){
       this.importAction = args.get("action");
+    }
+    if (this.importAction) {
+      this.importActionName = this.allActions.filter(a => a.value == this.importAction).map(a => a.label).shift();
     }
     this.tableModel = new TableModel(sfHost, this.didUpdate.bind(this));
     this.resultTableCallback = (d) => this.tableModel.dataChange(d);
