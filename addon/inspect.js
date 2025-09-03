@@ -1150,6 +1150,11 @@ class App extends React.Component {
               h("div", {className: "slds-spinner__dot-b"}),
             )
           ),
+          h("a", {href: model.viewLink(), title: "Back", target: linkTarget, className: "nav-back"},
+            h("svg", {viewBox: "0 0 24 24"},
+              h("path", {d: "M22.4 10.6H7.1c-.4 0-.6-.5-.3-.8l4.4-4.4c.3-.3.3-.7 0-1l-1-1c-.3-.3-.7-.3-1 0l-8 8.1c-.3.3-.3.7 0 1l8 8.1c.3.3.7.3 1 0l1-1c.2-.3.2-.7 0-1l-4.5-4.4c-.2-.3-.1-.8.4-.8h15.3c.4 0 .7-.3.7-.7v-1.3c0-.4-.3-.8-.7-.8z"})
+            )
+          ),
           h("a", {href: model.sfLink, target: linkTarget, className: "sf-link"},
             h("svg", {viewBox: "0 0 24 24"},
               h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})

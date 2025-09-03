@@ -97,7 +97,11 @@ a:active,
 a:hover {
   outline: 0;
 }
-
+.nav-back {
+  width:28px;
+  height:28px;
+  margin-right: 5px;
+}
 .sf-link,
 .sf-link:active,
 .sf-link:focus,
