@@ -1,13 +1,13 @@
 # Release Notes
 ## Version 1.34
-- #227 log: Clear old apexlog button, run unit test [issue 227](https://github.com/dufoli/Salesforce-Inspector-Advanced/227)
-- #116 log: Launch unit test, see result and code coverage, highlight in red if less than 75% [issue 116](https://github.com/dufoli/Salesforce-Inspector-Advanced/116)
-- #57 log: Improve performance with calcul only on viewport of log and link on apex line number [issue 57]https://github.com/dufoli/Salesforce-Inspector-Advanced/(57)
-- #210 popup: Fix unable to close pop out window once opened [issue 210](https://github.com/dufoli/Salesforce-Inspector-Advanced/210)
-- #229 log: Scroll vertically on search [issue 229](https://github.com/dufoli/Salesforce-Inspector-Advanced/229)
-- #231 SOQL support improvement: Polymorphic fields typeof and type, in suggestion, subquery suggestion [issue 231](https://github.com/dufoli/Salesforce-Inspector-Advanced/231)
-- #232 data export: Edit a cell on then "apply all" action on data export display delete button on import instead of update [issue 232](https://github.com/dufoli/Salesforce-Inspector-Advanced/232)
-- #162 inspect: Allow Go back from Show all data screen [issue 162](https://github.com/dufoli/Salesforce-Inspector-Advanced/162)
+- Log: Clear old apexlog button, run unit test [issue 227](https://github.com/dufoli/Salesforce-Inspector-Advanced/227)
+- Log: Launch unit test, see result and code coverage, highlight in red if less than 75% [issue 116](https://github.com/dufoli/Salesforce-Inspector-Advanced/116)
+- Log: Improve performance with calcul only on viewport of log and link on apex line number [issue 57]https://github.com/dufoli/Salesforce-Inspector-Advanced/(57)
+- Popup: Fix unable to close pop out window once opened [issue 210](https://github.com/dufoli/Salesforce-Inspector-Advanced/210)
+- Log: Scroll vertically on search [issue 229](https://github.com/dufoli/Salesforce-Inspector-Advanced/229)
+- SOQL support improvement: Polymorphic fields typeof and type, in suggestion, subquery suggestion [issue 231](https://github.com/dufoli/Salesforce-Inspector-Advanced/231)
+- Data Export: Edit a cell on then "apply all" action on data export display delete button on import instead of update [issue 232](https://github.com/dufoli/Salesforce-Inspector-Advanced/232)
+- Inspect: Allow Go back from Show all data screen [issue 162](https://github.com/dufoli/Salesforce-Inspector-Advanced/162)
 
 ## Version 1.33
 - Popup > user: enable lwc debug [issue 220](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/220)
