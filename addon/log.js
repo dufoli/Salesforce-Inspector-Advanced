@@ -48,6 +48,9 @@ class LogParser {
     return arr;
   }
   selectApexClass(apexClassName) {
+    if (this.model.apexLineNumber != null) {
+      this.model.selectApexClassLine(this.model.apexLineNumber);
+    }
     sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT Id,Name, Status, NamespacePrefix, Body FROM ApexClass WHERE Name = '" + apexClassName + "'"), {}).then((data) => {
       if (data.records.length > 0) {
         this.apexClassName = apexClassName;
@@ -70,7 +73,8 @@ class LogParser {
           }
           let offsetHeight = this.model.contentRef ? this.model.contentRef.offsetHeight : 0;
           let scrollLogIdx = (this.model.apexLineNumber * this.model.lineHeight) - (offsetHeight / 2);
-          if (scrollLogIdx > 0 && scrollLogIdx < this.contentHeight - offsetHeight) {
+          let contentHeight = this.apexClassBody.length * this.model.lineHeight;
+          if (scrollLogIdx > 0 && scrollLogIdx < contentHeight - offsetHeight) {
             if (this.model.lineNumbersRef != null) {
               this.model.lineNumbersRef.scrollTop = scrollLogIdx;
               //model.lineNumbersRef.scrollTo(0, scrollLogIdx);
@@ -723,7 +727,6 @@ class CodeUnitLogNode extends LogNode {
         this.apexClass = this.apexClass.substring(0, this.apexClass.lastIndexOf("."));
       }
       logParser.addApexClass(this.apexClass);
-      this.logStartLine = logParser.index;
     }
   }
 }
@@ -743,7 +746,6 @@ class SystemMethodNode extends ApexNode {
     super(splittedLine, logParser, node, "SYSTEM_METHOD_EXIT");
     if (splittedLine.length > 3){
       this.apexClass = splittedLine[3].split(".")[0];
-      this.logStartLine = logParser.index;
     }
   }
   finished(splittedLine, logParser){
@@ -757,7 +759,6 @@ class MethodNode extends ApexNode {
     if (splittedLine.length > 4){
       this.apexClass = splittedLine[4].split(".")[0];
       logParser.addApexClass(this.apexClass);
-      this.logStartLine = logParser.index;
     }
   }
   finished(splittedLine, logParser){
@@ -1663,7 +1664,6 @@ class Model {
     this.apexFilteredLogs = nodes.map(n => ({
       line: this.logParser.lines.slice(n.logStartLine, n.logEndLine + 1),
       lineNumber: n.logStartLine}));
-    this.didUpdate();
   }
   selectTab(tabIndex) {
     this.selectedTabId = tabIndex;
@@ -1916,6 +1916,9 @@ class LogTabNavigation extends React.Component {
   onTabSelect(e) {
     e.preventDefault();
     this.model.selectTab(e.target.tabIndex);
+    if (e.target.tabIndex == 1) {
+      this.model.viewportChange();
+    }
     this.model.didUpdate();
   }
 
@@ -2053,22 +2056,18 @@ class LogViewer extends React.Component {
     this.apexLineNumberClick = this.apexLineNumberClick.bind(this);
   }
   visiteNode(currentNode, logLineNumber, acc) {
-    if (acc.skip) {
-      return acc;
-    }
     if (acc.node != null && acc.apexClass != null) {
       return acc;
     }
     if (currentNode.logStartLine == logLineNumber || currentNode.logEndLine == logLineNumber) {
       acc.node = currentNode;
-      acc.skip = true;
       acc.apexLineNumber = currentNode.lineNumber;
-      if (acc.apexClass != null && this.model.logParser.apexClasses.has(acc.apexClass)) {
+      if (currentNode.apexClass != null && this.model.logParser.apexClasses.has(currentNode.apexClass)) {
         acc.apexClass = currentNode.apexClass;
       }
       return acc;
     }
-    if (logLineNumber > currentNode.logStartLine && (acc.maxNode == null || acc.maxNode.logStartLine < currentNode.logStartLine)) {
+    if (logLineNumber > currentNode.logStartLine && logLineNumber < currentNode.logEndLine && (acc.maxNode == null || acc.maxNode.logStartLine < currentNode.logStartLine)) {
       acc.maxNode = currentNode;
     }
     if (acc.node != null && acc.apexClass == null && currentNode.apexClass != null && this.model.logParser.apexClasses.has(currentNode.apexClass)) {
@@ -2076,14 +2075,19 @@ class LogViewer extends React.Component {
       return acc;
     }
     if (currentNode.child != null && currentNode.child.length > 0) {
-      currentNode.child.reduce((acc, c) => this.visiteNode(c, logLineNumber, acc), acc);
-      //HEAP_ALLOCATE => no node so we need to get last node clode to this line and parse line number for text.
-      if (logLineNumber < currentNode.logStartLine && acc.maxNode != null) {
-        acc.node = acc.maxNode;
-        acc.apexLineNumber = null;
+      for (let c of currentNode.child) {
+        this.visiteNode(c, logLineNumber, acc);
+        if (logLineNumber < currentNode.logStartLine && acc.maxNode != null) {
+          //if last node after line number we stop.
+          acc.node = acc.maxNode;
+          if (acc.maxNode.apexClass != null && this.model.logParser.apexClasses.has(acc.maxNode.apexClass)) {
+            acc.apexClass = acc.maxNode.apexClass;
+          }
+          acc.apexLineNumber = null;
+          break;
+        }
       }
     }
-    acc.skip = false;
     return acc;
   }
   apexLineNumberClick(logLineNumber) {
@@ -2334,6 +2338,7 @@ class ApexLogView extends React.Component {
   onSelectLine(idx) {
     let {model} = this.props;
     model.selectApexClassLine(idx);
+    model.didUpdate();
   }
   onSelectLogLine(lineNumber) {
     let {model} = this.props;
@@ -2365,12 +2370,12 @@ class ApexLogView extends React.Component {
           h("option", {value: null, disabled: true, defaultValue: true, hidden: true}, "Apex class"),
           Array.from(model.logParser.apexClasses).map(q => h("option", {key: q, value: q}, q))
         ),
-        h("div", {style: {display: "flex", height: "inherit", overflow: "hidden"}},
+        h("div", {style: {display: "flex", maxHeight: (model.winInnerHeight - 210) + "px", overflow: "hidden", lineHeight: model.lineHeight + "px"}},
           h("div", {ref: "lineNumbersRef", style: {width: "50px", scrollbarWidth: "none", overflowY: "scroll", textAlign: "right", paddingRight: "5px"}, onScroll: this.onScroll},
             model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLineNumber" + lineIdx}, lineIdx + 1))
           ),
           h("div", {ref: "contentRef", style: {flex: 1, overflowY: "scroll", whiteSpace: "pre"}, onScroll: this.onScroll},
-            model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, style: {backgroundColor: line.color}, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line.line ? line.line : " "))
+            model.logParser.apexClassBody.map((line, lineIdx) => h("div", {key: "ApexLine" + lineIdx, style: {backgroundColor: line.color, minHeight: model.lineHeight + "px"}, onClick: () => this.onSelectLine("" + (lineIdx + 1))}, line.line ? line.line : " "))
           )
         )
       ),
