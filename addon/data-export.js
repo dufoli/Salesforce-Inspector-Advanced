@@ -811,7 +811,7 @@ class Model {
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
     // \s*[<>=!]+\s*('?[^'\s]*)$
-    let isFieldValue = query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,\s*)*('?\S*'?)$/i);
+    let isFieldValue = query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,\s*)*('?[^\s)]*'?)$/i);
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
@@ -1099,6 +1099,8 @@ class Model {
     let operators = [];
     if (isOperator) {
       operators.push({value: "IN", title: "IN", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "INCLUDES(", title: "INCLUDES", suffix: ")", rank: 1, autocompleteType: "keyword", dataType: ""},
+        {value: "EXCLUDES(", title: "EXCLUDES", suffix: ")", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "LIKE", title: "LIKE", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "=", title: "=", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
         {value: "<", title: "<", suffix: "", rank: 1, autocompleteType: "keyword", dataType: ""},
@@ -2170,7 +2172,7 @@ class App extends React.Component {
     } else {
       suggestionHelper = " Press Ctrl+Space to display suggestions";
     }
-    let keywordColor = new Map([["select", "blue"], ["from", "blue"], ["where", "blue"], ["group", "blue"], ["by", "blue"],
+    let keywordColor = new Map([["select", "blue"], ["from", "blue"], ["where", "blue"], ["group", "blue"], ["by", "blue"], ["excludes", "blue"], ["includes", "blue"],
       ["order", "blue"], ["limit", "blue"], ["and", "blue"], ["or", "blue"], ["not", "blue"], ["like", "blue"], ["in", "blue"],
       ["offset", "blue"], ["typeof", "blue"], ["when", "blue"], ["then", "blue"], ["else", "blue"], ["end", "blue"], ["using", "blue"],
       ["scope", "blue"], ["with", "blue"], ["data", "blue"], ["category", "blue"], ["rollup", "blue"], ["cube", "blue"], ["having", "blue"]]);
