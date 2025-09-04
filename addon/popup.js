@@ -1498,13 +1498,25 @@ class AllDataBoxShortcut extends React.PureComponent {
         const permSetSelect = "SELECT Id, Name, Label, Type, LicenseId, License.Name, PermissionSetGroupId FROM PermissionSet WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
         const networkSelect = "SELECT Id, Name, Status, UrlPathPrefix FROM Network WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
         const apexSelect = "SELECT Id, Name, NamespacePrefix, Status FROM ApexClass WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
+        const validationRuleSelect = "SELECT Id, Active, EntityDefinitionId, EntityDefinition.DeveloperName, ErrorMessage, ValidationName FROM ValidationRule WHERE ErrorMessage LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
         const compositeQuery = toCompositeRequest({flowSelect, profileSelect, permSetSelect, networkSelect, apexSelect});
 
-        const searchResult = await sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery});
+        const [searchResult, vrResult] = await Promise.all([
+          sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery}),
+          sfConn.rest("/services/data/v" + apiVersion + "/tooling/query?q=" + encodeURIComponent(validationRuleSelect), {method: "GET"})
+        ]);
         let results = searchResult.compositeResponse.filter((elm) => elm.httpStatusCode == 200 && elm.body.records.length > 0);
 
         let enablePermSetSummary = localStorage.getItem("enablePermSetSummary") === "true";
-
+        if (vrResult && vrResult.size) {
+          vrResult.records.forEach(rec => {
+            rec.link = "/lightning/setup/ObjectManager/" + rec.EntityDefinitionId + "/ValidationRules/" + rec.Id + "/view";
+            rec.label = rec.ValidationName;
+            rec.name = rec.EntityDefinition.DeveloperName + "." + rec.ValidationName;
+            rec.detail = rec.attributes.type + " • " + rec.ErrorMessage;
+            result.push(rec);
+          });
+        }
         results.forEach(element => {
           element.body.records.forEach(rec => {
             if (rec.attributes.type === "FlowDefinitionView"){
