@@ -1,7 +1,8 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {ScrollTable, DescribeInfo, TableModel, RecordTable} from "./data-load.js";
+import {DescribeInfo} from "./data-load.js";
+import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 
 class Model {
   constructor({sfHost, args}) {

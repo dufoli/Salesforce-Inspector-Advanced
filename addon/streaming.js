@@ -1,7 +1,7 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {ScrollTable, TableModel} from "./data-load.js";
+import {ScrollTable, TableModel} from "./record-table.js";
 
 function RecordTable(vm) {
   function cellToString(cell) {
