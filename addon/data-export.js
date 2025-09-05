@@ -1,8 +1,11 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {Enumerable, DescribeInfo, copyToClipboard, ScrollTable, TableModel, s, Editor, QueryHistory, RecordTable} from "./data-load.js";
+import {Enumerable, DescribeInfo, copyToClipboard, s} from "./data-load.js";
 import {csvParse} from "./csv-parse.js";
+import {QueryHistory} from "./historybox.js";
+import {Editor} from "./editor.js";
+import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 
 class Model {
   constructor({sfHost, args}) {

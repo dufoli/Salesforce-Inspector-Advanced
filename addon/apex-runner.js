@@ -1,7 +1,10 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {Enumerable, DescribeInfo, ScrollTable, TableModel, Editor, QueryHistory, RecordTable} from "./data-load.js";
+import {Enumerable, DescribeInfo} from "./data-load.js";
+import {QueryHistory} from "./historybox.js";
+import {Editor} from "./editor.js";
+import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 
 class Model {
   constructor({sfHost, args}) {

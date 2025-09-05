@@ -2,8 +2,8 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {csvParse} from "./csv-parse.js";
-import {DescribeInfo, copyToClipboard, ScrollTable, TableModel} from "./data-load.js";
-
+import {DescribeInfo, copyToClipboard} from "./data-load.js";
+import {ScrollTable, TableModel} from "./record-table.js";
 class Model {
 
   constructor(sfHost, args) {

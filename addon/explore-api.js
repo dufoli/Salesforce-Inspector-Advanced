@@ -1,8 +1,7 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {QueryHistory} from "./data-load.js";
-
+import {QueryHistory} from "./historybox.js";
 class Model {
   constructor(sfHost, args) {
     this.sfHost = sfHost;
