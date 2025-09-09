@@ -3,7 +3,7 @@ import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {Enumerable, DescribeInfo, copyToClipboard, s} from "./data-load.js";
 import {csvParse} from "./csv-parse.js";
-import {QueryHistory} from "./historybox.js";
+import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 
@@ -66,7 +66,7 @@ class Model {
     this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
     let queryTemplatesRawValue = localStorage.getItem("queryTemplates");
-    if (queryTemplatesRawValue && queryTemplatesRawValue != "[]") {
+    if (queryTemplatesRawValue) {
       try {
         this.queryTemplates = JSON.parse(queryTemplatesRawValue);
       } catch (err) {
@@ -176,8 +176,10 @@ class Model {
       this.selectedHistoryEntry = null;
     }
   }
-  selectQueryTemplate(val) {
-    this.editor.value = val.trimStart();
+  selectQuery(val) {
+    this.editor.value = val.value.trimStart();
+    this.queryTooling = val.useToolingApi;
+    this.queryName = val.name ?? "";
     this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
     this.editor.focus();
     let indexPos = this.editor.value.toLowerCase().indexOf("from ");
@@ -222,9 +224,6 @@ class Model {
     }
     return {text: `${batchCount}${this.totalTime.toFixed(1)}ms`, batchStats};
   }
-  clearHistory() {
-    this.queryHistory.clear();
-  }
   selectSavedEntry() {
     if (this.selectedSavedEntry != null) {
       //old format
@@ -247,17 +246,11 @@ class Model {
       this.selectedSavedEntry = null;
     }
   }
-  clearSavedHistory() {
-    this.savedHistory.clear();
-  }
   addToHistory() {
-    this.savedHistory.add({query: this.getQueryToSave(), name: this.queryName, useToolingApi: this.queryTooling});
+    this.savedHistory.add({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling});
   }
   removeFromHistory() {
-    this.savedHistory.remove({query: this.getQueryToSave(), name: this.queryName, useToolingApi: this.queryTooling});
-  }
-  getQueryToSave() {
-    return this.editor.value;
+    this.savedHistory.remove({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling});
   }
   autocompleteReload() {
     this.describeInfo.reloadAll();
@@ -1928,6 +1921,71 @@ class Model {
     // Investigate if we can use the IntersectionObserver API here instead, once it is available.
     this.tableModel.viewportChange();
   }
+  //TODO query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling
+  getHistory() {
+    let historyMap = new Map();
+    this.queryHistory.list.forEach(q => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi}));
+    this.queryTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false}));
+    this.savedHistory.list.forEach(q => {
+      let delimiter = ":";
+      let itm;
+      if (q.name){
+        itm = {value: q.query, label: q.name, name: q.name, favorite: true, useToolingApi: q.useToolingApi};
+      } else if (q.query.includes(delimiter)){
+        itm = {label: q.query.split(delimiter)[0], favorite: true, useToolingApi: q.useToolingApi};
+        itm.name = itm.label;
+        itm.value = q.query.substring(itm.label.length + 1);
+      } else {
+        itm = {value: q.query, label: q.query, favorite: true, useToolingApi: q.useToolingApi};
+      }
+      historyMap.set(itm.value, itm);
+    });
+    return Array.from(historyMap.values());
+  }
+  deleteHistoryItem(history) {
+    let itm = this.savedHistory.list.find(item => (item.useToolingApi == history.useToolingApi && ((item.query == history.value && item.name && item.name == history.label) || (item.query == history.label + ":" + history.value) || (item.query == history.value && item.query == history.label))));
+    if (itm) {
+      this.savedHistory.remove(itm);
+      return;
+    }
+    const templateIndex = this.queryTemplates.indexOf(history.value);
+    if (templateIndex > -1) {
+      this.queryTemplates.splice(templateIndex, 1);
+      localStorage.setItem("queryTemplates", JSON.stringify(this.queryTemplates));
+      return;
+    }
+    itm = this.queryHistory.list.find((item => (item.query == history.value) && (item.useToolingApi == history.useToolingApi)));
+    if (itm) {
+      this.queryHistory.remove(itm);
+      return;
+    }
+  }
+  updateHistoryItem(history) {
+    if (history.favorite) {
+      let itm = this.queryHistory.list.find(item => (item.query == history.value) && (item.useToolingApi == history.useToolingApi));
+      if (itm) {
+        this.queryHistory.remove(itm);
+      }
+      let newSaved = {query: history.value, useToolingApi: history.useToolingApi ?? false};
+      this.savedHistory.add(newSaved);
+    } else {
+      let itm = this.savedHistory.list.find(item => (item.useToolingApi == history.useToolingApi && ((item.query == history.value && item.name && item.name == history.label) || (item.query == history.label + ":" + history.value) || (item.query == history.value && item.query == history.label))));
+      if (itm) {
+        this.savedHistory.remove(itm);
+      } else {
+        let templateIndex = this.queryTemplates.indexOf(history.value);
+        if (templateIndex > -1) {
+          this.queryTemplates.splice(templateIndex, 1);
+          localStorage.setItem("queryTemplates", JSON.stringify(this.queryTemplates));
+        }
+      }
+      let newHistory = {query: history.value, useToolingApi: history.useToolingApi};
+      if (itm && itm.name) {
+        newHistory.name = itm.name;
+      }
+      this.queryHistory.add(newHistory);
+    }
+  }
 }
 
 let h = React.createElement;
@@ -1937,13 +1995,8 @@ class App extends React.Component {
     super(props);
     this.onQueryAllChange = this.onQueryAllChange.bind(this);
     this.onQueryToolingChange = this.onQueryToolingChange.bind(this);
-    this.onSelectHistoryEntry = this.onSelectHistoryEntry.bind(this);
-    this.onSelectQueryTemplate = this.onSelectQueryTemplate.bind(this);
-    this.onClearHistory = this.onClearHistory.bind(this);
-    this.onSelectSavedEntry = this.onSelectSavedEntry.bind(this);
+    this.onSelectQuery = this.onSelectQuery.bind(this);
     this.onAddToHistory = this.onAddToHistory.bind(this);
-    this.onRemoveFromHistory = this.onRemoveFromHistory.bind(this);
-    this.onClearSavedHistory = this.onClearSavedHistory.bind(this);
     this.onToggleHelp = this.onToggleHelp.bind(this);
     this.onToggleExpand = this.onToggleExpand.bind(this);
     this.onToggleSavedOptions = this.onToggleSavedOptions.bind(this);
@@ -1964,6 +2017,8 @@ class App extends React.Component {
     this.onToggleVariable = this.onToggleVariable.bind(this);
     this.onDataPaste = this.onDataPaste.bind(this);
     this.onBatchSizeChange = this.onBatchSizeChange.bind(this);
+    this.onUpdateHistoryItem = this.onUpdateHistoryItem.bind(this);
+    this.onDeleteHistoryItem = this.onDeleteHistoryItem.bind(this);
   }
   onSaveAll() {
     let {model} = this.props;
@@ -1988,56 +2043,15 @@ class App extends React.Component {
     model.editorAutocompleteHandler();
     model.didUpdate();
   }
-  onSelectHistoryEntry(e) {
+  onSelectQuery(input) {
     let {model} = this.props;
-    model.selectedHistoryEntry = JSON.parse(e.target.value);
-    model.selectHistoryEntry();
-    model.didUpdate();
-  }
-  onSelectQueryTemplate(e) {
-    let {model} = this.props;
-    model.selectQueryTemplate(e.target.value);
-    model.didUpdate();
-  }
-  onClearHistory(e) {
-    e.preventDefault();
-    let r = confirm("Are you sure you want to clear the query history?");
-    if (r == true) {
-      let {model} = this.props;
-      model.clearHistory();
-      model.didUpdate();
-    }
-  }
-  onSelectSavedEntry(e) {
-    let {model} = this.props;
-    model.selectedSavedEntry = JSON.parse(e.target.value);
-    model.selectSavedEntry();
+    model.selectQuery(input);
     model.didUpdate();
   }
   onAddToHistory(e) {
     e.preventDefault();
     let {model} = this.props;
     model.addToHistory();
-    model.didUpdate();
-  }
-  onRemoveFromHistory(e) {
-    e.preventDefault();
-    let r = confirm("Are you sure you want to remove this saved query?");
-    let {model} = this.props;
-    if (r == true) {
-      model.removeFromHistory();
-    }
-    model.toggleSavedOptions();
-    model.didUpdate();
-  }
-  onClearSavedHistory(e) {
-    e.preventDefault();
-    let r = confirm("Are you sure you want to remove all saved queries?");
-    let {model} = this.props;
-    if (r == true) {
-      model.clearSavedHistory();
-    }
-    model.toggleSavedOptions();
     model.didUpdate();
   }
   onToggleHelp(e) {
@@ -2139,6 +2153,14 @@ class App extends React.Component {
     model.batchSize = new Number(e.target.value);
     model.didUpdate();
   }
+  onUpdateHistoryItem(suggestion) {
+    let {model} = this.props;
+    model.updateHistoryItem(suggestion);
+  }
+  onDeleteHistoryItem(suggestion) {
+    let {model} = this.props;
+    model.deleteHistoryItem(suggestion);
+  }
   componentDidMount() {
     let {model} = this.props;
     model.autocompleteResultBox = this.refs.autocompleteResultBox;
@@ -2175,6 +2197,7 @@ class App extends React.Component {
     } else {
       suggestionHelper = " Press Ctrl+Space to display suggestions";
     }
+    let historyList = model.getHistory();
     let keywordColor = new Map([["select", "blue"], ["from", "blue"], ["where", "blue"], ["group", "blue"], ["by", "blue"], ["excludes", "blue"], ["includes", "blue"],
       ["order", "blue"], ["limit", "blue"], ["and", "blue"], ["or", "blue"], ["not", "blue"], ["like", "blue"], ["in", "blue"],
       ["offset", "blue"], ["typeof", "blue"], ["when", "blue"], ["then", "blue"], ["else", "blue"], ["end", "blue"], ["using", "blue"],
@@ -2215,31 +2238,10 @@ class App extends React.Component {
         ),
         h("div", {className: "query-controls"},
           h("h1", {}, "Export Query"),
-          h("div", {className: "query-history-controls"},
-            h("select", {value: "", onChange: this.onSelectQueryTemplate, className: "query-history", title: "Check documentation to customize templates"},
-              h("option", {value: null, disabled: true, defaultValue: true, hidden: true}, "Templates"),
-              model.queryTemplates.map(q => h("option", {key: q, value: q}, q))
-            ),
-            h("div", {className: "button-group"},
-              h("select", {value: JSON.stringify(model.selectedHistoryEntry), onChange: this.onSelectHistoryEntry, className: "query-history"},
-                h("option", {value: JSON.stringify(null), disabled: true}, "Query History"),
-                model.queryHistory.list.map(q => h("option", {key: JSON.stringify(q), value: JSON.stringify(q)}, q.query.substring(0, 300)))
-              ),
-              h("button", {onClick: this.onClearHistory, title: "Clear Query History"}, "Clear")
-            ),
-            h("div", {className: "pop-menu saveOptions", hidden: !model.expandSavedOptions},
-              h("a", {href: "#", onClick: this.onRemoveFromHistory, title: "Remove query from saved history"}, "Remove Saved Query"),
-              h("a", {href: "#", onClick: this.onClearSavedHistory, title: "Clear saved history"}, "Clear Saved Queries")
-            ),
-            h("div", {className: "button-group"},
-              h("select", {value: JSON.stringify(model.selectedSavedEntry), onChange: this.onSelectSavedEntry, className: "query-history"},
-                h("option", {value: JSON.stringify(null), disabled: true}, "Saved Queries"),
-                model.savedHistory.list.map(q => h("option", {key: JSON.stringify(q), value: JSON.stringify(q)}, (q.name ? q.name + ":" + q.query : q.query).substring(0, 300)))
-              ),
-              h("input", {placeholder: "Query Label", type: "save", value: model.queryName, onInput: this.onSetQueryName}),
-              h("button", {onClick: this.onAddToHistory, title: "Add query to saved history"}, "Save Query"),
-              h("button", {className: model.expandSavedOptions ? "toggle contract" : "toggle expand", title: "Show More Options", onClick: this.onToggleSavedOptions}, h("div", {className: "button-toggle-icon"}))
-            ),
+          h(HistoryBox, {didUpdate: model.didUpdate.bind(model), suggestions: historyList, onSelect: this.onSelectQuery, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
+          h("div", {className: "button-group"},
+            h("input", {placeholder: "Query Label", type: "save", value: model.queryName, onInput: this.onSetQueryName}),
+            h("button", {onClick: this.onAddToHistory, title: "Add query to saved history"}, "Save Query")
           ),
           h("div", {className: "query-options"},
             h("label", {},

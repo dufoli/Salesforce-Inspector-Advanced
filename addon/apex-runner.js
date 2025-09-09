@@ -2,7 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {Enumerable, DescribeInfo} from "./data-load.js";
-import {QueryHistory} from "./historybox.js";
+import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 
@@ -77,10 +77,10 @@ class Model {
     this.tests = null;
     this.coverages = null;
     function compare(a, b) {
-      return a.script == b.script;
+      return ((a.script == b.script && (!b.name || a.name == b.name)) || a.script == b.name + ":" + b.script);
     }
     function sort(a, b) {
-      return (a.script > b.script) ? 1 : ((b.script > a.script) ? -1 : 0);
+      return ((a.name ? a.name + a.script : a.script) > (b.name ? b.name + b.script : b.script)) ? 1 : (((b.name ? b.name + b.script : b.script) > (a.name ? a.name + a.script : a.script)) ? -1 : 0);
     }
     this.scriptHistory = new QueryHistory("insextScriptHistory", 100, compare, sort);
     this.selectedHistoryEntry = null;
@@ -99,7 +99,7 @@ class Model {
     this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
     let scriptTemplatesRawValue = localStorage.getItem("scriptTemplates");
-    if (scriptTemplatesRawValue && scriptTemplatesRawValue != "[]") {
+    if (scriptTemplatesRawValue) {
       try {
         this.scriptTemplates = JSON.parse(scriptTemplatesRawValue);
       } catch (err) {
@@ -111,6 +111,7 @@ class Model {
         "Id batchId= Database.executeBatch(new BatchExample(), 200);",
         "ID jobID = System.enqueueJob(new AsyncExecutionExample());"
       ];
+      localStorage.setItem("scriptTemplates", JSON.stringify(this.scriptTemplates));
     }
 
     this.propertyTypes = new Map();
@@ -210,45 +211,19 @@ class Model {
       this.selectedHistoryEntry = null;
     }
   }
-  selectScriptTemplate(val) {
-    this.editor.value = val.trimStart();
+  selectScript(val) {
+    this.editor.value = val.value.trimStart();
     this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
     this.editor.focus();
   }
-  clearHistory() {
-    this.scriptHistory.clear();
-  }
-  selectSavedEntry() {
-    let delimiter = ":";
-    if (this.selectedSavedEntry != null) {
-      let scriptStr = "";
-      if (this.selectedSavedEntry.script.includes(delimiter)) {
-        let script = this.selectedSavedEntry.script.split(delimiter);
-        this.scriptName = script[0];
-        scriptStr = this.selectedSavedEntry.script.substring(this.selectedSavedEntry.script.indexOf(delimiter) + 1);
-      } else {
-        scriptStr = this.selectedSavedEntry.script;
-      }
-      this.editor.value = scriptStr;
-      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
-      this.editorAutocompleteHandler();
-      this.selectedSavedEntry = null;
-    }
-  }
-  clearSavedHistory() {
-    this.savedHistory.clear();
-  }
   addToHistory() {
-    this.savedHistory.add({script: this.getScriptToSave()});
+    this.savedHistory.add({script: this.editor.value, name: this.scriptName});
   }
   saveClientId() {
     localStorage.setItem(this.sfHost + "_clientId", this.clientId);
   }
   removeFromHistory() {
-    this.savedHistory.remove({script: this.getScriptToSave()});
-  }
-  getScriptToSave() {
-    return this.scriptName != "" ? this.scriptName + ":" + this.editor.value : this.editor.value;
+    this.savedHistory.remove({script: this.editor.value, name: this.scriptName});
   }
   autocompleteReload() {
     this.describeInfo.reloadAll();
@@ -1142,6 +1117,69 @@ class Model {
       this.tableCoverageModel.viewportChange();
     }
   }
+  getHistory() {
+    let historyMap = new Map();
+    this.scriptHistory.list.forEach(q => historyMap.set(q.script, {value: q.script, label: q.script.substring(0, 300), favorite: false}));
+    this.scriptTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true}));
+    this.savedHistory.list.forEach(q => {
+      let delimiter = ":";
+      let itm;
+      if (q.name){
+        itm = {value: q.script, label: q.name, favorite: true};
+      } else if (q.script.includes(delimiter)){
+        itm = {label: q.script.split(delimiter)[0], favorite: true};
+        itm.value = q.script.substring(itm.label.length + 1);
+      } else {
+        itm = {value: q.script, label: q.script, favorite: true};
+      }
+      historyMap.set(itm.value, itm);
+    });
+    return Array.from(historyMap.values());
+  }
+  deleteHistoryItem(history) {
+    let itm = this.savedHistory.list.find(item => ((item.script == history.value && item.name && item.name == history.label) || (item.script == history.label + ":" + history.value) || (item.script == history.value && item.script == history.label)));
+    if (itm) {
+      this.savedHistory.remove(itm);
+      return;
+    }
+    const templateIndex = this.scriptTemplates.indexOf(history.value);
+    if (templateIndex > -1) {
+      this.scriptTemplates.splice(templateIndex, 1);
+      localStorage.setItem("scriptTemplates", JSON.stringify(this.scriptTemplates));
+      return;
+    }
+    itm = this.scriptHistory.list.find(item => item.script == history.value);
+    if (itm) {
+      this.scriptHistory.remove(itm);
+      return;
+    }
+  }
+  updateHistoryItem(history) {
+    if (history.favorite) {
+      let itm = this.scriptHistory.list.find(item => item.script == history.value);
+      if (itm) {
+        this.scriptHistory.remove(itm);
+      }
+      let newSaved = {script: history.value};
+      this.savedHistory.add(newSaved);
+    } else {
+      let itm = this.savedHistory.list.find(item => (item.script == history.value && item.name && item.name == history.label) || (item.script == history.label + ":" + history.value) || (item.script == history.value && item.script == history.label));
+      if (itm) {
+        this.savedHistory.remove(itm);
+      } else {
+        let templateIndex = this.scriptTemplates.indexOf(history.value);
+        if (templateIndex > -1) {
+          this.scriptTemplates.splice(templateIndex, 1);
+          localStorage.setItem("scriptTemplates", JSON.stringify(this.scriptTemplates));
+        }
+      }
+      let newHistory = {script: history.value};
+      if (itm && itm.name) {
+        newHistory.name = itm.name;
+      }
+      this.scriptHistory.add(newHistory);
+    }
+  }
 }
 
 let h = React.createElement;
@@ -1149,14 +1187,9 @@ let h = React.createElement;
 class App extends React.Component {
   constructor(props) {
     super(props);
-    this.onSelectHistoryEntry = this.onSelectHistoryEntry.bind(this);
-    this.onSelectScriptTemplate = this.onSelectScriptTemplate.bind(this);
-    this.onClearHistory = this.onClearHistory.bind(this);
-    this.onSelectSavedEntry = this.onSelectSavedEntry.bind(this);
+    this.onSelectScript = this.onSelectScript.bind(this);
     this.onAddToHistory = this.onAddToHistory.bind(this);
     this.onSaveClientId = this.onSaveClientId.bind(this);
-    this.onRemoveFromHistory = this.onRemoveFromHistory.bind(this);
-    this.onClearSavedHistory = this.onClearSavedHistory.bind(this);
     this.onToggleHelp = this.onToggleHelp.bind(this);
     this.onToggleSavedOptions = this.onToggleSavedOptions.bind(this);
     this.onExecute = this.onExecute.bind(this);
@@ -1170,6 +1203,8 @@ class App extends React.Component {
     this.runTests = this.runTests.bind(this);
     this.deleteAllLog = this.deleteAllLog.bind(this);
     this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
+    this.onUpdateHistoryItem = this.onUpdateHistoryItem.bind(this);
+    this.onDeleteHistoryItem = this.onDeleteHistoryItem.bind(this);
 
     this.state = {
       selectedTabId: 1
@@ -1194,30 +1229,9 @@ class App extends React.Component {
       model.tableCoverageModel.onClick();
     }
   }
-  onSelectHistoryEntry(e) {
+  onSelectScript(input) {
     let {model} = this.props;
-    model.selectedHistoryEntry = JSON.parse(e.target.value);
-    model.selectHistoryEntry();
-    model.didUpdate();
-  }
-  onSelectScriptTemplate(e) {
-    let {model} = this.props;
-    model.selectScriptTemplate(e.target.value);
-    model.didUpdate();
-  }
-  onClearHistory(e) {
-    e.preventDefault();
-    let r = confirm("Are you sure you want to clear the script history?");
-    if (r == true) {
-      let {model} = this.props;
-      model.clearHistory();
-      model.didUpdate();
-    }
-  }
-  onSelectSavedEntry(e) {
-    let {model} = this.props;
-    model.selectedSavedEntry = JSON.parse(e.target.value);
-    model.selectSavedEntry();
+    model.selectScript(input);
     model.didUpdate();
   }
   onAddToHistory(e) {
@@ -1230,26 +1244,6 @@ class App extends React.Component {
     e.preventDefault();
     let {model} = this.props;
     model.saveClientId();
-    model.didUpdate();
-  }
-  onRemoveFromHistory(e) {
-    e.preventDefault();
-    let r = confirm("Are you sure you want to remove this saved script?");
-    let {model} = this.props;
-    if (r == true) {
-      model.removeFromHistory();
-    }
-    model.toggleSavedOptions();
-    model.didUpdate();
-  }
-  onClearSavedHistory(e) {
-    e.preventDefault();
-    let r = confirm("Are you sure you want to remove all saved scripts?");
-    let {model} = this.props;
-    if (r == true) {
-      model.clearSavedHistory();
-    }
-    model.toggleSavedOptions();
     model.didUpdate();
   }
   onToggleHelp(e) {
@@ -1369,6 +1363,14 @@ class App extends React.Component {
     queryEmptyLogArgs.set("host", model.sfHost);
     window.open("log.html?" + queryEmptyLogArgs, "_blank", "noreferrer");
   }
+  onUpdateHistoryItem(suggestion) {
+    let {model} = this.props;
+    model.updateHistoryItem(suggestion);
+  }
+  onDeleteHistoryItem(suggestion) {
+    let {model} = this.props;
+    model.deleteHistoryItem(suggestion);
+  }
   componentDidMount() {
     let {model} = this.props;
     model.autocompleteResultBox = this.refs.autocompleteResultBox;
@@ -1419,6 +1421,8 @@ class App extends React.Component {
     } else {
       suggestionHelper = " Press Ctrl+Space to display suggestions";
     }
+    let historyList = model.getHistory();
+
     let keywordColor = new Map([["do", "violet"], ["public", "blue"], ["private", "blue"], ["global", "blue"], ["class", "blue"], ["static", "blue"],
       ["interface", "blue"], ["extends", "blue"], ["while", "violet"], ["for", "violet"], ["try", "violet"], ["catch", "violet"],
       ["finally", "violet"], ["extends", "violet"], ["throw", "violet"], ["new", "violet"], ["if", "violet"], ["else", "violet"]]);
@@ -1451,33 +1455,12 @@ class App extends React.Component {
         ),
         h("div", {className: "query-controls"},
           h("h1", {}, "Execute Script"),
-          h("div", {className: "query-history-controls"},
-            h("select", {value: "", onChange: this.onSelectScriptTemplate, className: "script-history", title: "Check documentation to customize templates"},
-              h("option", {value: null, disabled: true, defaultValue: true, hidden: true}, "Templates"),
-              model.scriptTemplates.map(q => h("option", {key: q, value: q}, q))
-            ),
-            h("div", {className: "button-group"},
-              h("select", {value: JSON.stringify(model.selectedHistoryEntry), onChange: this.onSelectHistoryEntry, className: "script-history"},
-                h("option", {value: JSON.stringify(null), disabled: true}, "Script History"),
-                model.scriptHistory.list.map(q => h("option", {key: JSON.stringify(q), value: JSON.stringify(q)}, q.script.substring(0, 300)))
-              ),
-              h("button", {onClick: this.onClearHistory, title: "Clear Script History"}, "Clear")
-            ),
-            h("div", {className: "pop-menu saveOptions", hidden: !model.expandSavedOptions},
-              h("a", {href: "#", onClick: this.onRemoveFromHistory, title: "Remove script from saved history"}, "Remove Saved Script"),
-              h("a", {href: "#", onClick: this.onClearSavedHistory, title: "Clear saved history"}, "Clear Saved Scripts")
-            ),
-            h("div", {className: "button-group"},
-              h("select", {value: JSON.stringify(model.selectedSavedEntry), onChange: this.onSelectSavedEntry, className: "script-history"},
-                h("option", {value: JSON.stringify(null), disabled: true}, "Saved Scripts"),
-                model.savedHistory.list.map(q => h("option", {key: JSON.stringify(q), value: JSON.stringify(q)}, q.script.substring(0, 300)))
-              ),
-              h("input", {placeholder: "Script Label", type: "save", value: model.scriptName, onInput: this.onSetscriptName}),
-              h("button", {onClick: this.onAddToHistory, title: "Add script to saved history"}, "Save Script"),
-              h("button", {className: model.expandSavedOptions ? "toggle contract" : "toggle expand", title: "Show More Options", onClick: this.onToggleSavedOptions}, h("div", {className: "button-toggle-icon"})),
-              h("input", {placeholder: "Consumer Key", type: "default", value: model.clientId, onInput: this.onSetClientId}),
-              h("button", {onClick: this.onSaveClientId, title: "Save Consumer Key"}, "Save"),
-            ),
+          h(HistoryBox, {didUpdate: model.didUpdate.bind(model), suggestions: historyList, onSelect: this.onSelectScript, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
+          h("div", {className: "button-group"},
+            h("input", {placeholder: "Script Label", type: "save", value: model.scriptName, onInput: this.onSetscriptName}),
+            h("button", {onClick: this.onAddToHistory, title: "Add script to saved history"}, "Save Script"),
+            h("input", {placeholder: "Consumer Key", type: "default", value: model.clientId, onInput: this.onSetClientId}),
+            h("button", {onClick: this.onSaveClientId, title: "Save Consumer Key"}, "Save"),
           ),
         ),
         h(Editor, {model, keywordColor, keywordCaseSensitive: true}),
