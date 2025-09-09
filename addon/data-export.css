@@ -205,13 +205,28 @@ h1 {
 .query-controls {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.query-controls>div {
+  margin-bottom: 8px;
+  padding-left: 8px;
+}
+
+
+.history-controls {
+  padding-left: 15px;
+  display: flex;
   align-items: flex-end;
 }
 
-.query-controls .button-group {
+.history-controls .button-group {
   margin-bottom: 8px;
 }
 
+.history-controls .slds-button_first {
+  border: 0;
+}
 .query-options {
   margin-bottom: 8px;
 }
@@ -466,6 +481,7 @@ button[hidden],
   margin-left: 10px;
 } */
 .button-group> :first-child,
+.button-group> .slds-button input,
 .button-group>[hidden]+* {
   border-top-left-radius: 0.25rem;
   border-bottom-left-radius: 0.25rem;
@@ -845,4 +861,54 @@ button.toggle .button-icon {
 .result-status span,
 .result-status button{
   margin-left: 1em;
+}
+.history-clear-btn {
+  color: white;
+  text-decoration: none;
+  background-color: gray;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+}
+.history-suggestions {
+    z-index: 1000;
+    position: absolute;
+    border: 1px solid #999;
+    border-top-width: 0;
+    list-style: none;
+    margin-top: 0;
+    max-height: 143px;
+    overflow-y: auto;
+    padding-left: 0;
+    width: calc(300px + 1rem);
+}
+.history-suggestions li {
+  background-color: white;
+  padding: 0.5rem;
+}
+.history-suggestions svg:not(.favorite-inverse) {
+  fill : #e4a201;
+}
+.favorite-inverse {
+  fill : white;
+  stroke: #646464;
+  stroke-width: 2px;
+  /* stroke-dasharray: 2,2;
+  stroke-linejoin: round; */
+}
+.history-suggestion-active {
+
+}
+
+.history-suggestion-active,
+.history-suggestions li:hover {
+  background-color: #999;
+  color: #444;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.suggestions li:not(:last-of-type) {
+  border-bottom: 1px solid #999;
 }
