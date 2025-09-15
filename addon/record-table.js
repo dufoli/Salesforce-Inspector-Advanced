@@ -430,7 +430,7 @@ export class TableModel {
         }
         let rowRect = tr.firstElementChild.getBoundingClientRect();
         let oldHeight = this.rowHeights[r];
-        let newHeight = Math.max(oldHeight, rowRect.height);
+        let newHeight = Math.floor(Math.max(oldHeight, rowRect.height));
         this.rowHeights[r] = newHeight;
         this.totalHeight += newHeight - oldHeight;
         this.lastRowTop += newHeight - oldHeight;
@@ -444,7 +444,7 @@ export class TableModel {
         }
         let colRect = td.getBoundingClientRect();
         let oldWidth = this.colWidths[c];
-        let newWidth = Math.max(oldWidth, colRect.width);
+        let newWidth = Math.floor(Math.max(oldWidth, colRect.width));
         this.colWidths[c] = newWidth;
         this.totalWidth += newWidth - oldWidth;
         this.lastColLeft += newWidth - oldWidth;
@@ -721,10 +721,12 @@ export class TableModel {
     this.didUpdate();
   }
   renderData({force}) {
-    this.scrollTop = this.scroller.scrollTop;
-    this.scrollLeft = this.scroller.scrollLeft;
     this.offsetHeight = this.scroller.offsetHeight;
     this.offsetWidth = this.scroller.offsetWidth;
+    this.scrollTop = Math.min(this.scroller.scrollTop, this.totalHeight - this.offsetHeight);
+    this.scrollLeft = Math.min(this.scroller.scrollLeft, this.totalWidth - this.offsetWidth);
+    this.bufferHeight = Math.min(this.bufferHeight, this.scroller.offsetHeight);
+    this.bufferWidth = Math.min(this.bufferWidth, this.scroller.offsetWidth);
 
     if (this.rowCount == 0 || this.colCount == 0) {
       this.header = [];
@@ -742,6 +744,7 @@ export class TableModel {
         this.scrolledWidth = this.totalWidth;
         this.state.skipRecalculate = true;
         this.didUpdate();
+        //this.recalculate();
       }
       return;
     }
@@ -853,6 +856,7 @@ export class TableModel {
       this.rows.push(dataRow);
     }
     this.didUpdate();
+    //this.recalculate();
   }
 
   dataChange(newData) {
@@ -921,6 +925,8 @@ export class TableModel {
       this.state.skipRecalculate = false;
       this.renderData({force: true});
     }
+    this.bufferHeight = Math.min(this.bufferHeight, this.scroller.offsetHeight);
+    this.bufferWidth = Math.min(this.bufferWidth, this.scroller.offsetWidth);
   }
   didUpdate(cb) {
     if (this.reactCallback) {
@@ -1319,7 +1325,7 @@ export class ScrollTable extends React.Component {
   }
   componentDidUpdate() {
     let {model} = this.props;
-    model.recalculate();
+    //model.recalculate();
   }
   render() {
     let {model} = this.props;
