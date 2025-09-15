@@ -111,7 +111,8 @@
         "explore-api.html",
         "limits.html",
         "options.html",
-        "dependency.html"
+        "dependency.html",
+        "org-analyzer.html"
       ],
       "matches": [
         "https://*.salesforce.com/*",
