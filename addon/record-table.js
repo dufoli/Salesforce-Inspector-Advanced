@@ -442,7 +442,12 @@ export class TableModel {
         if (this.colVisible[c] == 0 || td == null) {
           continue;
         }
-        let colRect = td.getBoundingClientRect();
+        let colRect;
+        if (td.firstElementChild != null) {
+          colRect = td.firstElementChild.getBoundingClientRect();
+        } else {
+          colRect = td.getBoundingClientRect();
+        }
         let oldWidth = this.colWidths[c];
         let newWidth = Math.floor(Math.max(oldWidth, colRect.width));
         this.colWidths[c] = newWidth;
@@ -723,8 +728,8 @@ export class TableModel {
   renderData({force}) {
     this.offsetHeight = this.scroller.offsetHeight;
     this.offsetWidth = this.scroller.offsetWidth;
-    this.scrollTop = Math.min(this.scroller.scrollTop, this.totalHeight - this.offsetHeight);
-    this.scrollLeft = Math.min(this.scroller.scrollLeft, this.totalWidth - this.offsetWidth);
+    this.scrollTop = this.scroller.scrollTop;
+    this.scrollLeft = this.scroller.scrollLeft;
     this.bufferHeight = Math.min(this.bufferHeight, this.scroller.offsetHeight);
     this.bufferWidth = Math.min(this.bufferWidth, this.scroller.offsetWidth);
 
@@ -1235,7 +1240,7 @@ class ScrollTableCell extends React.Component {
         className += " scrolltable-cell-diff";
       }
       return h("td", {className, style: cellStyle},
-        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("div", {style: {height: "100%"}, onDoubleClick: this.onTryEdit}, cellLabel),
+        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("span", {style: {height: "100%"}, onDoubleClick: this.onTryEdit}, cellLabel),
         cell.showMenu ? h("div", {className: "pop-menu"},
           cell.links.map((l, idx) => {
             let arr = [];
@@ -1325,7 +1330,7 @@ export class ScrollTable extends React.Component {
   }
   componentDidUpdate() {
     let {model} = this.props;
-    //model.recalculate();
+    model.recalculate();
   }
   render() {
     let {model} = this.props;
