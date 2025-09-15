@@ -718,6 +718,19 @@ class App extends React.PureComponent {
             ),
             h("a",
               {
+                ref: "orgAnalyzerBtn",
+                href: "org-analyzer.html?" + hostArg,
+                target: linkTarget,
+                className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
+                title: "Org Analyzer",
+                onMouseEnter: () => { this.setButtonTooltip("Analyze Org - Shortcut [o]"); },
+                onMouseLeave: () => { this.setButtonTooltip(""); }
+              },
+              h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#company", style: {fill: "#706E6B"}})),
+              h("span", {className: "slds-assistive-text"}, "Analyze Org"), // company magicwand  salesforce1 builder
+            ),
+            h("a",
+              {
                 ref: "limitsBtn",
                 href: limitsHref,
                 target: linkTarget,
