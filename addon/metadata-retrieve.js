@@ -1,6 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
-import {RecordTable} from "./data-load.js";
+import {RecordTable} from "./record-table.js";
 /* global initButton */
 
 
