@@ -1059,7 +1059,7 @@ class Model {
     let jobs = new RecordTable();
     jobs.describeInfo = vm.describeInfo;
     jobs.sfHost = vm.sfHost;
-    let queryLogs = "SELECT Id, Application, Status, Operation, StartTime, LogLength, LogUser.Name FROM ApexLog ORDER BY StartTime DESC LIMIT 100";
+    let queryLogs = "SELECT Id, Application, Status, Operation, StartTime, LogLength, DurationMilliseconds, LogUser.Name FROM ApexLog ORDER BY StartTime DESC LIMIT 100";
     let queryJobs = "SELECT Id, JobType, ApexClass.Name, CompletedDate, CreatedBy.Name, CreatedDate, ExtendedStatus, TotalJobItems , JobItemsProcessed, NumberOfErrors, Status FROM AsyncApexJob WHERE JobType in ('BatchApex', 'Queueable') ORDER BY CreatedDate desc LIMIT 100";
     //logs.resetTable();
     this.logs = null;
