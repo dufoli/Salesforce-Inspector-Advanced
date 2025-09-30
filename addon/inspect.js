@@ -89,7 +89,15 @@ class Model {
   recordHeading() {
     let parts;
     if (this.recordData) {
-      let nameField = this.recordData.Name ? "Name" : (this.objectData?.fields ? this.objectData.fields.find(field => field.nameField).name : "");
+      let nameField = "";
+      if (this.recordData.Name) {
+        nameField = "Name";
+      } else if (this.objectData?.fields) {
+        let fielName = this.objectData.fields.find(field => field.nameField);
+        if (fielName) {
+          nameField = fielName.name;
+        }
+      }
       let recordName = "";
       if (nameField) {
         recordName = this.recordData[nameField];
