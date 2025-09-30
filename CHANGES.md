@@ -1,13 +1,13 @@
 # Release Notes
 ## Version 1.35.1
-- metadata: fix download metadata [issue 240](https://github.com/dufoli/Salesforce-Inspector-Advanced/240)
-- inspect: fix name field when no name field found
-- apex runner: add Duration on column on logs
-- fix infinite increase of width of column in table [issue 239](https://github.com/dufoli/Salesforce-Inspector-Advanced/239)
-- autosuggestion box for data export and apex runner [issue 234](https://github.com/dufoli/Salesforce-Inspector-Advanced/234)
-- project structure: refactore code and split each component on dedicated file
-- shortcut :search in validation rule error message [issue 235](https://github.com/dufoli/Salesforce-Inspector-Advanced/235)
-- Data export: add include, exclude keyword suggestions on soql [issue 233](https://github.com/dufoli/Salesforce-Inspector-Advanced/233)
+- Metadata: Fix download metadata [issue 240](https://github.com/dufoli/Salesforce-Inspector-Advanced/240)
+- Inspect: Fix name field when no name field found
+- apex runner: add Duration column on logs table
+- Data export: Fix infinite increase of width of column in table [issue 239](https://github.com/dufoli/Salesforce-Inspector-Advanced/239)
+- Data export / Apex runner: Autosuggestion box for history, template and saved query in data export and apex runner [issue 234](https://github.com/dufoli/Salesforce-Inspector-Advanced/234)
+- Project cleaning: split each component on dedicated file
+- Shortcut : Search in validation rule error message [issue 235](https://github.com/dufoli/Salesforce-Inspector-Advanced/235)
+- Data export: Add include, exclude keyword suggestions on soql [issue 233](https://github.com/dufoli/Salesforce-Inspector-Advanced/233)
 
 ## Version 1.34
 - Log: Clear old apexlog button, run unit test [issue 227](https://github.com/dufoli/Salesforce-Inspector-Advanced/227)
