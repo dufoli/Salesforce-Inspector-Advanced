@@ -1740,6 +1740,7 @@ class UserDetails extends React.PureComponent {
     let debugLogDebugLevel = localStorage.getItem(this.sfHost + "_debugLogDebugLevel");
     if (debugLogDebugLevel == null) {
       localStorage.setItem(this.sfHost + "_debugLogDebugLevel", "SFDC_DevConsole");
+      debugLogDebugLevel = "SFDC_DevConsole";
     }
 
     let debugLogTimeMinutes = localStorage.getItem("debugLogTimeMinutes");
