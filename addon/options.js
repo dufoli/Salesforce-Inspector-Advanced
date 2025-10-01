@@ -319,7 +319,7 @@ class Option extends React.Component {
     this.placeholder = props.placeholder;
     let value = localStorage.getItem(this.key);
     if (props.default !== undefined && value === null) {
-      if (props.default instanceof String) {
+      if (typeof props.default === "string" || props.default instanceof String) {
         value = props.default;
       } else {
         value = JSON.stringify(props.default);
