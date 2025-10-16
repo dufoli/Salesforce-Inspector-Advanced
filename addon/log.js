@@ -1145,9 +1145,11 @@ class CumulativeProfilingNode extends LogNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "CUMULATIVE_PROFILING_END");
     this.icon = "database";
-    this.infos = [];
   }
   addInfo(l) {
+    if (!this.infos) {
+      this.infos = [];
+    }
     if (l.length > 3) {
       this.infos.push(l.slice(2).join("|"));
     }
@@ -2183,7 +2185,7 @@ class LogViewer extends React.Component {
           model.lines.map((line, index) =>
             h("div", {style: {position: "relative"}, key: "line" + index},
               h("pre", {className: "editor-line", role: "presentation"},
-                h("span", {role: "presentation", style: {paddingRight: "0.1px"}}, this.renderNode(line, index)),
+                h("span", {role: "presentation", style: {paddingRight: "0.1px"}}, ...this.renderNode(line, index)),
               ),
             )
           ),
