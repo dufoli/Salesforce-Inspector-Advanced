@@ -1,8 +1,15 @@
 # Release Notes
+## Version 1.35.3
+- History box: revert merge of history and saved query combobox
+- Log: fix log View doesn't load consistently from the Apex Execute page. [issue 243](https://github.com/dufoli/Salesforce-Inspector-Advanced/243)
+## Version 1.35.2
+- Data export: Fix delete records button and csv serialize when option is displayed
+- popup: Fix first time use of enable log on user
 ## Version 1.35.1
 - Metadata: Fix download metadata [issue 240](https://github.com/dufoli/Salesforce-Inspector-Advanced/240)
 - Inspect: Fix name field when no name field found
-- apex runner: add Duration column on logs table
+## Version 1.35
+- Apex runner: add Duration column on logs table
 - Data export: Fix infinite increase of width of column in table [issue 239](https://github.com/dufoli/Salesforce-Inspector-Advanced/239)
 - Data export / Apex runner: Autosuggestion box for history, template and saved query in data export and apex runner [issue 234](https://github.com/dufoli/Salesforce-Inspector-Advanced/234)
 - Project cleaning: split each component on dedicated file
