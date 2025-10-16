@@ -224,6 +224,9 @@ class Model {
     }
     return {text: `${batchCount}${this.totalTime.toFixed(1)}ms`, batchStats};
   }
+  clearHistory() {
+    this.queryHistory.clear();
+  }
   selectSavedEntry() {
     if (this.selectedSavedEntry != null) {
       //old format
@@ -245,6 +248,9 @@ class Model {
       this.editorAutocompleteHandler();
       this.selectedSavedEntry = null;
     }
+  }
+  clearSavedHistory() {
+    this.savedHistory.clear();
   }
   addToHistory() {
     this.savedHistory.add({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling});
@@ -1996,6 +2002,8 @@ class App extends React.Component {
     this.onQueryAllChange = this.onQueryAllChange.bind(this);
     this.onQueryToolingChange = this.onQueryToolingChange.bind(this);
     this.onSelectQuery = this.onSelectQuery.bind(this);
+    this.onClearHistory = this.onClearHistory.bind(this);
+    this.onClearSavedHistory = this.onClearSavedHistory.bind(this);
     this.onAddToHistory = this.onAddToHistory.bind(this);
     this.onToggleHelp = this.onToggleHelp.bind(this);
     this.onToggleExpand = this.onToggleExpand.bind(this);
@@ -2046,6 +2054,25 @@ class App extends React.Component {
   onSelectQuery(input) {
     let {model} = this.props;
     model.selectQuery(input);
+    model.didUpdate();
+  }
+  onClearHistory(e) {
+    e.preventDefault();
+    let r = confirm("Are you sure you want to clear the query history?");
+    if (r == true) {
+      let {model} = this.props;
+      model.clearHistory();
+      model.didUpdate();
+    }
+  }
+  onClearSavedHistory(e) {
+    e.preventDefault();
+    let r = confirm("Are you sure you want to remove all saved queries?");
+    let {model} = this.props;
+    if (r == true) {
+      model.clearSavedHistory();
+    }
+    model.toggleSavedOptions();
     model.didUpdate();
   }
   onAddToHistory(e) {
@@ -2238,7 +2265,8 @@ class App extends React.Component {
         ),
         h("div", {className: "query-controls"},
           h("h1", {}, "Export Query"),
-          h(HistoryBox, {didUpdate: model.didUpdate.bind(model), suggestions: historyList, onSelect: this.onSelectQuery, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
+          h(HistoryBox, {title: "History", didUpdate: model.didUpdate.bind(model), suggestions: historyList.filter(h => !h.favorite), onSelect: this.onSelectQuery, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
+          h(HistoryBox, {title: "Favorite", didUpdate: model.didUpdate.bind(model), suggestions: historyList.filter(h => h.favorite), onSelect: this.onSelectQuery, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
           h("div", {className: "button-group"},
             h("input", {placeholder: "Query Label", type: "save", value: model.queryName, onInput: this.onSetQueryName}),
             h("button", {onClick: this.onAddToHistory, title: "Add query to saved history"}, "Save Query")

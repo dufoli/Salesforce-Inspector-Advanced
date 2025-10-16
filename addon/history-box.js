@@ -96,7 +96,6 @@ export class HistoryBox extends React.Component {
       filteredSuggestions,
       showSuggestions: true
     });
-
     didUpdate();
   }
   onBlur(e) {
@@ -112,7 +111,8 @@ export class HistoryBox extends React.Component {
       this.setState({
         activeSuggestion: 0,
         filteredSuggestions: [],
-        showSuggestions: false
+        showSuggestions: false,
+        seachTerms: ""
       });
       didUpdate();
     }, 100); // Set timeout for 500ms
@@ -219,7 +219,7 @@ export class HistoryBox extends React.Component {
         h("div", {className: "slds-combobox_container"},
           h("div", {className: "slds-combobox slds-dropdown-trigger slds-dropdown-trigger_click slds-is-open"},
             h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"}, // slds-button slds-button_first slds-nowrap
-              h("input", {type: "text", className: "slds-input slds-combobox__input" + (showSuggestions ? " slds-has-focus" : ""), "aria-autocomplete": "list", "aria-controls": "listbox-id-2", "aria-expanded": (showSuggestions ? "true" : "false"), "aria-haspopup": "listbox", autoComplete: "off", role: "combobox", placeholder: "Search...", value: this.state.seachTerms, onChange: this.onChange, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
+              h("input", {type: "text", className: "slds-input slds-combobox__input" + (showSuggestions ? " slds-has-focus" : ""), "aria-autocomplete": "list", "aria-controls": "listbox-id-2", "aria-expanded": (showSuggestions ? "true" : "false"), "aria-haspopup": "listbox", autoComplete: "off", role: "combobox", placeholder: showSuggestions ? "Search..." : this.props.title, value: this.state.seachTerms, onChange: this.onChange, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
               h("span", {className: "slds-icon_container slds-icon-utility-search slds-input__icon slds-input__icon_right"},
                 h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": "true"},
                   h("use", {xlinkHref: "symbols.svg#search"})
@@ -236,13 +236,13 @@ export class HistoryBox extends React.Component {
                     }
                     return h("li", {role: "presentation", className: SuggestionClass, key: "historySuggestion" + index, onMouseDown: (e) => this.onSuggestionClick(e, index)},
                       h("div", {id: "option" + index, className: "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small", role: "option", "aria-selected": (index === activeSuggestion ? "true" : "false")}, // slds-listbox__option slds-listbox__option_plain slds-media_small slds-combobox__form-element
-                        h("span", {className: "slds-media__figure slds-listbox__option-icon slds-align-middle", title: suggestion.favorite ? "Remove from favorite" : "Add to favorite"},
-                          h("span", {className: "slds-icon_container slds-current-color slds-icon-utility-check slds-current-color", onMouseDown: (e) => this.toggleFav(e, index)},
-                            h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default" + (suggestion.favorite ? " " : " favorite-inverse"), "aria-hidden": "true"},
-                              h("use", {xlinkHref: "symbols.svg#favorite"})
-                            )
-                          )
-                        ),
+                        // h("span", {className: "slds-media__figure slds-listbox__option-icon slds-align-middle", title: suggestion.favorite ? "Remove from favorite" : "Add to favorite"},
+                        //   h("span", {className: "slds-icon_container slds-current-color slds-icon-utility-check slds-current-color", onMouseDown: (e) => this.toggleFav(e, index)},
+                        //     h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default" + (suggestion.favorite ? " " : " favorite-inverse"), "aria-hidden": "true"},
+                        //       h("use", {xlinkHref: "symbols.svg#favorite"})
+                        //     )
+                        //   )
+                        // ),
                         h("span", {className: "slds-media__body slds-align-middle"},
                           h("span", {className: "slds-truncate", title: suggestion.label},
                             suggestion.label
