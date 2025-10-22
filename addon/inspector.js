@@ -15,7 +15,7 @@ export let sfConn = {
 
   async getSession(sfHost) {
     sfHost = getMyDomain(sfHost);
-    const ACCESS_TOKEN = "access__token";
+    const ACCESS_TOKEN = "access_token";
     const currentUrlIncludesToken = window.location.href.includes(ACCESS_TOKEN);
     const oldToken = localStorage.getItem(sfHost + "_" + ACCESS_TOKEN);
     this.instanceHostname = sfHost;
@@ -122,7 +122,7 @@ export let sfConn = {
       throw err;
     } else if (xhr.status == 401) {
       let error = xhr.response.length > 0 ? xhr.response[0].message : "New access token needed";
-      const ACCESS_TOKEN = "_access__token";
+      const ACCESS_TOKEN = "_access_token";
       let oldToken = localStorage.getItem(this.instanceHostname + ACCESS_TOKEN);
       if (oldToken){
         sessionError = error;
@@ -368,3 +368,4 @@ function showInvalidTokenBanner(){
   const containerToMask = document.getElementById("mainTabs");
   if (containerToMask) { containerToMask.classList.add("mask"); }
 }
+
