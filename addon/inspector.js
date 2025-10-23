@@ -15,15 +15,16 @@ export let sfConn = {
 
   async getSession(sfHost) {
     sfHost = getMyDomain(sfHost);
-    const ACCESS_TOKEN = "access_token";
-    const currentUrlIncludesToken = window.location.href.includes(ACCESS_TOKEN);
+    const ACCESS_TOKEN = "access__token";
+    const URL_ACCESS_TOKEN = "access_token";  // OAuth flow returns access_token in callback URL
+    const currentUrlIncludesToken = window.location.href.includes(URL_ACCESS_TOKEN);
     const oldToken = localStorage.getItem(sfHost + "_" + ACCESS_TOKEN);
     this.instanceHostname = sfHost;
     if (currentUrlIncludesToken){ //meaning OAuth flow just completed
-      if (window.location.href.includes(ACCESS_TOKEN)) {
+      if (window.location.href.includes(URL_ACCESS_TOKEN)) {
         const url = new URL(window.location.href);
         const hashParams = new URLSearchParams(url.hash.substring(1)); //hash (#) used in user-agent flow
-        const accessToken = decodeURI(hashParams.get(ACCESS_TOKEN));
+        const accessToken = decodeURI(hashParams.get(URL_ACCESS_TOKEN));
         sfHost = decodeURI(hashParams.get("instance_url")).replace(/^https?:\/\//i, "");
         this.sessionId = accessToken;
         localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, accessToken);
@@ -122,7 +123,7 @@ export let sfConn = {
       throw err;
     } else if (xhr.status == 401) {
       let error = xhr.response.length > 0 ? xhr.response[0].message : "New access token needed";
-      const ACCESS_TOKEN = "_access_token";
+      const ACCESS_TOKEN = "_access__token";
       let oldToken = localStorage.getItem(this.instanceHostname + ACCESS_TOKEN);
       if (oldToken){
         sessionError = error;
@@ -368,4 +369,5 @@ function showInvalidTokenBanner(){
   const containerToMask = document.getElementById("mainTabs");
   if (containerToMask) { containerToMask.classList.add("mask"); }
 }
+
 
