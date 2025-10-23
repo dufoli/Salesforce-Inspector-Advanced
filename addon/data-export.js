@@ -1904,7 +1904,6 @@ class Model {
   doQueryPlan(){
     let vm = this; // eslint-disable-line consistent-this
     let exportedData = new RecordTable(st => { vm.exportStatus = st; }, vm);
-
     vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?explain=" + encodeURIComponent(vm.editor.value)).then(async res => {
       await exportedData.addToTable(res.plans);
       vm.exportStatus = "";
@@ -1912,8 +1911,13 @@ class Model {
       vm.exportedData = exportedData;
       vm.updatedExportedData();
       vm.didUpdate();
-    }, () => {
+    }, (err) => {
+      console.error(err);
       vm.isWorking = false;
+      vm.exportStatus = "Error";
+      vm.exportError = "UNEXPECTED EXCEPTION:" + err;
+      vm.exportedData = null;
+      vm.didUpdate();
     }));
     vm.autocompleteResults = {
       sobjectName: "",
