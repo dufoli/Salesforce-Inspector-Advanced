@@ -92,6 +92,9 @@ class LogParser {
     this.lineCount = this.lines.length;
     let node = new RootNode(this);
     this.parseLine(node, null);
+    if (this.index < this.lineCount) {
+      this.parseLine(node, null);
+    }
     this.aggregate(node);
     this.rootNode = node;
     let result = [];
