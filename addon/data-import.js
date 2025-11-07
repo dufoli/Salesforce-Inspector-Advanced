@@ -69,7 +69,11 @@ class Model {
     this.apiType = this.importType.endsWith("__mdt") ? "Metadata" : apiTypeParam ? apiTypeParam : "Enterprise";
 
     if (args.has("data")) {
-      let data = atob(args.get("data"));
+      let base64Data = args.get("data");
+      if (!/^[A-Za-z0-9+/=]+$/.test(base64Data)) {
+        throw new Error("Invalid base64 data");
+      }
+      let data = atob(base64Data);
       this.dataFormat = "csv";
       this.setData(data);
       this.updateAvailableActions();
@@ -77,7 +81,11 @@ class Model {
       this.skipAllUnknownFields();
     }
     if (args.has("action")){
-      this.importAction = args.get("action");
+      const action = args.get("action");
+      if (!this.allActions.map(a => a.value).includes(action)) {
+        throw new Error(`Invalid action: ${action}`);
+      }
+      this.importAction = action;
     }
     if (this.importAction) {
       this.importActionName = this.allActions.filter(a => a.value == this.importAction).map(a => a.label).shift();
