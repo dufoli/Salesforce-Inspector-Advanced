@@ -48,6 +48,7 @@ class Model {
     ]});
     this.resultsFilter = "";
     this.editor = null;
+    this.openLogOnExecute = true;
     this.historyOffset = -1;
     this.runningTestId = null;
     this.testStatus = "PENDING";
@@ -799,20 +800,21 @@ class Model {
           vm.updatedLogs();
           return;
         } else {
-          let logQuery = `SELECT Id FROM ApexLog WHERE Operation='/services/data/v${apiVersion}/tooling/executeAnonymous/' AND LogUserId='${this.userId}' ORDER BY StartTime DESC LIMIT 1`;
-          vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(logQuery), {})
-            .then(logResult => {
-              if (logResult && logResult.records && logResult.records.length > 0) {
-                let logId = logResult.records[0].Id;
-                let queryLogArgs = new URLSearchParams();
-                queryLogArgs.set("host", vm.sfHost);
-                queryLogArgs.set("recordId", logId);
-                // Open the log in a new tab
-                window.open(`log.html?${queryLogArgs}`, "_blank");
-              }
-            }
-            )
-          );
+          if (this.openLogOnExecute) {
+            let logQuery = `SELECT Id FROM ApexLog WHERE Operation='/services/data/v${apiVersion}/tooling/executeAnonymous/' AND LogUserId='${this.userId}' ORDER BY StartTime DESC LIMIT 1`;
+            vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(logQuery), {})
+              .then(logResult => {
+                if (logResult && logResult.records && logResult.records.length > 0) {
+                  let logId = logResult.records[0].Id;
+                  let queryLogArgs = new URLSearchParams();
+                  queryLogArgs.set("host", vm.sfHost);
+                  queryLogArgs.set("recordId", logId);
+                  // Open the log in a new tab
+                  window.open(`log.html?${queryLogArgs}`, "_blank");
+                }
+              })
+            );
+          }
           vm.scriptHistory.add({script});
         }
       }));
@@ -1219,7 +1221,7 @@ class App extends React.Component {
     this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
     this.onUpdateHistoryItem = this.onUpdateHistoryItem.bind(this);
     this.onDeleteHistoryItem = this.onDeleteHistoryItem.bind(this);
-
+    this.onToggleOpenLogOnExecute = this.onToggleOpenLogOnExecute.bind(this);
     this.state = {
       selectedTabId: 1
     };
@@ -1385,6 +1387,11 @@ class App extends React.Component {
     let {model} = this.props;
     model.deleteHistoryItem(suggestion);
   }
+  onToggleOpenLogOnExecute(e) {
+    let {model} = this.props;
+    model.openLogOnExecute = e.target.checked;
+    model.didUpdate();
+  }
   componentDidMount() {
     let {model} = this.props;
     model.autocompleteResultBox = this.refs.autocompleteResultBox;
@@ -1423,7 +1430,6 @@ class App extends React.Component {
     let {model} = this.props;
     model.disableLogs();
   }
-//TODO reset error on execute
   render() {
     let {model} = this.props;
     let hostArg = new URLSearchParams();
@@ -1483,6 +1489,10 @@ class App extends React.Component {
           h("div", {className: "autocomplete-header"},
             h("span", {}, model.autocompleteResults.title + suggestionHelper),
             h("div", {className: "flex-right"},
+              h("label", {className: "slds-checkbox__label slds-p-right_small"},
+                h("input", {type: "checkbox", className: "slds-checkbox", checked: model.openLogOnExecute, onChange: this.onToggleOpenLogOnExecute}),
+                " Open Log ",
+              ),
               h("button", {tabIndex: 1, onClick: this.onExecute, title: "Ctrl+Enter / F5", className: "highlighted"}, "Run Execute"),
               h("button", {tabIndex: 2, onClick: this.onCopyScript, title: "Copy script url", className: "copy-id"}, "Export Script")
             ),
