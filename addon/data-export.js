@@ -812,14 +812,24 @@ class Model {
     }
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
-    // \s*[<>=!]+\s*('?[^'\s]*)$
-    let isFieldValue = query.substring(0, selStart).match(/(\s*[<>=!]+|(?:\s+not)?\s+(includes|excludes|in)\s*\(|\s+like)\s*\(?(?:[^,]*,\s*)*('?[^\s)]*'?)$/i);
+
+    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|[0-9.]*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\([^)]*$/i);
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
       fieldName = query.substring(0, fieldEnd).match(/[a-zA-Z0-9_]*$/)[0];
       contextEnd = fieldEnd - fieldName.length;
-      selStart -= isFieldValue[3].length;
+      //for performance purpose simplify regex and use few regex instead of one.
+      if (isFieldValue[1].toLowerCase() == "in" || isFieldValue[1].toLowerCase() == "includes" || isFieldValue[1].toLowerCase() == "excludes") {
+        let m = query.substring(0, selStart).match(/[^,(\s]*$/i)[0];
+        // if (m.startsWith("'")) {
+        //   m = m.substring(1);
+        // }
+        // if
+        selStart -= m.length;
+      } else {
+        selStart -= isFieldValue[2].length;
+      }
     }
     let isTypeOfWhen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+([a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+\S*$/i);
     let isTypeOfThen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+(?:[a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+(\S*)\s+THEN\s+\S*$/i);
