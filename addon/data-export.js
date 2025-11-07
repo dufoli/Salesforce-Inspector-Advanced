@@ -821,12 +821,17 @@ class Model {
       contextEnd = fieldEnd - fieldName.length;
       //for performance purpose simplify regex and use few regex instead of one.
       if (isFieldValue[1].toLowerCase() == "in" || isFieldValue[1].toLowerCase() == "includes" || isFieldValue[1].toLowerCase() == "excludes") {
-        let m = query.substring(0, selStart).match(/[^,(\s]*$/i)[0];
+        //in order to include space:
+        let m = query.substring(0, selStart).match(/[^,(']*$/i)[0];
         // if (m.startsWith("'")) {
         //   m = m.substring(1);
         // }
         // if
         selStart -= m.length;
+        //include open quote in selection
+        if (query.substring(0, selStart).endsWith("'")) {
+          selStart--;
+        }
       } else {
         selStart -= isFieldValue[2].length;
       }
@@ -1003,7 +1008,7 @@ class Model {
         return;
       }
       let ar = new Enumerable(contextValueFields).flatMap(function* ({field}) {
-        yield* field.picklistValues.map(pickVal => ({value: "'" + pickVal.value + "'", title: pickVal.label, suffix: " ", rank: 1, autocompleteType: "picklistValue", dataType: ""}));
+        yield* field.picklistValues.map(pickVal => ({value: "'" + pickVal.value + "'", title: pickVal.label ?? pickVal.value, suffix: " ", rank: 1, autocompleteType: "picklistValue", dataType: ""}));
         if (field.type == "boolean") {
           yield {value: "true", title: "true", suffix: " ", rank: 1};
           yield {value: "false", title: "false", suffix: " ", rank: 1};
