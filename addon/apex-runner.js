@@ -799,6 +799,20 @@ class Model {
           vm.updatedLogs();
           return;
         } else {
+          let logQuery = `SELECT Id FROM ApexLog WHERE Operation='/services/data/v${apiVersion}/tooling/executeAnonymous/' AND LogUserId='${this.userId}' ORDER BY StartTime DESC LIMIT 1`;
+          vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(logQuery), {})
+            .then(logResult => {
+              if (logResult && logResult.records && logResult.records.length > 0) {
+                let logId = logResult.records[0].Id;
+                let queryLogArgs = new URLSearchParams();
+                queryLogArgs.set("host", vm.sfHost);
+                queryLogArgs.set("recordId", logId);
+                // Open the log in a new tab
+                window.open(`log.html?${queryLogArgs}`, "_blank");
+              }
+            }
+            )
+          );
           vm.scriptHistory.add({script});
         }
       }));
@@ -1424,7 +1438,7 @@ class App extends React.Component {
     let historyList = model.getHistory();
 
     let keywordColor = new Map([["do", "violet"], ["public", "blue"], ["private", "blue"], ["global", "blue"], ["class", "blue"], ["static", "blue"],
-      ["interface", "blue"], ["extends", "blue"], ["while", "violet"], ["for", "violet"], ["try", "violet"], ["catch", "violet"],
+      ["interface", "blue"], ["extends", "blue"], ["while", "violet"], ["for", "violet"], ["try", "violet"], ["catch", "violet"], ["true", "blue"], ["false", "blue"],
       ["finally", "violet"], ["extends", "violet"], ["throw", "violet"], ["new", "violet"], ["if", "violet"], ["else", "violet"]]);
     return h("div", {onClick: this.onClick},
       h("div", {id: "user-info"},
