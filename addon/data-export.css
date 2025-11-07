@@ -912,3 +912,13 @@ button.toggle .button-icon {
 .suggestions li:not(:last-of-type) {
   border-bottom: 1px solid #999;
 }
+.sort-indicator {
+  margin-left: 5px;
+  cursor: pointer;
+  font-size: 0.8em;
+  color: #706E6B;
+}
+
+.sort-indicator.active {
+  color: #009DDC;
+}

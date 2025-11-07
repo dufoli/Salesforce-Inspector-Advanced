@@ -50,6 +50,8 @@ export class RecordTable {
     this.columnIdx = new Map();
     this.header = ["_"];
     this.columnType = new Map();
+    this.ColumnSortIndex = new Map();
+    this.sortCfg = {};
     this.skipTechnicalColumns = localStorage.getItem("skipTechnicalColumns") !== "false";
     this.dateFormat = localStorage.getItem("dateFormat");
     this.datetimeFormat = localStorage.getItem("datetimeFormat");
@@ -59,7 +61,7 @@ export class RecordTable {
       this.decimalFormat = ".";
       localStorage.setItem("decimalFormat", this.decimalFormat);
     }
-    this.filter = "";
+    this.filter = null;
     this.setStatus = setStatus;
     this.vm = vm;
   }
@@ -138,7 +140,16 @@ export class RecordTable {
     return this.getVisibleTable().map(row => row.filter((c, i) => (i == 0 || i == idIdx)).map(cell => "\"" + this.cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
   }
   isVisible(row) {
-    return !this.filter || row.some(cell => this.cellToString(cell).toLowerCase().includes(this.filter.toLowerCase()));
+    if (!this.filter) {
+      return true;
+    }
+    if (typeof this.filter === "string" || this.filter instanceof String || this.filter.indexes == null || this.filter.indexes.length == 0) {
+      return row.some(cell => this.cellToString(cell).toLowerCase().includes(this.filter.toLowerCase()));
+    }
+    return this.filter.indexes.some(index => {
+      if (row[index] == null) { return false; }
+      return this.cellToString(row[index]).toLowerCase().includes(this.filter.value.toLowerCase());
+    });
   }
   async discoverQueryColumns(record, vm) {
     let fields = vm.columnIndex.fields;
@@ -291,7 +302,46 @@ export class RecordTable {
     finalDate += String(offsetMinutes).padStart(2, "0");
     return finalDate;
   }
-  async addToTable(expRecords) {
+  sortColumn(sortCfg) {
+    //TODO remove header from table and user header instead.
+    // in order to avoid that header is sorted with data
+    this.sortCfg = sortCfg;
+    //this.columnType.get(field) == "decimal" || this.columnType.get(field) == "currency"
+    let colType = this.columnType.get(this.header[sortCfg.column]);
+    let modeText = true;
+    if (colType == "decimal" || colType == "currency") {
+      modeText = false;
+    }
+
+    if (sortCfg) {
+      this.table = this.table.slice(1);
+      this.table.sort((rowA, rowB) => {
+        let valueA = rowA[sortCfg.column];
+        let valueB = rowB[sortCfg.column];
+        if (valueA == null && valueB == null) {
+          return 0;
+        } else if (valueA == null) {
+          return sortCfg.ascending ? -1 : 1;
+        } else if (valueB == null) {
+          return sortCfg.ascending ? 1 : -1;
+        }
+        if (sortCfg.ascending) {
+          if (modeText) {
+            return valueA.toString().localeCompare(valueB.toString());
+          } else {
+            return valueA < valueB ? -1 : valueA > valueB ? 1 : 0;
+          }
+        } else if (modeText) { //descending
+          return valueB.toString().localeCompare(valueA.toString());
+        } else { //descending decimal
+          return valueB < valueA ? -1 : valueB > valueA ? 1 : 0;
+        }
+      });
+      this.table.splice(0, 0, this.header);
+      this.updateVisibility(this.filter);
+    }
+  }
+  async addToTable(expRecords, sortCfg) {
     this.records = this.records.concat(expRecords);
     if (this.table.length == 0 && expRecords.length > 0) {
       this.table.push(this.header);
@@ -300,9 +350,42 @@ export class RecordTable {
     for (let record of expRecords) {
       let row = new Array(this.header.length);
       row[0] = record;
-      this.table.push(row);
-      this.rowVisibilities.push(this.isVisible(row));
-      if (this.vm){
+
+      if (sortCfg) {
+        let sortValue = record[sortCfg.column];
+        let lastIndex = this.ColumnSortIndex.get(sortValue);
+        let isAscending = sortCfg.ascending !== false; // Default to ascending if not specified
+
+        if (lastIndex == null) {
+          lastIndex = isAscending ? 0 : this.table.length - 1;
+          for (let [key, index] of this.ColumnSortIndex) {
+            if (
+              (isAscending && key < sortValue && index > lastIndex)
+              || (!isAscending && key > sortValue && index < lastIndex)
+            ) {
+              lastIndex = index;
+            }
+          }
+        }
+
+        // Insert the row at the correct position
+        this.table.splice(lastIndex + 1, 0, row);
+        this.rowVisibilities.splice(lastIndex + 1, 0, this.isVisible(row));
+        this.ColumnSortIndex.set(sortValue, lastIndex + 1);
+
+        // Update indices for subsequent values in ColumnSortIndex
+        for (let [key, index] of this.ColumnSortIndex) {
+          if (index > lastIndex + 1) {
+            this.ColumnSortIndex.set(key, index + 1);
+          }
+        }
+      } else {
+        // Add the row at the end if no sorting is specified
+        this.table.push(row);
+        this.rowVisibilities.push(this.isVisible(row));
+      }
+
+      if (this.vm) {
         await this.discoverQueryColumns(record, this.vm);
       }
       this.discoverColumns(record, "", row);
@@ -860,7 +943,7 @@ export class TableModel {
       dataRow.idx = r;
       this.rows.push(dataRow);
     }
-    this.didUpdate();
+    this.didUpdate(() => this.recalculate());
     //this.recalculate();
   }
 
@@ -1316,11 +1399,18 @@ export class ScrollTable extends React.Component {
     super(props);
     this.model = props.model;
     this.onScroll = this.onScroll.bind(this);
+    this.onSort = this.onSort.bind(this);
   }
 
   onScroll(){
     let {model} = this.props;
     model.viewportChange();
+  }
+  onSort(colIdx){
+    let {model} = this.props;
+    model.data.sortColumn({column: colIdx, ascending: (model.data.sortCfg.column == colIdx) ? !model.data.sortCfg.ascending : true});
+    model.dataChange(model.data);
+    model.didUpdate();
   }
   componentDidMount() {
     let {model} = this.props;
@@ -1335,12 +1425,13 @@ export class ScrollTable extends React.Component {
   render() {
     let {model} = this.props;
     let previousRow = null;
+    let showSort = model?.data?.sortColumn && model.rowCount < 100000;
     return h("div", {className: "result-table", onScroll: this.onScroll, ref: "scroller"},
       h("div", {className: "scrolltable-scrolled", ref: "scrolled", style: {height: model.scrolledHeight + "px", width: model.scrolledWidth + "px"}},
         h("table", {style: {top: model.firstRowTop + "px", left: model.firstColLeft + "px"}},
           h("thead", {},
             h("tr", {},
-              model.header.map((cell) => h("td", {key: "head" + cell.id, className: "scrolltable-cell header", style: {minWidth: model.colWidths[cell.idx] + "px", height: model.headerHeight + "px"}}, cell.name))
+              model.header.map((cell) => h("td", {key: "head" + cell.id, className: "scrolltable-cell header", style: {minWidth: model.colWidths[cell.idx] + "px", height: model.headerHeight + "px"}}, cell.name, (showSort && cell.idx != 0) ? h("span", {className: "sort-indicator" + (model.data.sortCfg.column == cell.idx ? " active" : ""), onClick: () => this.onSort(cell.idx)}, (model.data.sortCfg.column == cell.idx && !model.data.sortCfg.ascending) ? "▲" : "▼") : null))
             )
           ),
           h("tbody", {},
@@ -1353,15 +1444,15 @@ export class ScrollTable extends React.Component {
             })
           )
         ),
-        model.editedRows.size ? h("div", {className: "footer-edit-bar"}, h("span", {className: "edit-bar"},
-          h("button", {
-            name: "saveBtn",
-            title: "Save all editd records",
-            className: "button button-brand",
-            disabled: model.spinnerCount != 0 ? true : false,
-            onClick: this.onDoSaveAll
-          }, "Save all")
-        )) : null
+        // model.editedRows.size ? h("div", {className: "footer-edit-bar"}, h("span", {className: "edit-bar"},
+        //   h("button", {
+        //     name: "saveBtn",
+        //     title: "Save all edited records",
+        //     className: "button button-brand",
+        //     disabled: model.spinnerCount != 0 ? true : false,
+        //     onClick: this.onDoSaveAll
+        //   }, "Save all")
+        // )) : null
       )
     );
   }
