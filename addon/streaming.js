@@ -19,6 +19,7 @@ function RecordTable(vm) {
     table: [["Channel", "ReplayId", "CreatedDate", "Event type", "Payload"]],
     rowVisibilities: [true],
     colVisibilities: [true, true, true, true, true],
+    sortCfg: {},
     isTooling: false,
     totalSize: -1,
     addToTable(record) {
