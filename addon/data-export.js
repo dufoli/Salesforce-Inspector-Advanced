@@ -401,9 +401,20 @@ class Model {
     }
     let selStart = this.editor.selectionStart;
     let selEnd = this.editor.selectionEnd;
-    let searchTerm = selStart != selEnd
-      ? this.editor.value.substring(selStart, selEnd)
-      : this.editor.value.substring(0, selStart).match(/[a-zA-Z0-9_.]*$/)[0];
+    let searchTerm;
+    if (selStart != selEnd) {
+      searchTerm = this.editor.value.substring(selStart, selEnd);
+    } else if (this.autocompleteResults.isFieldValue) {
+      searchTerm = this.editor.value.substring(0, selEnd).match(/[^,(\s']*$/i)[0];
+      selStart -= searchTerm.length;
+      //include open quote in selection
+      if (this.editor.value.substring(0, selStart).endsWith("'")) {
+        searchTerm = "'" + searchTerm;
+        selStart--;
+      }
+    } else {
+      searchTerm = this.editor.value.substring(0, selStart).match(/[a-zA-Z0-9_.]*$/)[0];
+    }
     selStart = selEnd - searchTerm.length;
     let ar = this.autocompleteResults.results;
     if (this.autocompleteResults.isField && this.activeSuggestion == -1) {
@@ -813,28 +824,12 @@ class Model {
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
 
-    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|[0-9.]*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\([^)]*$/i);
+    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|\S*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\([^)]*$/i);
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
       fieldName = query.substring(0, fieldEnd).match(/[a-zA-Z0-9_]*$/)[0];
       contextEnd = fieldEnd - fieldName.length;
-      //for performance purpose simplify regex and use few regex instead of one.
-      if (isFieldValue[1].toLowerCase() == "in" || isFieldValue[1].toLowerCase() == "includes" || isFieldValue[1].toLowerCase() == "excludes") {
-        //in order to include space:
-        let m = query.substring(0, selStart).match(/[^,(']*$/i)[0];
-        // if (m.startsWith("'")) {
-        //   m = m.substring(1);
-        // }
-        // if
-        selStart -= m.length;
-        //include open quote in selection
-        if (query.substring(0, selStart).endsWith("'")) {
-          selStart--;
-        }
-      } else {
-        selStart -= isFieldValue[2].length;
-      }
     }
     let isTypeOfWhen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+([a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+\S*$/i);
     let isTypeOfThen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+(?:[a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+(\S*)\s+THEN\s+\S*$/i);
@@ -2313,7 +2308,7 @@ class App extends React.Component {
               h("button", {tabIndex: 3, onClick: this.onCopyQuery, title: "Copy query url", className: "copy-id"}, "Export Query"),
               h("button", {tabIndex: 4, onClick: this.onQueryPlan, title: "Run Query Plan"}, "Query Plan"),
               h("a", {tabIndex: 5, className: "button", hidden: !model.autocompleteResults.sobjectName, href: model.showDescribeUrl(), target: "_blank", title: "Show field info for the " + model.autocompleteResults.sobjectName + " object"}, model.autocompleteResults.sobjectName + " Field Info"),
-              h("button", {className: "variable-btn " + (model.showVariable ? "toggle expand" : "toggle contract"), id: "variable-btn", title: "Use list parametter in query", onClick: this.onToggleVariable},
+              h("button", {className: "variable-btn " + (model.showVariable ? "toggle expand" : "toggle contract"), id: "variable-btn", title: "Use list parameter in query", onClick: this.onToggleVariable},
                 h("div", {className: "icon"}),
                 h("div", {className: "button-toggle-icon"})
               )
