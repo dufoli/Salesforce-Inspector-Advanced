@@ -47,6 +47,10 @@ class Model {
       {name: "NumLinesUncovered", title: "Lines uncovered"}
     ]});
     this.resultsFilter = "";
+    this.showLoopParameter = false;
+    this.loopCount = 1;
+    this.loopDelay = 0;
+    this.loopContinueOnError = false;
     this.editor = null;
     this.openLogOnExecute = true;
     this.historyOffset = -1;
@@ -756,7 +760,7 @@ class Model {
   handleEditorChange(value, selectionStart, selectionEnd) {
     this.writeEditHistory(value, selectionStart, selectionEnd, false);
   }
-  doExecute() {
+  doExecute(loopIndex) {
     let vm = this; // eslint-disable-line consistent-this
     //if polling have been stoped resume it.
     if (!vm.isWorking) {
@@ -774,7 +778,17 @@ class Model {
       })
       .then(result => {
         vm.autocompleteProgress = {};
+        loopIndex--;
         if (!result) {
+          if (loopIndex > 0 && vm.loopContinueOnError) {
+            if (vm.loopDelay == 0) {
+              vm.doExecute(loopIndex);
+            } else {
+              setTimeout(() => {
+                vm.doExecute(loopIndex);
+              }, vm.loopDelay);
+            }
+          }
           return;
         }
         if (result.success != true) {
@@ -798,8 +812,8 @@ class Model {
           vm.executeError = error;
           vm.logs = null;
           vm.updatedLogs();
-          return;
-        } else {
+        } else if (loopIndex == this.loopCount - 1) {
+          //open only the first log
           if (this.openLogOnExecute) {
             let logQuery = `SELECT Id FROM ApexLog WHERE Operation='/services/data/v${apiVersion}/tooling/executeAnonymous/' AND LogUserId='${this.userId}' ORDER BY StartTime DESC LIMIT 1`;
             vm.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(logQuery), {})
@@ -816,6 +830,15 @@ class Model {
             );
           }
           vm.scriptHistory.add({script});
+        }
+        if (loopIndex > 0 && (result.success == true || (vm.loopContinueOnError && result.compiled == true))) {
+          if (vm.loopDelay == 0) {
+            vm.doExecute(loopIndex);
+          } else {
+            setTimeout(() => {
+              vm.doExecute(loopIndex);
+            }, vm.loopDelay);
+          }
         }
       }));
   }
@@ -1152,6 +1175,19 @@ class Model {
     });
     return Array.from(historyMap.values());
   }
+  toggleLoopParameter(){
+    this.showLoopParameter = !this.showLoopParameter;
+  }
+  setLoopCount(count){
+    this.loopCount = count;
+  }
+  setLoopDelay(delay){
+    this.loopDelay = delay;
+  }
+  setLoopContinueOnError(continueOnError){
+    this.loopContinueOnError = continueOnError;
+  }
+
   deleteHistoryItem(history) {
     let itm = this.savedHistory.list.find(item => ((item.script == history.value && item.name && item.name == history.label) || (item.script == history.label + ":" + history.value) || (item.script == history.value && item.script == history.label)));
     if (itm) {
@@ -1222,6 +1258,10 @@ class App extends React.Component {
     this.onUpdateHistoryItem = this.onUpdateHistoryItem.bind(this);
     this.onDeleteHistoryItem = this.onDeleteHistoryItem.bind(this);
     this.onToggleOpenLogOnExecute = this.onToggleOpenLogOnExecute.bind(this);
+    this.onToggleLoopParameter = this.onToggleLoopParameter.bind(this);
+    this.onLoopCountChange = this.onLoopCountChange.bind(this);
+    this.onLoopDelayChange = this.onLoopDelayChange.bind(this);
+    this.onLoopContinueOnErrorChange = this.onLoopContinueOnErrorChange.bind(this);
     this.state = {
       selectedTabId: 1
     };
@@ -1274,9 +1314,29 @@ class App extends React.Component {
     model.toggleSavedOptions();
     model.didUpdate();
   }
+  onToggleLoopParameter() {
+    let {model} = this.props;
+    model.toggleLoopParameter();
+    model.didUpdate();
+  }
+  onLoopCountChange(e) {
+    let {model} = this.props;
+    model.setLoopCount(e.target.value);
+    model.didUpdate();
+  }
+  onLoopDelayChange(e) {
+    let {model} = this.props;
+    model.setLoopDelay(e.target.value);
+    model.didUpdate();
+  }
+  onLoopContinueOnErrorChange(e) {
+    let {model} = this.props;
+    model.setLoopContinueOnError(e.target.checked);
+    model.didUpdate();
+  }
   onExecute() {
     let {model} = this.props;
-    model.doExecute();
+    model.doExecute(model.loopCount);
     model.didUpdate();
   }
   onCopyScript() {
@@ -1410,7 +1470,7 @@ class App extends React.Component {
     addEventListener("keydown", e => {
       if ((e.ctrlKey && e.key == "Enter") || e.key == "F5") {
         e.preventDefault();
-        model.doExecute();
+        model.doExecute(model.loopCount);
         model.didUpdate();
       }
     });
@@ -1494,7 +1554,11 @@ class App extends React.Component {
                 " Open Log ",
               ),
               h("button", {tabIndex: 1, onClick: this.onExecute, title: "Ctrl+Enter / F5", className: "highlighted"}, "Run Execute"),
-              h("button", {tabIndex: 2, onClick: this.onCopyScript, title: "Copy script url", className: "copy-id"}, "Export Script")
+              h("button", {tabIndex: 2, onClick: this.onCopyScript, title: "Copy script url", className: "copy-id"}, "Export Script"),
+              h("button", {className: "variable-btn " + (model.showLoopParameter ? "toggle expand" : "toggle contract"), id: "variable-btn", title: "Loop parameter", onClick: this.onToggleLoopParameter},
+                h("div", {className: "icon"}),
+                h("div", {className: "button-toggle-icon"})
+              )
             ),
           ),
           h("div", {ref: "autocompleteResultBox", className: "autocomplete-results autocomplete-results-over", hidden: !model.displaySuggestion, style: {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
@@ -1508,7 +1572,30 @@ class App extends React.Component {
           h("p", {}, "Use for running apex script. Enter a ", h("a", {href: "https://developer.salesforce.com/docs/atlas.en-us.apexcode.meta/apexcode/apex_dev_guide.htm", target: "_blank"}, "APEX script"), " in the box above and press Execute."),
           h("p", {}, "Press Ctrl+Space to insert autosuggestions."),
           h("p", {}, "Press Ctrl+Enter or F5 to execute the execute.")
-        )
+        ),
+        h("div", {hidden: !model.showLoopParameter, className: "variable-block"},
+          h("h3", {className: "slds-p-vertical_xx-small slds-text-title_bold"}, "Script Parameters"),
+          //loop count, delay between batches, continue with next loop on error
+          h("div", {className: "slds-p-vertical_xx-small"},
+            h("span", {className: "conf-label"}, "Loop count"),
+            h("input", {type: "number", min: 1, max: 100000, value: model.loopCount, onChange: this.onLoopCountChange, className: "loop-count"})
+          ),
+          h("div", {className: "slds-p-vertical_xx-small"},
+            h("span", {className: "conf-label"}, "Loop delay (ms)"),
+            h("input", {type: "number", min: 0, max: 60000, value: model.loopDelay, onChange: this.onLoopDelayChange, className: "loop-delay"})
+          ),
+          h("div", {className: "slds-p-vertical_xx-small"},
+            h("label", {className: "slds-checkbox_toggle slds-grid"},
+              h("span", {className: "slds-form-element__label slds-m-bottom_none"}, "Continue on error"),
+              h("input", {type: "checkbox", className: "slds-input slds-checkbox", checked: model.loopContinueOnError, onChange: this.onLoopContinueOnErrorChange}),
+              h("span", {className: "slds-checkbox_faux_container center-label"},
+                h("span", {className: "slds-checkbox_faux"}),
+                h("span", {className: "slds-checkbox_on"}, "Continue"),
+                h("span", {className: "slds-checkbox_off"}, "Stop"),
+              )
+            ),
+          )
+        ),
       ),
       h("div", {className: "area", id: "result-area"},
         h("div", {className: "result-bar"},

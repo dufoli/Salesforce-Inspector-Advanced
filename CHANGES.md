@@ -1,4 +1,15 @@
 # Release Notes
+
+## Version 1.36
+- Org Analyzer: list vulnerability, bad practices on current org based on rules
+- Data-export: Sort column 
+- apex runner: open log on execute
+- permformance and freeze on data export when a huge list of in is provide
+- list of picklist value without label (example: Location in ApexLog)
+- fix client identification
+- security: check args of page
+- Log: Fix missing log analyzed for unit test by parsing remaining log after first code unit
+
 ## Version 1.35.3
 - History box: revert merge of history and saved query combobox
 - Log: fix log View doesn't load consistently from the Apex Execute page. [issue 243](https://github.com/dufoli/Salesforce-Inspector-Advanced/243)
