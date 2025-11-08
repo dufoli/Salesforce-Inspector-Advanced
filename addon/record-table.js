@@ -1431,7 +1431,7 @@ export class ScrollTable extends React.Component {
         h("table", {style: {top: model.firstRowTop + "px", left: model.firstColLeft + "px"}},
           h("thead", {},
             h("tr", {},
-              model.header.map((cell) => h("td", {key: "head" + cell.id, className: "scrolltable-cell header", style: {minWidth: model.colWidths[cell.idx] + "px", height: model.headerHeight + "px"}}, cell.name, (showSort && cell.idx != 0) ? h("span", {className: "sort-indicator" + (model.data.sortCfg.column == cell.idx ? " active" : ""), onClick: () => this.onSort(cell.idx)}, (model.data.sortCfg.column == cell.idx && !model.data.sortCfg.ascending) ? "▲" : "▼") : null))
+              model.header.map((cell) => h("td", {key: "head" + cell.id, className: "scrolltable-cell header", style: {minWidth: model.colWidths[cell.idx] + "px", height: model.headerHeight + "px"}}, cell.name, (showSort && cell.idx != 0) ? h("span", {title: "Sort", className: "sort-indicator" + (model.data.sortCfg.column == cell.idx ? " active" : ""), onClick: () => this.onSort(cell.idx)}, (model.data.sortCfg.column != cell.idx ? "▼▲" : (model.data.sortCfg.ascending ? "▼" : "▲"))) : null))
             )
           ),
           h("tbody", {},
