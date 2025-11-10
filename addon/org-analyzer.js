@@ -447,7 +447,7 @@ class App extends React.Component {
     if (model.priorityFilter == null) {
       model.recordTable.updateVisibility(null);
     } else {
-      model.recordTable.updateVisibility({indexes: [4], value: model.priorityFilter});
+      model.recordTable.updateVisibility({field: "priority", operator: "=", value: model.priorityFilter});
     }
     model.resultTableModel.dataChange(model.recordTable);
   }

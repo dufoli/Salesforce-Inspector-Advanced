@@ -143,13 +143,47 @@ export class RecordTable {
     if (!this.filter) {
       return true;
     }
-    if (typeof this.filter === "string" || this.filter instanceof String || this.filter.indexes == null || this.filter.indexes.length == 0) {
-      return row.some(cell => this.cellToString(cell).toLowerCase().includes(this.filter.toLowerCase()));
+    let filterValue;
+    //TODO migrate legacy search on all components
+    if (typeof this.filter === "string" || this.filter instanceof String) {
+      filterValue = this.filter;
+    } else {
+      filterValue = this.filter.value;
     }
-    return this.filter.indexes.some(index => {
-      if (row[index] == null) { return false; }
-      return this.cellToString(row[index]).toLowerCase().includes(this.filter.value.toLowerCase());
-    });
+    if (!filterValue && this.filter.operator && this.filter.operator != "!=" && this.filter.operator != "=") {
+      return true;
+    }
+    if (this.filter.fieldIndex == null || row[this.filter.fieldIndex] == null){
+      return row.some(cell => this.cellToString(cell).toLowerCase().includes(filterValue.toLowerCase()));
+    }
+    let cell = row[this.filter.fieldIndex];
+    switch (this.filter.operator) {
+      case "=": //equal
+        return this.cellToString(cell).toLowerCase() == this.filter.value.toLowerCase();
+      case "!=": //not equal
+        return this.cellToString(cell).toLowerCase() != this.filter.value.toLowerCase();
+      case "startsWith":
+        return this.cellToString(cell).toLowerCase().startsWith(this.filter.value.toLowerCase());
+      case "endsWith":
+        return this.cellToString(cell).toLowerCase().endsWith(this.filter.value.toLowerCase());
+      // case ">":
+      //TODO cell is already converted to text so we need move conversion on redering
+      //   if (this.filter.fieldType == "date" || this.filter.fieldType == "datetime") {
+      //     return cell > new Date(this.filter.value);
+      //   } else if (this.filter.fieldType == "decimal" || this.filter.fieldType == "currency") {
+      //     return cell > parseFloat(this.filter.value);
+      //   }
+      //   return true;//default display
+      // case "<":
+      //   if (this.filter.fieldType == "date" || this.filter.fieldType == "datetime") {
+      //     return cell < new Date(this.filter.value);
+      //   } else if (this.filter.fieldType == "decimal" || this.filter.fieldType == "currency") {
+      //     return cell < parseFloat(this.filter.value);
+      //   }
+      //   return true;//default display
+      default: //like and bad operator
+        return this.cellToString(cell).toLowerCase().includes(this.filter.value.toLowerCase());
+    }
   }
   async discoverQueryColumns(record, vm) {
     let fields = vm.columnIndex.fields;
@@ -270,6 +304,7 @@ export class RecordTable {
         this.header[c] = column;
         this.colVisibilities.push(true);
       }
+      //TODO move conversion to rendering (dataChange)
       if (this.columnType.get(field) == "date" && this.dateFormat) {
         row[c] = this.convertDate(record[field], this.dateFormat);
       } else if (this.columnType.get(field) == "datetime" && this.datetimeFormat) {
@@ -401,6 +436,10 @@ export class RecordTable {
   }
   updateVisibility(fltr) {
     this.filter = fltr;
+    if (fltr.field != null && fltr.field != "") {
+      fltr.fieldIndex = this.columnIdx.get(fltr.field);
+      fltr.fieldType = this.columnType.get(fltr.field);
+    }
     let countOfVisibleRecords = 0;
     for (let r = 1/* always show header */; r < this.table.length; r++) {
       this.rowVisibilities[r] = this.isVisible(this.table[r]);

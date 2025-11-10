@@ -212,7 +212,6 @@ export class HistoryBox extends React.Component {
     didUpdate();
   }
   render() {
-    //let {} = this.props;
     let {activeSuggestion, filteredSuggestions, showSuggestions} = this.state;
     return h("div", {className: "slds-form-element slds-nowrap"},
       h("div", {className: "slds-form-element__control slds-wrap"},
@@ -248,11 +247,11 @@ export class HistoryBox extends React.Component {
                             suggestion.label
                           )
                         ),
-                        h("button", {className: "slds-button slds-button_icon slds-input__icon", title: "Delete", onMouseDown: (e) => this.onDeleteItem(e, index)},
+                        this.props.onDelete ? h("button", {className: "slds-button slds-button_icon slds-input__icon", title: "Delete", onMouseDown: (e) => this.onDeleteItem(e, index)},
                           h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
                             h("use", {xlinkHref: "symbols.svg#delete"})
                           )
-                        )
+                        ) : null
                       )
                     );
                   })

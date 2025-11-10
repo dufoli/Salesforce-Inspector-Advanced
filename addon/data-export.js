@@ -49,6 +49,8 @@ class Model {
     this.expandAutocomplete = false;
     this.expandSavedOptions = false;
     this.resultsFilter = "";
+    this.resultsFilterOperator = "contains";
+    this.resultsFilterField = "";
     this.displayPerformance = localStorage.getItem("displayQueryPerformance") !== "false"; // default to true
     this.performancePoints = [];
     this.startTime = null;
@@ -114,7 +116,7 @@ class Model {
       return;
     }
     // Recalculate visibility
-    this.exportedData.updateVisibility(value);
+    this.exportedData.updateVisibility({field: this.resultsFilterField, operator: this.resultsFilterOperator, value: this.resultsFilter});
     this.updatedExportedData();
   }
   setQueryName(value) {
@@ -1894,6 +1896,8 @@ class Model {
     }
 
     vm.setResultsFilter("");
+    vm.resultsFilterField = "";
+    vm.resultsFilterOperator = "contains";
     vm.isWorking = true;
     vm.exportStatus = "Exporting...";
     vm.exportError = null;
@@ -2041,6 +2045,11 @@ class App extends React.Component {
     this.onBatchSizeChange = this.onBatchSizeChange.bind(this);
     this.onUpdateHistoryItem = this.onUpdateHistoryItem.bind(this);
     this.onDeleteHistoryItem = this.onDeleteHistoryItem.bind(this);
+    this.onSearchFocus = this.onSearchFocus.bind(this);
+    this.onSearchBlur = this.onSearchBlur.bind(this);
+    this.onSearchSelectField = this.onSearchSelectField.bind(this);
+    this.onSearchSelectOperator = this.onSearchSelectOperator.bind(this);
+    this.getSearchFields = this.getSearchFields.bind(this);
   }
   onSaveAll() {
     let {model} = this.props;
@@ -2202,6 +2211,38 @@ class App extends React.Component {
     let {model} = this.props;
     model.deleteHistoryItem(suggestion);
   }
+  onSearchFocus() {
+    let {model} = this.props;
+    model.searchHasFocus = true;
+    model.didUpdate();
+  }
+  onSearchBlur(e) {
+    if (e.currentTarget.parentElement.contains(e.relatedTarget)) {
+      return;
+    }
+    let {model} = this.props;
+    model.searchHasFocus = false;
+    model.didUpdate();
+  }
+  onSearchSelectField(e) {
+    let {model} = this.props;
+    model.resultsFilterField = e.target.value;
+    model.resultsFilterOperator = "contains";
+    model.setResultsFilter(model.resultsFilter);
+    model.didUpdate();
+  }
+  onSearchSelectOperator(e) {
+    let {model} = this.props;
+    model.resultsFilterOperator = e.target.value;
+    model.setResultsFilter(model.resultsFilter);
+    model.didUpdate();
+  }
+  getSearchFields() {
+    let {model} = this.props;
+    let fields = model.exportedData.header.slice(1).map(h => ({label: h, value: h}));
+    fields.unshift({label: "(All Fields)", value: ""});
+    return fields;
+  }
   componentDidMount() {
     let {model} = this.props;
     model.autocompleteResultBox = this.refs.autocompleteResultBox;
@@ -2226,7 +2267,10 @@ class App extends React.Component {
     hostArg.set("tab", 3);
 
     let suggestionHelper = "";
-
+    let resultFilterValue = model.resultsFilter;
+    if (!model.searchHasFocus && model.resultsFilterField) {
+      resultFilterValue = model.resultsFilterField + " " + (model.resultsFilterOperator ?? "") + " " + model.resultsFilter;
+    }
     if (model.displaySuggestion) {
       if (model.autocompleteResults.isField && model.activeSuggestion == -1) {
         suggestionHelper = " Press Ctrl+Space to insert all fields | Esc to hide suggestions";
@@ -2352,7 +2396,25 @@ class App extends React.Component {
             h("button", {disabled: !model.canDelete(), onClick: this.onDeleteRecords, title: "Open the 'Data Import' page with preloaded records to delete (< 20k records). 'Id' field needs to be queried", className: "delete-btn"}, "Delete Records"),
             model.tableModel.editedRows.values().some(r => r.values().some(cell => (cell.dataEditValue != null))) ? h("button", {onClick: this.onSaveAll, title: "Save all edited records", className: "highlighted"}, "Save all") : null
           ),
-          h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput}),
+          h("div", {className: "result-filter-box flex-right", title: model.resultsFilterField ? resultFilterValue : ""},
+            model.searchHasFocus && model.exportedData.header.length ? h("div", {},
+              h("select", {title: "Fields", value: model.resultsFilterField, onChange: this.onSearchSelectField, onBlur: this.onSearchBlur},
+                this.getSearchFields().map(f =>
+                  h("option", {key: f.value, value: f.value}, f.label)
+                )
+              ),
+              h("select", {onChange: this.onSearchSelectOperator, hidden: !model.resultsFilterField, value: model.resultsFilterOperator, onBlur: this.onSearchBlur},
+                h("option", {value: "contains"}, "Contains"),
+                h("option", {value: "="}, "Equal"),
+                h("option", {value: "!="}, "Not equal"),
+                h("option", {value: "startsWith"}, "Starts With"),
+                h("option", {value: "endsWith"}, "Ends With"),
+                // h("option", {value: ">"}, ">"),
+                // h("option", {value: "<"}, "<")
+              )
+            ) : null,
+            h("input", {placeholder: "Filter Results", type: "search", value: resultFilterValue, onInput: this.onResultsFilterInput, onFocus: this.onSearchFocus, onBlur: this.onSearchBlur})
+          ),
           h("span", {className: "result-status flex-right"},
             h("span", {}, model.exportStatus),
             perf && h("span", {className: "result-info", title: perf.batchStats}, perf.text),
