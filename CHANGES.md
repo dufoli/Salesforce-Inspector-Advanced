@@ -1,13 +1,15 @@
 # Release Notes
 
 ## Version 1.36
-- Org Analyzer: list vulnerability, bad practices on current org based on rules
-- Data-export: Sort column 
-- apex runner: open log on execute
-- permformance and freeze on data export when a huge list of in is provide
-- list of picklist value without label (example: Location in ApexLog)
-- fix client identification
-- security: check args of page
+- Org Analyzer: Detect vulnerabilities and bad practices in your Salesforce org using customizable rules. Get actionable insights to improve security and maintainability.
+- Data-export: Sort column by clicking on icon on header.
+- Data-export: Advanced filtering on column: Filter non-queryable fields (e.g., "Description not empty") with intuitive operators for precise data extraction.
+- Apex runner: Open log when script is execute with success
+- Performance: Fix freeze on data export when a huge list in "IN" operator is provide
+- Editor: Fix missing picklist value suggestion when standard list have no label (example: Location in ApexLog)
+- Editor: fix a bug with editor do not align with textarea
+- Fix client identification
+- Security: check args of page
 - Log: Fix missing log analyzed for unit test by parsing remaining log after first code unit
 
 ## Version 1.35.3

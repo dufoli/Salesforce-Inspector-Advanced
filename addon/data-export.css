@@ -783,6 +783,7 @@ button.toggle .button-icon {
   color: transparent;
   caret-color: black;
   line-height: 1em;
+  font-kerning: none;
 }
 .editor_container_mirror span {
   vertical-align: top;
@@ -809,6 +810,7 @@ button.toggle .button-icon {
   color: transparent;
   white-space: pre-wrap;
   bottom: 0;
+  font-kerning: none;
   /*
   font-weight: 400;
   text-indent: 0;
