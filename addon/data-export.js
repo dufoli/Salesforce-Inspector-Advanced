@@ -414,6 +414,10 @@ class Model {
         searchTerm = "'" + searchTerm;
         selStart--;
       }
+      if (selEnd < this.editor.value.length && this.editor.value.charAt(selEnd) == "'") {
+        searchTerm = searchTerm + "'";
+        selEnd++;
+      }
     } else {
       searchTerm = this.editor.value.substring(0, selStart).match(/[a-zA-Z0-9_.]*$/)[0];
     }
@@ -439,6 +443,9 @@ class Model {
 
     this.editor.focus();
     this.applyEdit((this.autocompleteResults.contextPath ? this.autocompleteResults.contextPath : "") + ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
+    if (ar[idx].value.startsWith("FIELDS") && !this.editor.value.toLowerCase().includes("limit")) {
+      this.editor.value += " LIMIT 200";
+    }
     this.activeSuggestion = -1;
     this.editorAutocompleteHandler();
   }
@@ -494,13 +501,15 @@ class Model {
       ? query.substring(selStart, selEnd)
       : beforeSel.match(/[a-zA-Z0-9_]*$/)[0];
     selStart = selEnd - searchTerm.length;
-    vm.autocompleteClick = ({value, suffix, link}) => {
+    vm.autocompleteClick = ({link}, suggestionIndex) => {
       if (link){
         window.open(link, "_blank");
       } else {
-        vm.editor.focus();
-        vm.applyEdit(value + suffix, selStart, selEnd, "end");
-        vm.editorAutocompleteHandler();
+        this.activeSuggestion = suggestionIndex;
+        this.selectSuggestion();
+        // vm.editor.focus();
+        // vm.applyEdit(value + suffix, selStart, selEnd, "end");
+        // vm.editorAutocompleteHandler();
       }
     };
 
@@ -756,7 +765,11 @@ class Model {
     }
     let contextValueField = contextValueFields[0];
     let queryMethod = useToolingApi ? "tooling/query" : this.queryAll ? "queryAll" : "query";
-    let acQuery = "select " + contextValueField.field.name + " from " + contextValueField.sobjectDescribe.name + " where " + contextValueField.field.name + " like '%" + searchTerm.replace(/([%_\\'])/g, "\\$1") + "%' group by " + contextValueField.field.name + " limit 100";
+    let acQuery = "select " + contextValueField.field.name + " from " + contextValueField.sobjectDescribe.name;
+    if (searchTerm) {
+      acQuery += " where " + contextValueField.field.name + " like '%" + searchTerm.replace(/([%_\\'])/g, "\\$1") + "%'";
+    }
+    acQuery += " group by " + contextValueField.field.name + " limit 100";
     this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/" + queryMethod + "/?q=" + encodeURIComponent(acQuery), {progressHandler: this.autocompleteProgress})
       .catch(err => {
         if (err.name != "AbortError") {
@@ -1316,22 +1329,24 @@ class Model {
       vm.autocompleteProgress.abort();
     }
 
-    vm.autocompleteClick = ({value, suffix, link}) => {
+    vm.autocompleteClick = ({link}, suggestionIndex) => {
       if (link){
         window.open(link, "_blank");
       } else {
-        vm.editor.focus();
-        //handle when selected field is the last one before "FROM" keyword, or if an existing comma is present after selection
-        let indexFrom = query.toLowerCase().indexOf("from");
-        if (suffix.trim() == "," && (query.substring(selEnd + 1, indexFrom).trim().length == 0 || query.substring(selEnd).trim().startsWith(",") || query.substring(selEnd).trim().toLowerCase().startsWith("from"))) {
-          suffix = "";
-        }
-        vm.applyEdit(value + suffix, selStart, selEnd, "end");
-        //add query suffix if needed
-        if (value.startsWith("FIELDS") && !query.toLowerCase().includes("limit")) {
-          vm.editor.value += " LIMIT 200";
-        }
-        vm.editorAutocompleteHandler();
+        // vm.editor.focus();
+        // //handle when selected field is the last one before "FROM" keyword, or if an existing comma is present after selection
+        // let indexFrom = query.toLowerCase().indexOf("from");
+        // if (suffix.trim() == "," && (query.substring(selEnd + 1, indexFrom).trim().length == 0 || query.substring(selEnd).trim().startsWith(",") || query.substring(selEnd).trim().toLowerCase().startsWith("from"))) {
+        //   suffix = "";
+        // }
+        // vm.applyEdit(value + suffix, selStart, selEnd, "end");
+        // //add query suffix if needed
+        // if (value.startsWith("FIELDS") && !query.toLowerCase().includes("limit")) {
+        //   vm.editor.value += " LIMIT 200";
+        // }
+        // vm.editorAutocompleteHandler();
+        this.activeSuggestion = suggestionIndex;
+        this.selectSuggestion();
       }
     };
 
@@ -2050,6 +2065,7 @@ class App extends React.Component {
     this.onSearchSelectField = this.onSearchSelectField.bind(this);
     this.onSearchSelectOperator = this.onSearchSelectOperator.bind(this);
     this.getSearchFields = this.getSearchFields.bind(this);
+    this.onClickSuggestion = this.onClickSuggestion.bind(this);
   }
   onSaveAll() {
     let {model} = this.props;
@@ -2237,6 +2253,12 @@ class App extends React.Component {
     model.setResultsFilter(model.resultsFilter);
     model.didUpdate();
   }
+  onClickSuggestion(e, r, ri) {
+    let {model} = this.props;
+    e.preventDefault();
+    model.autocompleteClick(r, ri);
+    model.didUpdate();
+  }
   getSearchFields() {
     let {model} = this.props;
     let fields = model.exportedData.header.slice(1).map(h => ({label: h, value: h}));
@@ -2360,7 +2382,7 @@ class App extends React.Component {
           ),
           h("div", {ref: "autocompleteResultBox", className: "autocomplete-results autocomplete-results-over", hidden: !model.displaySuggestion, style: {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
             model.autocompleteResults.results.map((r, ri) =>
-              h("div", {className: "autocomplete-result" + (ri == model.activeSuggestion ? " active" : ""), key: r.value}, h("a", {tabIndex: 0, title: r.title, onMouseDown: e => { e.preventDefault(); model.autocompleteClick(r); model.didUpdate(); }, href: "#", className: r.autocompleteType + " " + r.dataType}, h("div", {className: "autocomplete-icon"}), r.value), " ")
+              h("div", {className: "autocomplete-result" + (ri == model.activeSuggestion ? " active" : ""), key: r.value}, h("a", {tabIndex: 0, title: r.title, onMouseDown: e => this.onClickSuggestion(e, r, ri), href: "#", className: r.autocompleteType + " " + r.dataType}, h("div", {className: "autocomplete-icon"}), r.value), " ")
             )
           ),
         ),
