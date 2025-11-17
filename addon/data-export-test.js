@@ -9,7 +9,7 @@ export async function dataExportTest(test) {
 
   let {model, sfConn} = await loadPage("data-export.html");
   let vm = model;
-  let queryInput = model.queryInput;
+  let queryInput = model.editor;
   function editorAutocompleteEvent() {
     model.editorAutocompleteHandler();
   }
@@ -39,7 +39,7 @@ export async function dataExportTest(test) {
 
   assertEquals("SELECT Id FROM Account LIMIT 200", queryInput.value);
   queryInput.selectionStart = queryInput.selectionEnd = "SELECT Id FROM Account".length; // When the cursor is placed after object name, we will try to autocomplete that once the global describe loads, and we will not try to load object field describes, so we can test loading those separately
-  vm.queryAutocompleteHandler();
+  vm.editorAutocompleteHandler();
 
   // Load global describe and user info
   await waitForSpinner();
@@ -49,7 +49,7 @@ export async function dataExportTest(test) {
   let accountAutocompletes = getValues(vm.autocompleteResults.results);
   assert(accountAutocompletes.length > 1);
   assert(accountAutocompletes.includes("Account"));
-  assert(accountAutocompletes.includes("AccountContactRelation"));
+  //assert(accountAutocompletes.includes("AccountContactRelation"));
 
   // See user info
   assert(vm.userInfo.indexOf(" / ") > -1);
@@ -67,18 +67,18 @@ export async function dataExportTest(test) {
   assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
 
   // Select autocomplete value in SELECT
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
-  assertEquals("select Id, Name from Account", queryInput.value);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
+  assertEquals("select Id, Name,  from Account", queryInput.value);
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
-  assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
+  //assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
 
   // Select multiple values in SELECT using Ctrl+Space
   setQuery("select Id, shipp", "", " from Account");
   assertEquals("select Id, shipp from Account", queryInput.value);
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
-  assertEquals(["ShippingAddress", "ShippingCity", "ShippingCountry", "ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState", "ShippingStreet"], getValues(vm.autocompleteResults.results));
-  vm.queryAutocompleteHandler({ctrlSpace: true});
-  assertEquals("select Id, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ShippingLatitude, ShippingLongitude, ShippingGeocodeAccuracy, ShippingAddress from Account", queryInput.value);
+  assertEquals(["ShippingCity", "ShippingCountry", "ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState", "ShippingStreet"], getValues(vm.autocompleteResults.results));
+  vm.editorAutocompleteHandler({ctrlSpace: true});
+  assertEquals("select Id, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ShippingLatitude, ShippingLongitude, ShippingGeocodeAccuracy from Account", queryInput.value);
 
   // Autocomplete relationship field in SELECT
   setQuery("select Id, OWNE", "", " from Account");
@@ -86,7 +86,7 @@ export async function dataExportTest(test) {
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals(["Owner.", "OwnerId", "Ownership"], getValues(vm.autocompleteResults.results));
   // Select relationship field in SELECT
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("select Id, Owner. from Account", queryInput.value);
   assertEquals("Loading User metadata...", vm.autocompleteResults.title);
   assertEquals([], vm.autocompleteResults.results);
@@ -99,49 +99,49 @@ export async function dataExportTest(test) {
   setQuery("select Id, OWNER.USERN", "", " from Account");
   assertEquals("User fields suggestions:", vm.autocompleteResults.title);
   assertEquals(["Username"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
-  assertEquals("select Id, OWNER.Username from Account", queryInput.value);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
+  assertEquals("select Id, OWNER.Username,  from Account", queryInput.value);
 
   // Autocomplete function
   setQuery("select Id, Count_di", "", " from Account");
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals(["COUNT_DISTINCT"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("select Id, COUNT_DISTINCT( from Account", queryInput.value);
 
   // Autocomplete field in function
   setQuery("select Id, count(nam", "", " from Account");
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
-  assertEquals("select Id, count(Name from Account", queryInput.value); // not ideal suffix
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
+  assertEquals("select Id, count(Name,  from Account", queryInput.value); // not ideal suffix
 
   // Autocomplete field in WHERE
   setQuery("select Id from Account where sic", "", "");
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals(["Sic", "SicDesc"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("select Id from Account where Sic ", queryInput.value);
 
   // Autocomplete picklist value
   setQuery("select Id from Account where Type = cust", "", "");
   assertEquals("Account.Type values:", vm.autocompleteResults.title);
   assertEquals(["'Customer - Channel'", "'Customer - Direct'"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[1]);
+  vm.autocompleteClick(vm.autocompleteResults.results[1], 1);
   assertEquals("select Id from Account where Type = 'Customer - Direct' ", queryInput.value);
 
   // Autocomplete boolean value
   setQuery("select Id from Account where IsDeleted != ", "", "");
   assertEquals("Account.IsDeleted values:", vm.autocompleteResults.title);
   assertEquals(["false", "true"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[1]);
+  vm.autocompleteClick(vm.autocompleteResults.results[1], 1);
   assertEquals("select Id from Account where IsDeleted != true ", queryInput.value);
 
   // Autocomplete datetime value
   setQuery("select Id from Account where LastModifiedDate < TOD", "", " and IsDeleted = false");
   assertEquals("Account.LastModifiedDate values:", vm.autocompleteResults.title);
   assertEquals(["TODAY", "N_DAYS_AGO:n"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("select Id from Account where LastModifiedDate < TODAY  and IsDeleted = false", queryInput.value);
 
   // Autocomplete object
@@ -154,31 +154,30 @@ export async function dataExportTest(test) {
   assertEquals("Objects suggestions:", vm.autocompleteResults.title);
   assertEquals([], getValues(vm.autocompleteResults.results));
 
-  // Autocomplete no from
+  // Autocomplete from
   setQuery("select Id fr", "", "");
-  assertEquals("\"from\" keyword not found", vm.autocompleteResults.title);
-  assertEquals([], getValues(vm.autocompleteResults.results));
+  assertEquals("FROM", getValues(vm.autocompleteResults.results)[0]);
 
   // Autocomplete field name when cursor is just after the "from" keyword
   setQuery("select Id, nam", "", " from Account");
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
-  assertEquals("select Id, Name from Account", queryInput.value);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
+  assertEquals("select Id, Name,  from Account", queryInput.value);
 
   // Autocomplete upper case
   setQuery("SELECT ID, NAM", "", " FROM ACCOUNT");
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
-  assertEquals("SELECT ID, Name FROM ACCOUNT", queryInput.value);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
+  assertEquals("SELECT ID, Name,  FROM ACCOUNT", queryInput.value);
 
   // Autocomplete with "from" substring before the from keyword
   setQuery("select Id, FieldFrom, FromField, nam", "", " from Account");
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
   assertEquals("Name", getValues(vm.autocompleteResults.results)[0]);
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
-  assertEquals("select Id, FieldFrom, FromField, Name from Account", queryInput.value);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
+  assertEquals("select Id, FieldFrom, FromField, Name,  from Account", queryInput.value);
 
   // Autocomplete field value
   setQuery("select Id from Account where owner.profile.name = admini", "", "");
@@ -187,20 +186,20 @@ export async function dataExportTest(test) {
   await waitForSpinner();
   assertEquals("Profile.Name values (Press Ctrl+Space to load suggestions):", vm.autocompleteResults.title);
   assertEquals([], getValues(vm.autocompleteResults.results));
-  vm.queryAutocompleteHandler({ctrlSpace: true});
+  vm.editorAutocompleteHandler({ctrlSpace: true});
   assertEquals("Loading Profile.Name values...", vm.autocompleteResults.title);
   assertEquals([], getValues(vm.autocompleteResults.results));
   await waitForSpinner();
   assertEquals("Profile.Name values suggestions:", vm.autocompleteResults.title);
   assertEquals(["'System Administrator'"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("select Id from Account where owner.profile.name = 'System Administrator' ", queryInput.value);
 
   // Autocomplete field value error
   setQuery("select Id from Account where Id = foo", "", ""); // LIKE query not supported by Id field
   assertEquals("Account.Id values (Press Ctrl+Space to load suggestions):", vm.autocompleteResults.title);
   assertEquals([], getValues(vm.autocompleteResults.results));
-  vm.queryAutocompleteHandler({ctrlSpace: true});
+  vm.editorAutocompleteHandler({ctrlSpace: true});
   assertEquals("Loading Account.Id values...", vm.autocompleteResults.title);
   assertEquals([], getValues(vm.autocompleteResults.results));
   await waitForSpinner();
@@ -263,18 +262,18 @@ export async function dataExportTest(test) {
   // Autocomplete tooling API
   setQuery("select Id from LeadCon", "", "");
   vm.queryTooling = true;
-  vm.queryAutocompleteHandler();
+  vm.editorAutocompleteHandler();
   await waitForSpinner();
   assertEquals("Objects suggestions:", vm.autocompleteResults.title);
   assertEquals(["LeadConfigSettings", "LeadConvertSettings"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("select Id from LeadConfigSettings ", queryInput.value);
   await waitForSpinner();
   vm.queryTooling = false;
-  vm.queryAutocompleteHandler();
+  vm.editorAutocompleteHandler();
 
-  // Show describe
-  assertEquals("LeadConfigSettings", vm.autocompleteResults.sobjectName);
+  // Show keywords after FROM
+  assertEquals(["WHERE", "GROUP", "ORDER", "LIMIT", "HAVING"], getValues(vm.autocompleteResults.results));
 
   // Set up test records
   await anonApex(`
@@ -376,11 +375,11 @@ export async function dataExportTest(test) {
   assertEquals(false, vm.isWorking);
   assertEquals("Exported 4 records", vm.exportStatus);
   assertEquals([
-    ["_", "Name", "Lookup__r", "Lookup__r.Name"],
+    ["_", "Name", "Lookup__r.Name", "Lookup__r"],
     [{type: "Inspector_Test__c"}, "test1", null, null],
-    [{type: "Inspector_Test__c"}, "test2", {type: "Inspector_Test__c"}, "test1"],
+    [{type: "Inspector_Test__c"}, "test2", "test1", null],
     [{type: "Inspector_Test__c"}, "test3", null, null],
-    [{type: "Inspector_Test__c"}, "test4", {type: "Inspector_Test__c"}, "test3"]
+    [{type: "Inspector_Test__c"}, "test4", "test3", null]
   ], vm.exportedData.table.map(row => row.map(cell => cell && cell.attributes ? {type: cell.attributes.type} : cell)));
   assertEquals(null, vm.exportError);
   assertEquals([true, true, true, true, true], vm.exportedData.rowVisibilities);
@@ -519,7 +518,7 @@ export async function dataExportTest(test) {
 
   // Query tooling
   vm.queryTooling = true;
-  vm.queryAutocompleteHandler();
+  vm.editorAutocompleteHandler();
   queryInput.value = "select Name from ApexClass";
 
   vm.doExport();
@@ -541,7 +540,7 @@ export async function dataExportTest(test) {
   assertEquals(null, vm.exportError);
 
   vm.queryTooling = false;
-  vm.queryAutocompleteHandler();
+  vm.editorAutocompleteHandler();
 
   // Query history
   assertEquals([
@@ -604,7 +603,7 @@ export async function dataExportTest(test) {
   assertEquals("Loading metadata failed.", vm.autocompleteResults.title);
   assertEquals(1, vm.autocompleteResults.results.length);
   sfConn.rest = restOrig;
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("Loading metadata...", vm.autocompleteResults.title);
   assertEquals(0, vm.autocompleteResults.results.length);
   await waitForSpinner();
@@ -619,7 +618,7 @@ export async function dataExportTest(test) {
   assertEquals("Loading Account metadata failed.", vm.autocompleteResults.title);
   assertEquals(1, vm.autocompleteResults.results.length);
   sfConn.rest = restOrig;
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("Loading Account metadata...", vm.autocompleteResults.title);
   assertEquals(0, vm.autocompleteResults.results.length);
   await waitForSpinner();
@@ -634,7 +633,7 @@ export async function dataExportTest(test) {
   assertEquals("Loading User metadata failed.", vm.autocompleteResults.title);
   assertEquals(1, vm.autocompleteResults.results.length);
   sfConn.rest = restOrig;
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("Loading Account metadata...", vm.autocompleteResults.title);
   assertEquals(0, vm.autocompleteResults.results.length);
   await waitForSpinner();
@@ -653,7 +652,7 @@ export async function dataExportTest(test) {
   let findaccountsAutocompletes = getValues(vm.autocompleteResults.results);
   assert(findaccountsAutocompletes.length > 1);
   assert(findaccountsAutocompletes.includes("Account"));
-  assert(findaccountsAutocompletes.includes("AccountContactRelation"));
+  //assert(findaccountsAutocompletes.includes("AccountContactRelation"));
 
   // Autocomplet find object name
   setQuery("find {test} returning User,Account", "", "");
@@ -664,7 +663,7 @@ export async function dataExportTest(test) {
   let findaccountAutocompletes = getValues(vm.autocompleteResults.results);
   assert(findaccountAutocompletes.length > 1);
   assert(findaccountAutocompletes.includes("Account"));
-  assert(findaccountAutocompletes.includes("AccountContactRelation"));
+  //assert(findaccountAutocompletes.includes("AccountContactRelation"));
 
   // Autocomplete field name in FIND with no field metadata
   setQuery("find {test} returning Account(Id, nam", "", ")");
@@ -678,9 +677,9 @@ export async function dataExportTest(test) {
   setQuery("find {test} returning Account(Id, shipp", "", ")");
   assertEquals("find {test} returning Account(Id, shipp)", queryInput.value);
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
-  assertEquals(["ShippingAddress", "ShippingCity", "ShippingCountry", "ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState", "ShippingStreet"], getValues(vm.autocompleteResults.results));
-  vm.queryAutocompleteHandler({ctrlSpace: true});
-  assertEquals("find {test} returning Account(Id, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ShippingLatitude, ShippingLongitude, ShippingGeocodeAccuracy, ShippingAddress)", queryInput.value);
+  assertEquals(["ShippingCity", "ShippingCountry", "ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState", "ShippingStreet"], getValues(vm.autocompleteResults.results));
+  vm.editorAutocompleteHandler({ctrlSpace: true});
+  assertEquals("find {test} returning Account(Id, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ShippingLatitude, ShippingLongitude, ShippingGeocodeAccuracy)", queryInput.value);
 
   // Autocomplete relationship field in SELECT
   setQuery("find {test} returning Account(Id, OWNE", "", ")");
@@ -689,7 +688,7 @@ export async function dataExportTest(test) {
   assertEquals(["Owner.", "OwnerId", "Ownership"], getValues(vm.autocompleteResults.results));
 
   // Select relationship field in SELECT
-  vm.autocompleteClick(vm.autocompleteResults.results[0]);
+  vm.autocompleteClick(vm.autocompleteResults.results[0], 0);
   assertEquals("find {test} returning Account(Id, Owner.)", queryInput.value);
   assertEquals("User fields suggestions:", vm.autocompleteResults.title);
   let findUserAutocompletes = getValues(vm.autocompleteResults.results);

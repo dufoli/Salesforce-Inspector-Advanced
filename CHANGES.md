@@ -1,17 +1,24 @@
 # Release Notes
 
+## Version 1.36.1
+- data export: fix filter null which make sort not possible sometimes
+- data export: fix suggestion of values whithout any input
+- data export: fix do not suggest field when IN keyword is used with subquery
+- data export: fix remove address from auto complete whereas it is removed from suggestion
+
 ## Version 1.36
-- Org Analyzer: Detect vulnerabilities and bad practices in your Salesforce org using customizable rules. Get actionable insights to improve security and maintainability.
-- Data-export: Sort column by clicking on icon on header.
+- Org Analyzer: Detect vulnerabilities and bad practices in your Salesforce org using customizable rules. Get actionable insights to improve security and maintainability. [issue 225](https://github.com/dufoli/Salesforce-Inspector-Advanced/225)
+- Data-export: Sort column by clicking on icon on header. [issue 248](https://github.com/dufoli/Salesforce-Inspector-Advanced/248)
 - Data-export: Advanced filtering on column: Filter non-queryable fields (e.g., "Description not empty") with intuitive operators for precise data extraction.
-- Apex runner: Open log when script is execute with success
+- Apex runner: Open log when script is execute with success [issue 247](https://github.com/dufoli/Salesforce-Inspector-Advanced/247)
 - Performance: Fix freeze on data export when a huge list in "IN" operator is provide
 - Editor: Fix missing picklist value suggestion when standard list have no label (example: Location in ApexLog)
 - Editor: fix a bug with editor do not align with textarea
 - Fix client identification
 - Security: check args of page
 - Log: Fix missing log analyzed for unit test by parsing remaining log after first code unit
-
+- Fix [issue 244](https://github.com/dufoli/Salesforce-Inspector-Advanced/244) access_token callback param by @ethpsantos in https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/245
+  
 ## Version 1.35.3
 - History box: revert merge of history and saved query combobox
 - Log: fix log View doesn't load consistently from the Apex Execute page. [issue 243](https://github.com/dufoli/Salesforce-Inspector-Advanced/243)

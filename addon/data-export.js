@@ -399,6 +399,7 @@ class Model {
   }
   selectSuggestion() {
     if (!this.autocompleteResults || !this.autocompleteResults.results || this.autocompleteResults.results.length == 0) {
+      this.editorAutocompleteHandler({ctrlSpace: true});
       return;
     }
     let selStart = this.editor.selectionStart;
@@ -839,7 +840,7 @@ class Model {
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
 
-    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|\S*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\([^)]*$/i);
+    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|\S*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\(\s*'[^)]*$/i);
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
@@ -1168,6 +1169,7 @@ class Model {
       let ar = contextSobjectDescribes
         .flatMap(sobjectDescribe => sobjectDescribe.fields)
         .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
+        .filter(field => field.type != "address")
         .map(field => contextPath + field.name)
         .toArray();
       if (ar.length > 0) {

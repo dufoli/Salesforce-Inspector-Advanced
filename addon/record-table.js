@@ -436,7 +436,7 @@ export class RecordTable {
   }
   updateVisibility(fltr) {
     this.filter = fltr;
-    if (fltr.field != null && fltr.field != "") {
+    if (fltr != null && fltr.field != null && fltr.field != "") {
       fltr.fieldIndex = this.columnIdx.get(fltr.field);
       fltr.fieldType = this.columnType.get(fltr.field);
     }

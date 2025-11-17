@@ -169,10 +169,10 @@ export async function dataImportTest(test) {
   records = getRecords(await sfConn.rest("/services/data/v35.0/query/?q=" + encodeURIComponent("select Id from Inspector_Test__c order by Name")));
   vm.dataFormat = "csv";
   vm.didUpdate();
+  vm.setData("Id,_foo*,__Status\r\n" + records[5].Id + ",foo,Queued\r\n" + records[6].Id + ",foo,Succeeded");
   vm.importAction = "delete";
   vm.importActionSelected = true;
   vm.didUpdate();
-  vm.setData("Id,_foo*,__Status\r\n" + records[5].Id + ",foo,Queued\r\n" + records[6].Id + ",foo,Succeeded");
   assertEquals({Queued: 1, Processing: 0, Succeeded: 1, Failed: 0}, vm.importCounts());
   vm.doImport();
   assertEquals({text: "1 records will be deleted. 1 records will be skipped because they have __Status Succeeded or Failed.", action: undefined}, vm.confirmPopup);
