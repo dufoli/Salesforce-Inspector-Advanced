@@ -559,7 +559,7 @@ class App extends React.PureComponent {
     let linkInNewTab = JSON.parse(localStorage.getItem("openLinksInNewTab"));
     let linkTarget = inDevConsole || linkInNewTab ? "_blank" : "_top";
     const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
-    const DEFAULT_CLIENT_ID = "3MVG9HoFrxrSzmIzsEn1Y0w8shcr6uZL9YRkAcJtN.02pSvyKYiR3gIunrDTp1ku8uVGCuXUGUZxCJQkTP5rg"; //Consumer Key of  default connected app
+    const DEFAULT_CLIENT_ID = "3MVG9HoFrxrSzmIzsEn1Y0w8shcr6uZL9YRkAcJtN.3MVG9HxRZv05HarSKNB3JdB1Ov0GpOJszqSrGp5zIP4bQ2IIWODNmOo54LhwU5sTClY1BmrKC0i_hEeQCOlbk"; //Consumer Key of  default connected app
     const clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : DEFAULT_CLIENT_ID;
     const bannerUrlAction = this.getBannerUrlAction(sessionError, sfHost, clientId, browser);
     return (
