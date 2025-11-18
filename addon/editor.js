@@ -389,6 +389,9 @@ export class Editor extends React.Component {
       remaining = remaining.substring(keywordMatch.index + sentence.length);
       selStart -= keywordMatch.index + sentence.length;
       keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(\\/\\/|\\/\\*|'|{|\\[|\\(|}|\\]|\\))", "g" + (keywordCaseSensitive ? "" : "i"));
+      if (highlighted.length > 1000) {
+        break;
+      }
     }
     if (selStart > 0) {
       highlighted.push({value: remaining.substring(0, selStart), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});

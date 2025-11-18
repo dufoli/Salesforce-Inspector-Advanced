@@ -804,6 +804,60 @@ class Model {
       results: []
     };
   }
+  isInClause(query, start, selStart) {
+    const text = query.substring(start, selStart);
+    const inMatch = text.match(/\s*(includes|excludes|in)\s*\(\s*/i);
+    if (!inMatch) return null;
+
+    // Start after the opening parenthesis
+    let pos = inMatch.index + inMatch[0].length;
+    let parenDepth = 1;
+    let inString = false;
+
+    while (pos < text.length && parenDepth > 0) {
+      const char = text[pos];
+
+      // Skip whitespace only when NOT inside a string (whitespace between values is allowed)
+      if (!inString && (char === " " || char === "\t" || char === "\n" || char === "\r" || char === ",")) {
+        pos++;
+        continue;
+      }
+
+      // Handle SOQL escape character: \ (backslash)
+      if (char === "\\" && inString) {
+        // Escaped character - skip the backslash and the next character
+        // This handles \' (escaped quote) and \\ (escaped backslash)
+        pos += 2;
+        continue;
+      }
+
+      // Handle quotes
+      if (char === "'") {
+        // Toggle string state
+        inString = !inString;
+      } else if (!inString) {
+        // Only count parentheses when we're NOT inside a string
+        if (char === "(") {
+          parenDepth++;
+        } else if (char === ")") {
+          parenDepth--;
+          // If we closed the IN clause parenthesis, we're no longer in the IN clause
+          if (parenDepth === 0) {
+            if (pos < text.length) {
+              return this.isInClause(query, start + pos, selStart);
+            } else {
+              return null;
+            }
+          }
+        }
+      }
+      pos++;
+    }
+
+    // If we reach here, we're still inside the IN clause (parenDepth > 0)
+    // or we're at the end of the text while still inside
+    return {0: query.substring(start + inMatch.index, start + pos), 1: inMatch[1]};
+  }
   autocompleteField(vm, ctrlSpace, sobjectName, isAfterWhere) {
     let useToolingApi = vm.queryTooling;
     let selStart = vm.editor.selectionStart;
@@ -839,12 +893,13 @@ class Model {
     }
     // If we are on the right hand side of a comparison operator, autocomplete field values
     //opérator are = < > <= >= != includes() excludes() in like
-
-    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|\S*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\(\s*'[^)]*$/i);
+    // Optimized regex: prevent catastrophic backtracking
+    //let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|\S*)$/i) || query.substring(0, selStart).match(/\s*(includes|excludes|in)\s*\(\s*(?:(?:'[^']*'\s*,\s*)+|')('?[^'\s]*)$/i);
+    let isFieldValue = query.substring(0, selStart).match(/\s*(<|>|<=|>=|=|!=|like)\s*('[^']*|\S*)$/i) || this.isInClause(query, 0, selStart);
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
-      fieldName = query.substring(0, fieldEnd).match(/[a-zA-Z0-9_]*$/)[0];
+      fieldName = query.substring(0, fieldEnd).match(/[a-zA-Z0-9_]+$/)[0];
       contextEnd = fieldEnd - fieldName.length;
     }
     let isTypeOfWhen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+([a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+\S*$/i);
