@@ -1341,11 +1341,14 @@ class ScrollTableCell extends React.Component {
       cellStyle.backgroundColor = bgColor;
     }
     if (cell.isEditing){
+      cellStyle.height = (rowHeight + 10) + "px";
+    }
+    if (cell.isEditing){
       if (previousCell != null && previousCell.dataEditValue != cell.dataEditValue) {
         className += " scrolltable-cell-diff";
       }
       return h("td", {className, style: cellStyle},
-        h("textarea", {value: cellDataEditValue, onChange: this.onDataEditValueInput, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
+        h("textarea", {value: cellDataEditValue, style: {width: "100%", height: rowHeight + "px"}, onChange: this.onDataEditValueInput, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
         h("a", {href: "about:blank", onClick: this.onCancelEdit, className: "undo-button"}, "\u21B6"),
         (showSuggestions && cell.filteredSuggestions && cell.filteredSuggestions.length)
           ? h("ul", {className: "suggestions"},
@@ -1362,7 +1365,7 @@ class ScrollTableCell extends React.Component {
         className += " scrolltable-cell-diff";
       }
       return h("td", {className, style: cellStyle},
-        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("span", {style: {height: "100%"}, onDoubleClick: this.onTryEdit}, cellLabel),
+        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("div", {style: {height: "100%", width: "100%"}, onDoubleClick: this.onTryEdit}, cellLabel),
         cell.showMenu ? h("div", {className: "pop-menu"},
           cell.links.map((l, idx) => {
             let arr = [];

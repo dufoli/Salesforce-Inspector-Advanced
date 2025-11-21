@@ -109,12 +109,14 @@ body {
   fill: white;
 }
 
-textarea {
-  display: block;
+.editor_textarea {
   width: 100%;
   resize: vertical;
-  word-wrap: normal;
   font-size: 0.9rem;
+}
+textarea {
+  display: block;
+  word-wrap: normal;
   padding: 8px 10px;
   border-radius: 0.25rem;
   border: 1px solid #DDDBDA;
