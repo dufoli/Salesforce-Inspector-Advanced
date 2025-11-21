@@ -619,8 +619,10 @@ button.toggle .button-icon {
 .autocomplete-results a:hover,
 .autocomplete-results a:active,
 .autocomplete-results-over .active,
+.autocomplete-results-over .active a,
+.autocomplete-results-over .autocomplete-result:hover a,
 .autocomplete-results-over .autocomplete-result:hover {
-  background-color: #eff1f5;
+  background-color: #aacbff;
   color: #005fb2;
 }
 .autocomplete-result {

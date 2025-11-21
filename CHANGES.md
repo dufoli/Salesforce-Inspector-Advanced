@@ -5,7 +5,8 @@
 - data export: fix performance freeze by limiting colored syntax in query
 - connected app: switch to production conecteed app client id
 - data export: allow to set value on cell even if empty
-  
+- editor :make selected suggestion more visible
+ 
 ## Version 1.36.1
 - data export: fix filter null which make sort not possible sometimes
 - data export: fix suggestion of values whithout any input
