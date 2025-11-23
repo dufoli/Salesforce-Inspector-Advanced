@@ -153,10 +153,36 @@ export class RecordTable {
     if (!filterValue && this.filter.operator && this.filter.operator != "!=" && this.filter.operator != "=") {
       return true;
     }
-    if (this.filter.fieldIndex == null || row[this.filter.fieldIndex] == null){
+    if (this.filter.fieldIndex == null){
       return row.some(cell => this.cellToString(cell).toLowerCase().includes(filterValue.toLowerCase()));
     }
     let cell = row[this.filter.fieldIndex];
+    if (cell == null && this.filter.value == "") {
+      if (this.filter.operator == "=") {
+        return true;
+      } else if (this.filter.operator == "!=") {
+        return false;
+      } else if (this.filter.operator == "startsWith") {
+        return true;
+      } else if (this.filter.operator == "endsWith") {
+        return true;
+      } else if (this.filter.operator == "contains") {
+        return true;
+      }
+    }
+    if (cell == null && this.filter.value != "") {
+      if (this.filter.operator == "=") {
+        return false;
+      } else if (this.filter.operator == "!=") {
+        return true;
+      } else if (this.filter.operator == "startsWith") {
+        return false;
+      } else if (this.filter.operator == "endsWith") {
+        return false;
+      } else if (this.filter.operator == "contains") {
+        return false;
+      }
+    }
     switch (this.filter.operator) {
       case "=": //equal
         return this.cellToString(cell).toLowerCase() == this.filter.value.toLowerCase();
