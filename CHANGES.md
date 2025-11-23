@@ -1,5 +1,9 @@
 # Release Notes
 
+## Version 1.37
+- data export: fix filter operator behaviour with null
+- data import : support hard delete  [issue 129](https://github.com/dufoli/Salesforce-Inspector-Advanced/129)
+
 ## Version 1.36.2
 - data export: fix performance freeze with in keyword for suggestion
 - data export: fix performance freeze by limiting colored syntax in query

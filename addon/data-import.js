@@ -21,6 +21,7 @@ class Model {
       {value: "update", label: "Update", supportedApis: ["Enterprise", "Tooling"]},
       {value: "upsert", label: "Upsert", supportedApis: ["Enterprise", "Tooling"]},
       {value: "delete", label: "Delete", supportedApis: ["Enterprise", "Tooling"]},
+      {value: "hardDelete", label: "Hard Delete", supportedApis: ["Enterprise", "Tooling"]},
       {value: "undelete", label: "Undelete", supportedApis: ["Enterprise", "Tooling"]},
       {value: "upsertMetadata", label: "Upsert Metadata", supportedApis: ["Metadata"]},
       {value: "deleteMetadata", label: "Delete Metadata", supportedApis: ["Metadata"]}
@@ -126,7 +127,7 @@ class Model {
    */
   spinFor(promise) {
     this.spinnerCount++;
-    promise
+    return promise
       .catch(err => {
         console.error("spinFor", err);
       })
@@ -197,6 +198,7 @@ class Model {
       if (importOptions.get("action") == "update") this.importAction = "update";
       if (importOptions.get("action") == "upsert") this.importAction = "upsert";
       if (importOptions.get("action") == "delete") this.importAction = "delete";
+      if (importOptions.get("action") == "hardDelete") this.importAction = "hardDelete";
       if (importOptions.get("object")) this.importType = importOptions.get("object");
       if (importOptions.get("externalId") && this.importAction == "upsert") this.externalId = importOptions.get("externalId");
       if (importOptions.get("batchSize")) this.batchSize = importOptions.get("batchSize");
@@ -342,7 +344,7 @@ class Model {
     return Array.from(function* () {
       let importAction = self.importAction;
 
-      if (importAction == "delete" || importAction == "undelete") {
+      if (importAction == "delete" || importAction == "undelete" || importAction == "hardDelete") {
         yield "Id";
       } else if (importAction == "deleteMetadata") {
         yield "DeveloperName";
@@ -581,6 +583,8 @@ class Model {
         return "upserted";
       case "delete":
         return "deleted";
+      case "hardDelete":
+        return "hard deleted";
       case "undelete":
         return "undeleted";
       default:
@@ -881,7 +885,7 @@ class Model {
     if (importAction == "upsert") {
       importArgs.externalIDFieldName = idFieldName;
     }
-    if (importAction == "delete" || importAction == "undelete") {
+    if (importAction == "delete" || importAction == "undelete" || importAction == "hardDelete") {
       importArgs.ID = [];
     } else if (importAction == "deleteMetadata") {
       importArgs["met:type"] = "CustomMetadata";
@@ -901,7 +905,7 @@ class Model {
       }
       batchRows.push(row);
       row[statusColumnIndex] = "Processing";
-      if (importAction == "delete" || importAction == "undelete") {
+      if (importAction == "delete" || importAction == "undelete" || importAction == "hardDelete") {
         importArgs.ID.push(row[inputIdColumnIndex]);
       } else if (importAction == "deleteMetadata") {
         importArgs["met:fullNames"].push(`${sobjectType}.${row[inputIdColumnIndex]}`);
@@ -1035,62 +1039,152 @@ class Model {
     if (this.importType === "Case" || this.importType === "Lead" || this.importType === "Account") {
       soapheaders.headers = {"AssignmentRuleHeader": {"useDefaultRule": this.assignmentRule}};
     }
-    this.spinFor(sfConn.soap(wsdl, importAction, importArgs, soapheaders).then(res => {
-
-      let results = sfConn.asArray(res);
-      for (let i = 0; i < results.length; i++) {
-        let result = results[i];
-        let row = batchRows[i];
-        if (result.success == "true") {
-          row[statusColumnIndex] = "Succeeded";
-          row[actionColumnIndex]
-            = importAction == "create" ? "Inserted"
-            : importAction == "update" ? "Updated"
-            : importAction == "upsert" || importAction == "upsertMetadata" ? (result.created == "true" ? "Inserted" : "Updated")
-            : importAction == "delete" || importAction == "deleteMetadata" ? "Deleted"
-            : importAction == "undelete" ? "Undeleted"
-            : "Unknown";
-        } else {
-          row[statusColumnIndex] = "Failed";
-          row[actionColumnIndex] = "";
+    if (importAction == "hardDelete") {
+      let hardDeleteBody = {
+        "operation": "hardDelete",
+        "object": this.importType,
+        "contentType": "CSV"
+      };
+      ///services/data/vXX.X/jobs/ingest
+      //this.spinFor(sfConn.rest("/services/async/" + apiVersion + "/job", {method: "POST", "api": "bulk", body: hardDeleteBody}).then(jobResponse => {
+      this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest", {method: "POST", withoutCache: true, body: hardDeleteBody}).then(jobResponse => {
+        console.log(jobResponse);
+        if (jobResponse.exceptionCode) {
+          let errorText = jobResponse.exceptionMessage;
+          for (let row of batchRows) {
+            row[statusColumnIndex] = "Failed";
+            row[resultIdColumnIndex] = "";
+            row[actionColumnIndex] = "";
+            row[errorColumnIndex] = errorText;
+          }
+          return;
         }
-        row[resultIdColumnIndex] = result.id || "";
-        row[errorColumnIndex] = sfConn.asArray(result.errors).map(errorNode =>
-          errorNode.statusCode
-          + ": " + errorNode.message
-          + " [" + sfConn.asArray(errorNode.fields).join(", ") + "]"
-        ).join(", ");
-      }
-      this.consecutiveFailures = 0;
-    }, err => {
-      if (err.name != "SalesforceSoapError") {
-        throw err; // Not an HTTP error response
-      }
-      let errorText = err.message;
-      for (let row of batchRows) {
-        row[statusColumnIndex] = "Failed";
-        row[resultIdColumnIndex] = "";
-        row[actionColumnIndex] = "";
-        row[errorColumnIndex] = errorText;
-      }
-      this.consecutiveFailures++;
-      // If a whole batch has failed (as opposed to individual records failing),
-      // too many times in a row, we stop the import.
-      // This is useful when an error will affect all batches, for example a field name being misspelled.
-      // This also helps prevent throtteling in Chrome.
-      // A batch failing might not affect all batches, so we wait for a few consecutive errors before we stop.
-      // For example, a whole batch will fail if one of the field values is of an incorrect type or format.
-      if (this.consecutiveFailures >= 3) {
+        if (!jobResponse.id) {
+          throw new Error("Hard delete failed");
+        }
+
+        let hardDeleteChunckBody = "Id\n" + importArgs.ID.join("\n");
+        //services/data/65.0/jobs/ingest/7505fEXAMPLE4C2AAM/batches
+        //this.spinFor(sfConn.rest("/services/async/" + apiVersion + "/job/" + jobResponse.id + "/batch", {method: "POST", "api": "bulk", body: hardDeleteChunckBody}).then(uploadResponse => {
+        this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/batches", {method: "PUT", withoutCache: true, bodyType: "csv", body: hardDeleteChunckBody}).then(uploadResponse => {
+          console.log(uploadResponse);
+          ///services/data/v65.0/jobs/ingest/jobId/
+          this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id, {method: "PATCH", withoutCache: true, body: {"state": "UploadComplete"}}).then(async uploadCompleteResponse => {
+            console.log(uploadCompleteResponse);
+            let state = "UploadComplete";
+            while (state != "JobComplete") {
+              if (state == "Failed" || state == "Aborted") {
+                throw new Error("Hard delete failed");
+              }
+              let jobStateResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id, {method: "GET", withoutCache: true});
+              console.log(jobStateResponse);
+              state = jobStateResponse?.state;
+            }
+            if (state == "JobComplete") {
+              this.activeBatches = 0;
+              let jobSuccessfulResultsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/successfulResults", {method: "GET", withoutCache: true, responseType: "text"});
+              console.log(jobSuccessfulResultsResponse);
+              //parse response to get successful results body is a csv with columns "sf__Id","sf__Created",Id
+              const successRows = jobSuccessfulResultsResponse.replace(/"/g, "").split("\n");
+              const successHeaders = successRows[0].split(",");
+              const successfulResults = successRows.slice(1).map(row => {
+                const cells = row.split(",");
+                return successHeaders.reduce((acc, header, index) => {
+                  acc[header] = cells[index];
+                  return acc;
+                }, {});
+              });
+              console.log(successfulResults);
+              for (let row of batchRows) {
+                if (successfulResults.find(result => result.Id == row[inputIdColumnIndex])) {
+                  row[statusColumnIndex] = "Succeeded";
+                }
+              }
+              this.updateResult(this.importData.importTable);
+              let jobFailedResultsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/failedResults", {method: "GET", withoutCache: true, responseType: "text"});
+              console.log(jobFailedResultsResponse);
+              //parse response to get successful results body is a csv with columns sf__Error, sf__Id, Id
+              const failedRows = jobFailedResultsResponse.replace(/"/g, "").split("\n");
+              const failedHeaders = failedRows[0].split(",");
+              const failedResults = failedRows.slice(1).map(row => {
+                const cells = row.split(",");
+                return failedHeaders.reduce((acc, header, index) => {
+                  acc[header] = cells[index];
+                  return acc;
+                }, {});
+              });
+              console.log(failedResults);
+              for (let row of batchRows) {
+                let failedResult = failedResults.find(result => result.Id == row[inputIdColumnIndex]);
+                if (failedResult) {
+                  row[statusColumnIndex] = "Failed";
+                  row[resultIdColumnIndex] = failedResult.Id;
+                  row[errorColumnIndex] = failedResult.sf__Error;
+                }
+              }
+              this.updateResult(this.importData.importTable);
+            }
+          }));
+        }));
+      }));
+    } else {
+      this.spinFor(sfConn.soap(wsdl, importAction, importArgs, soapheaders).then(res => {
+
+        let results = sfConn.asArray(res);
+        for (let i = 0; i < results.length; i++) {
+          let result = results[i];
+          let row = batchRows[i];
+          if (result.success == "true") {
+            row[statusColumnIndex] = "Succeeded";
+            row[actionColumnIndex]
+              = importAction == "create" ? "Inserted"
+              : importAction == "update" ? "Updated"
+              : importAction == "upsert" || importAction == "upsertMetadata" ? (result.created == "true" ? "Inserted" : "Updated")
+              : importAction == "delete" || importAction == "deleteMetadata" ? "Deleted"
+              : importAction == "undelete" ? "Undeleted"
+              : "Unknown";
+          } else {
+            row[statusColumnIndex] = "Failed";
+            row[actionColumnIndex] = "";
+          }
+          row[resultIdColumnIndex] = result.id || "";
+          row[errorColumnIndex] = sfConn.asArray(result.errors).map(errorNode =>
+            errorNode.statusCode
+            + ": " + errorNode.message
+            + " [" + sfConn.asArray(errorNode.fields).join(", ") + "]"
+          ).join(", ");
+        }
+        this.consecutiveFailures = 0;
+      }, err => {
+        if (err.name != "SalesforceSoapError") {
+          throw err; // Not an HTTP error response
+        }
+        let errorText = err.message;
+        for (let row of batchRows) {
+          row[statusColumnIndex] = "Failed";
+          row[resultIdColumnIndex] = "";
+          row[actionColumnIndex] = "";
+          row[errorColumnIndex] = errorText;
+        }
+        this.consecutiveFailures++;
+        // If a whole batch has failed (as opposed to individual records failing),
+        // too many times in a row, we stop the import.
+        // This is useful when an error will affect all batches, for example a field name being misspelled.
+        // This also helps prevent throtteling in Chrome.
+        // A batch failing might not affect all batches, so we wait for a few consecutive errors before we stop.
+        // For example, a whole batch will fail if one of the field values is of an incorrect type or format.
+        if (this.consecutiveFailures >= 3) {
+          this.isProcessingQueue = false;
+        }
+      }).then(() => {
+        this.activeBatches--;
+        this.updateResult(this.importData.importTable);
+        this.executeBatch();
+      }).catch(error => {
+        console.error("Unexpected exception", error);
         this.isProcessingQueue = false;
-      }
-    }).then(() => {
-      this.activeBatches--;
-      this.updateResult(this.importData.importTable);
-      this.executeBatch();
-    }).catch(error => {
-      console.error("Unexpected exception", error);
-      this.isProcessingQueue = false;
-    }));
+      }));
+    }
   }
 
 }

@@ -56,7 +56,7 @@ export let sfConn = {
     }
 
     let xhr = new XMLHttpRequest();
-    if ((!url.includes("/executeAnonymous/")) || withoutCache){
+    if ((!url.includes("/executeAnonymous/")) && !withoutCache){
       url += (url.includes("?") ? "&" : "?") + "cache=" + Math.random();
     }
     const sfHost = "https://" + this.instanceHostname;
