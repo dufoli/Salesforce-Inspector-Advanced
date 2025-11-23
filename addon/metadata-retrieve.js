@@ -277,9 +277,13 @@ class Model {
         this.statusLink = URL.createObjectURL(new Blob([statusJson], {type: "application/json"}));
         if (this.downloadAuto) {
           let downloadATag = document.createElement("a");
-          downloadATag.download = "metadata.csv";
+          downloadATag.download = "metadata.zip";
           downloadATag.href = this.downloadLink;
           downloadATag.click();
+          let downloadATag2 = document.createElement("a");
+          downloadATag2.download = "metadataStatus.json";
+          downloadATag2.href = this.statusLink;
+          downloadATag2.click();
         }
         this.progress = "done";
         this.didUpdate();

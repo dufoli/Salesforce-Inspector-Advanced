@@ -3,6 +3,7 @@
 ## Version 1.37
 - data export: fix filter operator behaviour with null
 - data import : support hard delete  [issue 129](https://github.com/dufoli/Salesforce-Inspector-Advanced/129)
+- metadata: automatic download produce zip file and not csv and add metadataStatus json file [issue 262](https://github.com/dufoli/Salesforce-Inspector-Advanced/262)
 
 ## Version 1.36.2
 - data export: fix performance freeze with in keyword for suggestion
