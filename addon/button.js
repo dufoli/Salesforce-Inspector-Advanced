@@ -251,6 +251,20 @@ function initButton(sfHost, inInspector) {
     }
   }
 
+  function shouldShowBannerForPathname(pathname) {
+    // Test the same pathname conditions as getBannerMessage in popup.js
+    if (pathname.includes("/lightning/setup/ManageExternalClientApplication")) {
+      return true;
+    }
+    if (pathname.includes("/ecapp/externalClientAppManageConsumer.apexp")) {
+      return true;
+    }
+    if (pathname.includes("/options.html")) {
+      return true;
+    }
+    return false;
+  }
+
   function loadPopup() {
     btn.addEventListener("click", () => {
       if (!rootEl.classList.contains("insext-active")) {
@@ -308,7 +322,18 @@ function initButton(sfHost, inInspector) {
           inDevConsole: !!document.querySelector("body.ApexCSIPage"),
           inLightning: !!document.querySelector("#auraLoadingBox"),
           inInspector,
+          contextUrl: location.href
         }, "*");
+
+        // Open popup by default if showInvalidTokenBanner is true and pathname matches banner conditions
+        let showInvalidTokenBanner = iFrameLocalStorage.showInvalidTokenBanner === "true";
+        if (showInvalidTokenBanner) {
+          let url = new URL(location.href);
+          let pathname = url.pathname;
+          if (shouldShowBannerForPathname(pathname)) {
+            openPopup();
+          }
+        }
       }
       if (e.data.mouseX) {
         let boundingClientRect = popupEl.getBoundingClientRect();
@@ -476,13 +501,13 @@ function initButton(sfHost, inInspector) {
       removeEventListener("mouseup", outsidePopupClick);
       popupEl.blur();
     }
-    function onLocationChange(e) {
+    function onLocationChange() {
       closePopup();
       openPopup();
     }
     function outsidePopupClick(e) {
       // Close the popup when clicking outside it
-      if (!rootEl.contains(e.target)) {
+      if (!rootEl.contains(e.target) && !shouldShowBannerForPathname(location.pathname)) {
         closePopup();
       }
     }

@@ -481,24 +481,74 @@ class APIKeyOption extends React.Component {
   constructor(props) {
     super(props);
     this.sfHost = props.model.sfHost;
+    this.model = props.model;
     this.onChangeApiKey = this.onChangeApiKey.bind(this);
+    this.getShareMailtoLink = this.getShareMailtoLink.bind(this);
     this.state = {apiKey: localStorage.getItem(this.sfHost + "_clientId") ? localStorage.getItem(this.sfHost + "_clientId") : ""};
+    this.withAccessToken = (localStorage.getItem(this.sfHost + "_access__token") != null);
   }
 
+  deleteAccessToken() {
+    localStorage.removeItem(this.sfHost + "_access__token");
+  }
   onChangeApiKey(e) {
     let apiKey = e.target.value;
     this.setState({apiKey});
-    localStorage.setItem(this.sfHost + "_clientId", apiKey);
+    if (apiKey){
+      localStorage.setItem(this.sfHost + "_clientId", apiKey);
+    } else {
+      localStorage.removeItem(this.sfHost + "_clientId");
+    }
+    localStorage.setItem("showInvalidTokenBanner", "false");
+  }
+
+  getShareMailtoLink() {
+    if (!this.state.apiKey) {
+      return "#";
+    }
+    // Extract organization name from userInfo (format: "userFullName / userName / organizationName")
+    let orgName = this.sfHost;
+    if (this.model.userInfo && this.model.userInfo.includes(" / ")) {
+      let parts = this.model.userInfo.split(" / ");
+      if (parts.length >= 3) {
+        orgName = parts[2];
+      }
+    }
+
+    // Create the options.html URL with both host and setcustomerkey parameters
+    let optionsUrl = chrome.runtime.getURL("options.html") + "?host=" + encodeURIComponent(this.sfHost) + "&setcustomerkey=" + encodeURIComponent(this.state.apiKey);
+
+    // Create mailto link with subject and body containing the link
+    let subject = encodeURIComponent("here is the new customer key to use for salesforce org " + orgName);
+    let body = encodeURIComponent("Please use this link to set the customer key:\n\n" + optionsUrl);
+
+    return "mailto:?subject=" + subject + "&body=" + body;
   }
 
   render() {
+    let hasShareButton = !!this.state.apiKey;
+    let hasDeleteButton = this.withAccessToken;
+    let inputSize;
+    if (hasShareButton && hasDeleteButton) {
+      inputSize = "slds-size_3-of-12";
+    } else if (hasShareButton || hasDeleteButton) {
+      inputSize = "slds-size_4-of-12";
+    } else {
+      inputSize = "slds-size_6-of-12";
+    }
     return h("div", {className: "slds-grid slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
       h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
         h("span", {}, "API Consumer Key")
       ),
       h("div", {className: "slds-col slds-size_2-of-12 slds-form-element slds-grid slds-grid_align-end slds-grid_vertical-align-center slds-gutters_small"},
-        h("div", {className: "slds-form-element__control slds-col slds-size_6-of-12"},
+        h("div", {className: "slds-form-element__control slds-col " + inputSize},
           h("input", {type: "text", id: "apiKeyInput", className: "slds-input", placeholder: "Consumer Key", value: cleanInputValue(this.state.apiKey), onChange: this.onChangeApiKey}),
+        ),
+        h("div", {hidden: !this.state.apiKey, className: "slds-form-element__control slds-col slds-col slds-size_2-of-12 text-align-middle"},
+          h("a", {href: this.getShareMailtoLink(), title: "Share consumer key", className: "slds-button slds-button_brand"}, "Share"),
+        ),
+        h("div", {hidden: !this.withAccessToken, className: "slds-form-element__control slds-col slds-col slds-size_2-of-12 text-align-middle"},
+          h("button", {onClick: this.deleteAccessToken, title: "Delete access token", className: "slds-button slds-button_brand"}, "Delete access token"),
         )
       )
     );
@@ -759,6 +809,26 @@ class App extends React.Component {
   let args = new URLSearchParams(location.search.slice(1));
   let sfHost = args.get("host");
   let tab = args.get("tab") ? parseInt(args.get("tab")) : 1;
+  let setCustomerKey = args.get("setcustomerkey");
+
+  // Handle setcustomerkey parameter
+  if (setCustomerKey && sfHost) {
+    let decodedKey = decodeURIComponent(setCustomerKey);
+    let confirmed = confirm("Do you want to set the consumer key for " + sfHost + "?\n\nConsumer Key: " + decodedKey);
+    if (confirmed) {
+      localStorage.setItem(sfHost + "_clientId", decodedKey);
+      // Remove the parameter from URL to avoid re-prompting on refresh
+      let newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("setcustomerkey");
+      window.history.replaceState({}, "", newUrl.toString());
+    } else {
+      // Remove the parameter even if cancelled
+      let newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("setcustomerkey");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }
+
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
 

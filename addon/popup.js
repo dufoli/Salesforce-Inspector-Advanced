@@ -18,7 +18,8 @@ if (typeof browser === "undefined") {
     iFrameLocalStorage: {
       popupArrowOrientation: localStorage.getItem("popupArrowOrientation"),
       popupArrowPosition: JSON.parse(localStorage.getItem("popupArrowPosition")),
-      scrollOnFlowBuilder: JSON.parse(localStorage.getItem("scrollOnFlowBuilder"))
+      scrollOnFlowBuilder: JSON.parse(localStorage.getItem("scrollOnFlowBuilder")),
+      showInvalidTokenBanner: localStorage.getItem("showInvalidTokenBanner")
     }
   }, "*");
   let parentSelf = parent;
@@ -76,7 +77,7 @@ function generateFavIcon({sfHost}) {
   }
   return fav;
 }
-function init({sfHost, inDevConsole, inLightning, inInspector}) {
+function init({sfHost, inDevConsole, inLightning, inInspector, contextUrl}) {
   let addonVersion = chrome.runtime.getManifest().version;
 
   sfConn.getSession(sfHost).then(() => {
@@ -85,7 +86,8 @@ function init({sfHost, inDevConsole, inLightning, inInspector}) {
       inDevConsole,
       inLightning,
       inInspector,
-      addonVersion
+      addonVersion,
+      contextUrl
     }), document.getElementById("root"));
 
   });
@@ -118,12 +120,12 @@ function toCompositeRequest(queries) {
 class App extends React.PureComponent {
   constructor(props) {
     super(props);
-    let {sfHost} = this.props;
+    let {sfHost, contextUrl} = this.props;
     let hostArg = new URLSearchParams();
     hostArg.set("host", sfHost);
     this.state = {
       isInSetup: false,
-      contextUrl: null,
+      contextUrl,
       apiVersionInput: apiVersion,
       isFieldsPresent: false,
       exportHref: "data-export.html?" + hostArg,
@@ -141,6 +143,9 @@ class App extends React.PureComponent {
     this.updateReleaseNotesViewed = this.updateReleaseNotesViewed.bind(this);
     this.onCloseBanner = this.onCloseBanner.bind(this);
     this.clearOlderFlows = this.clearOlderFlows.bind(this);
+    this.handleSecureWithConnectedApp = this.handleSecureWithConnectedApp.bind(this);
+    this.onGetNewToken = this.onGetNewToken.bind(this);
+    this.getBannerMessage = this.getBannerMessage.bind(this);
   }
   async onContextRecordChange(e) {
     let {sfHost} = this.props;
@@ -363,11 +368,8 @@ class App extends React.PureComponent {
         this.endResizeMove({skipMessage: true});
       }
     } else if (e.data.showInvalidTokenBanner) {
-      //TODO use model to store if displayed or not.
-      const containerToShow = document.getElementById("invalidTokenBanner");
-      if (containerToShow) { containerToShow.classList.remove("hide"); }
-      const containerToMask = document.getElementById("mainTabs");
-      if (containerToMask) { containerToMask.classList.add("mask"); }
+      localStorage.setItem("showInvalidTokenBanner", "true");
+
       return;
     }
     this.setState({
@@ -527,23 +529,108 @@ class App extends React.PureComponent {
       });
     }
   }
-  getBannerUrlAction(sessionError, sfHost, clientId, browser) {
-    let url;
-    let title;
-    let text;
-    text = "Access Token Expired";
-    title = "Generate New Token";
-    url = `https://${sfHost}/services/oauth2/authorize?response_type=token&client_id=${clientId}&redirect_uri=${browser}-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html`;
-    return {title, url, text};
+  onGetNewToken(e) {
+    e.preventDefault();
+    let {sfHost} = this.props;
+    sfConn.authenticate(sfHost);
+  }
+  handleSecureWithConnectedApp(e) {
+    e.preventDefault();
+    localStorage.setItem("showInvalidTokenBanner", "true");
+  }
+  getBannerMessage(contextUrl) {
+    let {sfHost} = this.props;
+    if (!contextUrl) {
+      return {
+        bannerText: "Create an External Client App",
+        link: {
+          text: "Create External Client App",
+          props: {
+            href: `https://${sfHost}/lightning/setup/ManageExternalClientApplication/home`,
+            target: "_blank"
+          }
+        }
+      };
+    }
+
+    let url = new URL(contextUrl);
+    let pathname = url.pathname;
+    let browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
+    if (pathname.includes("/lightning/setup/ManageExternalClientApplication/create")) {
+      let bannerText = "1. Expand API oauth section\nEnable OAuth,\n";
+      bannerText += "2. Paste callback :\n";
+      bannerText += `${browser}-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html\n`;
+      bannerText += "3. Add scope \"Manage user data via APIs (api)\"\nand \"Manage user data via web browser (web)\"\n";
+      bannerText += "4. Uncheck \"Require secret for Web Server Flow\"\n";
+      bannerText += "Uncheck \"Require secret for Refresh Token Flow\"\n";
+      bannerText += "Check \"Require PKCE extension\"\n";
+      bannerText += "5.then save";
+      return {
+        bannerText
+      };
+    }
+    if (pathname.includes("/lightning/setup/ManageExternalClientApplication/list")) {
+      return {
+        bannerText: "click \"New External Client App\" button",
+        link: {
+          text: "New External Client App",
+          props: {
+            href: `https://${sfHost}/lightning/setup/ManageExternalClientApplication/create`,
+            target: "_blank"
+          }
+        }
+      };
+    }
+
+    let detailMatch = pathname.match(/\/lightning\/setup\/ManageExternalClientApplication\/([^/]+)\/detail/);
+    if (detailMatch) {
+      return {
+        bannerText: "Go to Settings tab\nCheck OAuth Settings\nClick Consumer Key and Secret button\nCopy Client ID"
+      };
+    }
+    if (pathname.includes("/ecapp/externalClientAppManageConsumer.apexp")) {
+      let optionsUrl = `options.html?host=${sfHost}&tab=2`;
+      return {
+        bannerText: "Go to Options page (on API tab) and paste customer key in \"API Consumer Key\" field",
+        link: {
+          text: "Open Options Page",
+          props: {
+            href: optionsUrl,
+            target: "_blank"
+          }
+        }
+      };
+    }
+    if (pathname.includes("/options.html")) {
+      return {
+        bannerText: "Paste customer key in \"API Consumer Key\" field",
+        link: {
+          text: "Return to external client app list",
+          props: {
+            href: "https://${sfHost}/lightning/setup/ManageExternalClientApplication/list",
+            target: "_blank"
+          }
+        }
+      };
+    }
+
+    // Default message for other pages
+    return {
+      bannerText: "Create an External Client App with detailed instructions (no secret key and with PKCE enabled)",
+      link: {
+        text: "Create External Client App",
+        props: {
+          href: `https://${sfHost}/lightning/setup/ManageExternalClientApplication/home`,
+          target: "_blank"
+        }
+      }
+    };
   }
   setButtonTooltip(tooltip) {
     this.setState({buttonTooltip: tooltip});
   }
   onCloseBanner() {
-    const containerToShow = document.getElementById("invalidTokenBanner");
-    if (containerToShow) { containerToShow.classList.add("hide"); }
-    const containerToMask = document.getElementById("mainTabs");
-    if (containerToMask) { containerToMask.classList.remove("mask"); }
+    localStorage.setItem("showInvalidTokenBanner", "false");
   }
   render() {
     let {
@@ -558,10 +645,9 @@ class App extends React.PureComponent {
     hostArg.set("host", sfHost);
     let linkInNewTab = JSON.parse(localStorage.getItem("openLinksInNewTab"));
     let linkTarget = inDevConsole || linkInNewTab ? "_blank" : "_top";
-    const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
-    const DEFAULT_CLIENT_ID = "3MVG9HoFrxrSzmIzsEn1Y0w8shcr6uZL9YRkAcJtN.3MVG9HxRZv05HarSKNB3JdB1Ov0GpOJszqSrGp5zIP4bQ2IIWODNmOo54LhwU5sTClY1BmrKC0i_hEeQCOlbk"; //Consumer Key of  default connected app
-    const clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : DEFAULT_CLIENT_ID;
-    const bannerUrlAction = this.getBannerUrlAction(sessionError, sfHost, clientId, browser);
+    let bannerMessage = this.getBannerMessage(contextUrl);
+    let showInvalidTokenBanner = localStorage.getItem("showInvalidTokenBanner") === "true";
+    let withCustomerKey = localStorage.getItem(sfHost + "_clientId") !== null;
     return (
       h("div", {},
         h("div", {className: "slds-page-header slds-theme_shade popup-header"},
@@ -611,7 +697,7 @@ class App extends React.PureComponent {
             }
           }
         }),
-        h("div", {id: "invalidTokenBanner", className: "hide"},
+        showInvalidTokenBanner && h("div", {id: "invalidTokenBanner"},
           h("button", {className: "slds-button slds-button_icon slds-button_icon-small", title: "Close", onClick: this.onCloseBanner},
             h("svg", {className: "slds-button__icon", viewBox: "0 0 52 52"},
               h("use", {xlinkHref: "symbols.svg#close"})
@@ -619,50 +705,15 @@ class App extends React.PureComponent {
             h("span", {className: "slds-assistive-text"}, "Close"),
           ),
           h(AlertBanner, {type: "warning",
-            bannerText: "Login back to Salesforce if",
-            iconName: "warning",
-            iconTitle: "Warning",
-            assistiveTest: "Login back to Salesforce if",
+            bannerText: bannerMessage.bannerText,
+            assistiveTest: bannerMessage.bannerText,
             onClose: null,
-            link: {
-              text: sfHost,
-              props: {
-                href: `https://${sfHost}`,
-                target: "_blank"
-              }
-            }
-          }),
-          h(AlertBanner, {type: "warning",
-            bannerText: bannerUrlAction.text,
-            iconName: "warning",
-            iconTitle: "Warning",
-            assistiveTest: bannerUrlAction.text,
-            onClose: null,
-            link: {
-              text: bannerUrlAction.title,
-              props: {
-                href: bannerUrlAction.url,
-                target: "_blank"
-              }
-            }
-          }),
-          h(AlertBanner, {type: "warning",
-            bannerText: "If it fail, navigate to Setup | Connected Apps OAuth Usage, and click \"Install\" on the Salesforce Inspector Advanced app.",
-            iconName: "warning",
-            iconTitle: "Warning",
-            assistiveTest: "If not yet done, install connected App.",
-            onClose: null,
-            link: {
-              text: "Install connected App",
-              props: {
-                href: `https://${sfHost}/lightning/setup/ConnectedAppsUsage/home`,
-                target: "_blank"
-              }
-            }
+            link: bannerMessage.link
           })
         ),
-        h("div", {className: "main", id: "mainTabs"},
+        h("div", {className: "main" + (showInvalidTokenBanner ? " mask" : ""), id: "mainTabs"},
           h(AllDataBox, {ref: "showAllDataBox", sfHost, showDetailsSupported: !inLightning && !inInspector, linkTarget, contextUrl, onContextRecordChange: this.onContextRecordChange, isFieldsPresent}),
+          h("div", {role: "tooltip"}, h("strong", {}, buttonTooltip)),
           h("div", {className: "slds-p-vertical_x-small slds-p-horizontal_x-small slds-border_bottom"},
             h("a",
               {
@@ -820,8 +871,16 @@ class App extends React.PureComponent {
               h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#bug", style: {fill: "#706E6B"}})),
               h("span", {className: "slds-assistive-text"}, "Report issue or feature request"),
             ),
-          ),
-          h("span", {role: "tooltip"}, h("strong", {}, buttonTooltip)),
+            h("a", {
+              href: "#",
+              target: "_blank",
+              className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
+              title: (withCustomerKey ? "Get New Token" : "Secure with External Client App"),
+              onMouseEnter: () => { this.setButtonTooltip("Secure with Connected App"); },
+              onMouseLeave: () => { this.setButtonTooltip(""); },
+              onClick: (withCustomerKey ? this.onGetNewToken : this.handleSecureWithConnectedApp)
+            }, h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#lock", style: {fill: "#706E6B"}})), h("span", {className: "slds-assistive-text"}, "Secure with Connected App")),
+          )
         ),
         h("div", {className: "slds-grid slds-theme_shade slds-p-around_x-small slds-border_top"},
           h("div", {className: "slds-col slds-size_5-of-12 footer-small-text slds-m-top_xx-small"},
@@ -2309,12 +2368,12 @@ class AlertBanner extends React.PureComponent {
     return (
       h("div", {className: `slds-notify slds-notify_alert ${themeClass}`, role: "alert"},
         h("span", {className: "slds-assistive-text"}, assistiveText | "Notification"),
-        h("span", {className: "slds-icon_container slds-m-right_small", title: iconTitle},
+        iconName && h("span", {className: "slds-icon_container slds-m-right_small", title: iconTitle},
           h("svg", {className: "slds-icon slds-icon_neither-small-nor-x-small slds-icon-text-default", viewBox: "0 0 52 52"},
             h("use", {xlinkHref: `symbols.svg#${iconName}`})
           ),
         ),
-        h("h2", {}, bannerText,
+        h("h2", {style: {whiteSpace: "pre-line", overflowWrap: "anywhere"}}, bannerText,
           h("p", {}, ""),
           link && h("a", link.props, link.text)
         ),

@@ -398,3 +398,6 @@ a.icon {
   line-height:1;
   background-color:var(--slds-c-icon-color-background, var(--sds-c-icon-color-background, transparent));
 }
+div[role="tooltip"] {
+    height: 19px;
+}

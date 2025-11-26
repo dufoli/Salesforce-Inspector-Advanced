@@ -1,8 +1,8 @@
 {
   "name": "Salesforce Inspector Advanced",
   "description": "Productivity tools for Salesforce administrators and developers to inspect data and metadata directly from the Salesforce UI.",
-  "version": "1.36.2",
-  "version_name": "1.36.2",
+  "version": "1.37",
+  "version_name": "1.37",
   "icons": {
     "128": "icon128.png"
   },

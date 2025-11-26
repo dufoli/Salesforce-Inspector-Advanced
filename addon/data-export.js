@@ -2517,6 +2517,10 @@ class App extends React.Component {
   }
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
+    //refresh sfHost after oauth flow
+    if (sfConn.instanceHostname && sfConn.instanceHostname != sfHost) {
+      sfHost = sfConn.instanceHostname;
+    }
 
     let root = document.getElementById("root");
     let model = new Model({sfHost, args});

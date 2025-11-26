@@ -12,33 +12,90 @@ if (typeof browser === "undefined") {
 export let apiVersion = localStorage.getItem("apiVersion") == null ? lastApiVersion : localStorage.getItem("apiVersion");
 export let sessionError;
 export let sfConn = {
-
+  async authenticate(sfHost) {
+    const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
+    const clientId = sfConn.getClientId(sfHost);
+    //generate code challenge and code verifier
+    let pkceRsp = await fetch(`https://${sfHost}/services/oauth2/pkce/generator?`);
+    let pkceData = await pkceRsp.json();
+    const codeChallengeMethod = pkceData.code_challenge_method || "S256";
+    const codeChallenge = pkceData.code_challenge;
+    const codeVerifier = pkceData.code_verifier;
+    localStorage.setItem(sfHost + "_codeVerifier", codeVerifier);
+    /* TODO
+    other solution generate on client side :
+    it mean generate a code_verifier : 43 to 128 of unreserverChar
+    [A-Z] / [a-z] / [0-9] / "-" / "." / "_" / "~"
+    then
+    https://github.com/emn178/js-sha256/blob/master/src/sha256.js
+    code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))
+    as specify in https://datatracker.ietf.org/doc/rfc7636/
+    chapter 5.2
+    store it in localStorage
+    */
+    const redirectUri = `${browser}-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html`;
+    let url = `https://${sfHost}/services/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&code_challenge=${codeChallenge}&code_challenge_method=${codeChallengeMethod}&state=${encodeURIComponent(sfHost)}`;
+    let a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.click();
+  },
+  getClientId(sfHost) {
+    //dev client id
+    const DEFAULT_CLIENT_ID = "3MVG9HxRZv05HarSKNB3JdB1Ov7RF9odlfnYj4l765rcdwRU0s7ApmRj7W4pmLPGCie0bELYeaNzVBoRoZOnk";
+    //prod client id
+    //const DEFAULT_CLIENT_ID = "3MVG9HxRZv05HarSKNB3JdB1Ov0GpOJszqSrGp5zIP4bQ2IIWODNmOo54LhwU5sTClY1BmrKC0i_hEeQCOlbk"; //Consumer Key of  default connected app
+    return localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : DEFAULT_CLIENT_ID;
+  },
   async getSession(sfHost) {
-    sfHost = getMyDomain(sfHost);
     const ACCESS_TOKEN = "access__token";
-    const URL_ACCESS_TOKEN = "access_token";  // OAuth flow returns access_token in callback URL
-    const currentUrlIncludesToken = window.location.href.includes(URL_ACCESS_TOKEN);
-    const oldToken = localStorage.getItem(sfHost + "_" + ACCESS_TOKEN);
+    const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
+    //get url parameters to extract code and state
+    const url = new URL(window.location.href);
+    const params = new URLSearchParams(url.search);
+    const codeParam = params.get("code");
+    const stateParam = params.get("state");
+    if (stateParam) {
+      sfHost = decodeURIComponent(stateParam);
+    }
+    sfHost = getMyDomain(sfHost);
     this.instanceHostname = sfHost;
-    if (currentUrlIncludesToken){ //meaning OAuth flow just completed
-      if (window.location.href.includes(URL_ACCESS_TOKEN)) {
-        const url = new URL(window.location.href);
-        const hashParams = new URLSearchParams(url.hash.substring(1)); //hash (#) used in user-agent flow
-        const accessToken = decodeURI(hashParams.get(URL_ACCESS_TOKEN));
-        sfHost = decodeURI(hashParams.get("instance_url")).replace(/^https?:\/\//i, "");
-        this.sessionId = accessToken;
-        localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, accessToken);
+    if (codeParam) {
+      const codeVerifier = localStorage.getItem(sfHost + "_codeVerifier");
+      if (!codeVerifier) {
+        throw new Error("Code verifier not found. Please authenticate again.");
       }
-    } else if (oldToken) {
-      this.sessionId = oldToken;
+      const redirectUri = `${browser}-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html`;
+
+      const formBody = `grant_type=authorization_code&code=${encodeURIComponent(codeParam)}&code_verifier=${encodeURIComponent(codeVerifier)}&client_id=${this.getClientId(sfHost)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+      const tokenResponse = await fetch(`https://${sfHost}/services/oauth2/token`, {method: "POST", headers: {"Content-Type": "application/x-www-form-urlencoded"}, body: formBody});
+      const data = await tokenResponse.json();
+      if (!tokenResponse.ok) {
+        throw new Error(data.error_description ?? "Failed to get access token");
+      }
+      const accessToken = data.access_token;
+      localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, accessToken);
+      this.sessionId = accessToken;
+      localStorage.removeItem(sfHost + "_codeVerifier");
+      //remove from browser history the state and code param to avoid reuse with nav
+      params.delete("code");
+      params.delete("state");
+      params.append("host", sfHost);
+      url.search = params.toString();
+      history.replaceState(null, document.title, url);
     } else {
-      let message = await new Promise(resolve =>
-        currentBrowser.runtime.sendMessage({message: "getSession", sfHost}, resolve));
-      if (message) {
-        this.instanceHostname = getMyDomain(message.hostname);
-        this.sessionId = message.key;
-        //only set localstorage with oauth flow
-        //localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, message.key);
+      const oldToken = localStorage.getItem(sfHost + "_" + ACCESS_TOKEN);
+      if (oldToken) {
+        this.sessionId = oldToken;
+      } else {
+        let message = await new Promise(resolve =>
+          currentBrowser.runtime.sendMessage({message: "getSession", sfHost}, resolve));
+        if (message) {
+          this.instanceHostname = getMyDomain(message.hostname);
+          this.sessionId = message.key;
+          //only set localstorage with oauth flow
+          //localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, message.key);
+        }
       }
     }
     const IS_SANDBOX = "isSandbox";
