@@ -896,7 +896,7 @@ class Model {
     } else {
       importArgs.sObjects = [];
     }
-    let headerBulk = header.join(",");
+    let headerBulk = header.filter(h => !h.startsWith("_")).join(",");
     let chunk = headerBulk + "\n";
     let rowCount = 1;
     for (let row of data) {
@@ -907,7 +907,7 @@ class Model {
           chunk = headerBulk + "\n";
           rowCount = 1;
         }
-        chunk += row.join(",") + "\n";
+        chunk += row.filter((r, i) => !header[i].startsWith("_")).join(",") + "\n";
         row[statusColumnIndex] = "Processing";
         continue;
       }
@@ -1028,6 +1028,9 @@ class Model {
         importArgs.sObjects.push(sobject);
       }
     }
+    if (chunk != headerBulk + "\n") {
+      batchRows.push(chunk);
+    }
     if (batchRows.length == 0) {
       if (this.activeBatches == 0) {
         this.isProcessingQueue = false;
@@ -1046,9 +1049,10 @@ class Model {
     // Note: When a batch finishes successfully, it will start a timeout parallel to any existing timeouts,
     // so we will reach full batchConcurrency faster that timeoutDelay*batchConcurrency,
     // unless batches are slower than timeoutDelay.
-    setTimeout(this.executeBatch.bind(this), 2500);
+    if (this.apiType != "Bulk") {
+      setTimeout(this.executeBatch.bind(this), 2500);
+    }
 
-    let wsdl = sfConn.wsdl(apiVersion, this.apiType);
     let soapheaders = {};
     if (this.importType === "Case" || this.importType === "Lead" || this.importType === "Account") {
       soapheaders.headers = {"AssignmentRuleHeader": {"useDefaultRule": this.assignmentRule}};
@@ -1257,6 +1261,7 @@ class Model {
         }
       }));
     } else {
+      let wsdl = sfConn.wsdl(apiVersion, this.apiType);
       this.spinFor(sfConn.soap(wsdl, importAction, importArgs, soapheaders).then(res => {
 
         let results = sfConn.asArray(res);
