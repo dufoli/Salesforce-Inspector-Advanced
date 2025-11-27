@@ -408,7 +408,11 @@ class Model {
     if (selStart != selEnd) {
       searchTerm = this.editor.value.substring(selStart, selEnd);
     } else if (this.autocompleteResults.isFieldValue) {
-      searchTerm = this.editor.value.substring(0, selEnd).match(/[^,(\s']*$/i)[0];
+      if (this.autocompleteResults.isFieldValue[2] != null) {
+        searchTerm = this.autocompleteResults.isFieldValue[2];
+      } else {
+        searchTerm = this.editor.value.substring(0, selEnd).match(/[^,(\s']*$/i)[0];
+      }
       selStart -= searchTerm.length;
       //include open quote in selection
       if (this.editor.value.substring(0, selStart).endsWith("'")) {
