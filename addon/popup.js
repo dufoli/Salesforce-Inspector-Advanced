@@ -369,6 +369,10 @@ class App extends React.PureComponent {
       }
     } else if (e.data.showInvalidTokenBanner) {
       localStorage.setItem("showInvalidTokenBanner", "true");
+      const containerToShow = document.getElementById("invalidTokenBanner");
+      if (containerToShow) { containerToShow.classList.remove("hide"); }
+      const containerToMask = document.getElementById("mainTabs");
+      if (containerToMask) { containerToMask.classList.add("mask"); }
 
       return;
     }
@@ -630,6 +634,11 @@ class App extends React.PureComponent {
     this.setState({buttonTooltip: tooltip});
   }
   onCloseBanner() {
+    const containerToShow = document.getElementById("invalidTokenBanner");
+    if (containerToShow) { containerToShow.classList.add("hide"); }
+    const containerToMask = document.getElementById("mainTabs");
+    if (containerToMask) { containerToMask.classList.remove("mask"); }
+
     localStorage.setItem("showInvalidTokenBanner", "false");
   }
   render() {
