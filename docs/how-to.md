@@ -49,37 +49,39 @@ On Data export, you can dit directly a field by double clicking on cell. Id must
 For picklist, a list of picklist value is displayed with auto suggestion.
 
 
-## Use Sf Inspector with a connected app
+## Use Sf Inspector with an External Client App
 
 ---
 
 If you enabled "API client whitelisting" (a.k.a "API Access Control") in your org, SF Inspector may not work anymore.
 
-To secure the extension usage, you can use a OAuth 2.0 flow to get an access token, linked to a connected app installed in your org.
+To secure the extension usage, you can use a OAuth 2.0 web server flow to get an access token, linked to a external client app installed in your org. (it replace the Connected App obsolete in spring 2026)
 
-To install the default "SF Inspector Advanced" connected app, navigate to Setup | Connected Apps OAuth Usage, and click "Install" on the Salesforce Inspector Advanced app.
+To create the "SF Inspector Advanced" external client app:
 
-> **Warning**
-> Don't forget to grant access to the users by selecting the related profile(s) or permission set(s).
-
-If you are a Firefox user, or if you want to have full control over the connected app settings, you can also use your own connected app by following these instructions:
-
-1. Create a connected app under Setup | App Manager > New Connected App.
-2. Set callback url to `chrome-extension://chromeExtensionId/data-export.html` (replace `chromeExtensionId` by the actual ID of the extension in your web browser). Make sure the "Manage user data via APIs (api)" scope is selected. You can leave other settings to their default values.
+1. Navigate to Setup `External Client App Manager` , and click `New External Client App`
+2. Fill `External Client App Name`, `Contact Email`, set `Distribution State` to local
+3. Expand `API (Enable OAuth Settings)` section then check `Enable OAuth`
+4. Set callback url to `{browser}-extension://{chromeExtensionId}/data-export.html` (replace `{chromeExtensionId}` by the actual ID of the extension in your web browser you can check with url of data export (example: chrome: `dbfimaflmomgldabcphgolbeoamjogji`, firefox: `6b1e983e-4f0f-4519-afb2-81d0213341d7`) and browser with `moz` for firefox and `chrome` for chrome).
+5. Select oauth scopes : `Manage user data via APIs (api)` and `Manage user data via web browsers (web)`
 
    > **Warning**
    > Don't forget to replace "chromeExtensionId" with your current extension Id
    > ![Connected App](screenshots/connectedApp.png)
-
-3. Get Consumer Key and save it in the Options page
+6. Deselect `Require secret for Web Server Flow` and `Require secret for Refresh Token Flow`
+7. Select `Require Proof Key for Code Exchange (PKCE) extension for Supported Authorization Flows` and leave other checkbox to default
+8. Save
+9. Go to `Settings` tab then open OAuth Settings section then Click `Consumer Key and Secret` button
+10. enter verification code
+11. copy the Consumer Key then open the option page
 
    ![Option button](screenshots/options_button.png)
 
-4. Enter the consumer key
+12. Go to `API` tab and paste the consumer key in field `consumer key`
 
    ![Client Id](screenshots/options_api_tab.png)
 
-5. Refresh page and generate new token
+13. Refresh page and generate new token
 
    ![Generate Token](screenshots/generateAccessToken.png)
 

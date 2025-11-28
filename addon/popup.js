@@ -573,9 +573,9 @@ class App extends React.PureComponent {
       bannerText += "2. Paste callback :\n";
       bannerText += `${browser}-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html\n`;
       bannerText += "3. Add scope \"Manage user data via APIs (api)\"\nand \"Manage user data via web browser (web)\"\n";
-      bannerText += "4. Uncheck \"Require secret for Web Server Flow\"\n";
-      bannerText += "Uncheck \"Require secret for Refresh Token Flow\"\n";
-      bannerText += "Check \"Require PKCE extension\"\n";
+      bannerText += "4. Deselect \"Require secret for Web Server Flow\"\n";
+      bannerText += "Deselect \"Require secret for Refresh Token Flow\"\n";
+      bannerText += "Select \"Require PKCE extension\"\n";
       bannerText += "5.then save";
       return {
         bannerText
