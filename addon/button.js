@@ -326,7 +326,7 @@ function initButton(sfHost, inInspector) {
         }, "*");
 
         // Open popup by default if showInvalidTokenBanner is true and pathname matches banner conditions
-        let showInvalidTokenBanner = iFrameLocalStorage.showInvalidTokenBanner === "true";
+        let showInvalidTokenBanner = iFrameLocalStorage.showInvalidTokenBanner;
         if (showInvalidTokenBanner) {
           let url = new URL(location.href);
           let pathname = url.pathname;

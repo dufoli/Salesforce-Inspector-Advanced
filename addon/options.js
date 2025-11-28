@@ -499,7 +499,7 @@ class APIKeyOption extends React.Component {
     } else {
       localStorage.removeItem(this.sfHost + "_clientId");
     }
-    localStorage.setItem("showInvalidTokenBanner", "false");
+    localStorage.setItem("showExternalClientAppBanner", "false");
   }
 
   getShareMailtoLink() {

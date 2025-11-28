@@ -19,7 +19,7 @@ if (typeof browser === "undefined") {
       popupArrowOrientation: localStorage.getItem("popupArrowOrientation"),
       popupArrowPosition: JSON.parse(localStorage.getItem("popupArrowPosition")),
       scrollOnFlowBuilder: JSON.parse(localStorage.getItem("scrollOnFlowBuilder")),
-      showInvalidTokenBanner: localStorage.getItem("showInvalidTokenBanner")
+      showExternalClientAppBanner: (localStorage.getItem("showExternalClientAppBanner") === "true")
     }
   }, "*");
   let parentSelf = parent;
@@ -145,7 +145,8 @@ class App extends React.PureComponent {
     this.clearOlderFlows = this.clearOlderFlows.bind(this);
     this.handleSecureWithConnectedApp = this.handleSecureWithConnectedApp.bind(this);
     this.onGetNewToken = this.onGetNewToken.bind(this);
-    this.getBannerMessage = this.getBannerMessage.bind(this);
+    this.getBannerSecureApp = this.getBannerSecureApp.bind(this);
+    this.getBannerInvalidToken = this.getBannerInvalidToken.bind(this);
   }
   async onContextRecordChange(e) {
     let {sfHost} = this.props;
@@ -368,7 +369,6 @@ class App extends React.PureComponent {
         this.endResizeMove({skipMessage: true});
       }
     } else if (e.data.showInvalidTokenBanner) {
-      localStorage.setItem("showInvalidTokenBanner", "true");
       const containerToShow = document.getElementById("invalidTokenBanner");
       if (containerToShow) { containerToShow.classList.remove("hide"); }
       const containerToMask = document.getElementById("mainTabs");
@@ -540,9 +540,17 @@ class App extends React.PureComponent {
   }
   handleSecureWithConnectedApp(e) {
     e.preventDefault();
-    localStorage.setItem("showInvalidTokenBanner", "true");
+    localStorage.setItem("showExternalClientAppBanner", "true");
   }
-  getBannerMessage(contextUrl) {
+  getBannerInvalidToken(sessionError) {
+    let title;
+    let bannerText;
+    bannerText = sessionError?.text ?? "Access Token Expired";
+    title = "Generate New Token";
+    return {link: {text: title, props: {href: "#", onClick: this.onGetNewToken, target: "_blank"}}, bannerText, iconName: "warning", iconTitle: "Warning"};
+  }
+
+  getBannerSecureApp(contextUrl) {
     let {sfHost} = this.props;
     if (!contextUrl) {
       return {
@@ -639,7 +647,7 @@ class App extends React.PureComponent {
     const containerToMask = document.getElementById("mainTabs");
     if (containerToMask) { containerToMask.classList.remove("mask"); }
 
-    localStorage.setItem("showInvalidTokenBanner", "false");
+    localStorage.removeItem("showExternalClientAppBanner");
   }
   render() {
     let {
@@ -654,8 +662,13 @@ class App extends React.PureComponent {
     hostArg.set("host", sfHost);
     let linkInNewTab = JSON.parse(localStorage.getItem("openLinksInNewTab"));
     let linkTarget = inDevConsole || linkInNewTab ? "_blank" : "_top";
-    let bannerMessage = this.getBannerMessage(contextUrl);
-    let showInvalidTokenBanner = localStorage.getItem("showInvalidTokenBanner") === "true";
+    let bannerMessage;
+    let showExternalClientAppBanner = localStorage.getItem("showExternalClientAppBanner") === "true";
+    if (showExternalClientAppBanner) {
+      bannerMessage = this.getBannerSecureApp(contextUrl);
+    } else {
+      bannerMessage = this.getBannerInvalidToken(sessionError);
+    }
     let withCustomerKey = localStorage.getItem(sfHost + "_clientId") !== null;
     return (
       h("div", {},
@@ -706,7 +719,7 @@ class App extends React.PureComponent {
             }
           }
         }),
-        showInvalidTokenBanner && h("div", {id: "invalidTokenBanner"},
+        h("div", {id: "invalidTokenBanner", className: (showExternalClientAppBanner ? "" : "hide")},
           h("button", {className: "slds-button slds-button_icon slds-button_icon-small", title: "Close", onClick: this.onCloseBanner},
             h("svg", {className: "slds-button__icon", viewBox: "0 0 52 52"},
               h("use", {xlinkHref: "symbols.svg#close"})
@@ -716,11 +729,13 @@ class App extends React.PureComponent {
           h(AlertBanner, {type: "warning",
             bannerText: bannerMessage.bannerText,
             assistiveTest: bannerMessage.bannerText,
+            iconName: bannerMessage.iconName,
+            iconTitle: bannerMessage.iconTitle,
             onClose: null,
             link: bannerMessage.link
           })
         ),
-        h("div", {className: "main" + (showInvalidTokenBanner ? " mask" : ""), id: "mainTabs"},
+        h("div", {className: "main" + (showExternalClientAppBanner ? " mask" : ""), id: "mainTabs"},
           h(AllDataBox, {ref: "showAllDataBox", sfHost, showDetailsSupported: !inLightning && !inInspector, linkTarget, contextUrl, onContextRecordChange: this.onContextRecordChange, isFieldsPresent}),
           h("div", {role: "tooltip"}, h("strong", {}, buttonTooltip)),
           h("div", {className: "slds-p-vertical_x-small slds-p-horizontal_x-small slds-border_bottom"},
@@ -885,10 +900,10 @@ class App extends React.PureComponent {
               target: "_blank",
               className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
               title: (withCustomerKey ? "Get New Token" : "Secure with External Client App"),
-              onMouseEnter: () => { this.setButtonTooltip("Secure with Connected App"); },
+              onMouseEnter: () => { this.setButtonTooltip(withCustomerKey ? "Get New Token" : "Secure with External Client App"); },
               onMouseLeave: () => { this.setButtonTooltip(""); },
               onClick: (withCustomerKey ? this.onGetNewToken : this.handleSecureWithConnectedApp)
-            }, h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#lock", style: {fill: "#706E6B"}})), h("span", {className: "slds-assistive-text"}, "Secure with Connected App")),
+            }, h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#lock", style: {fill: "#706E6B"}})), h("span", {className: "slds-assistive-text"}, withCustomerKey ? "Get New Token" : "Secure with External Client App")),
           )
         ),
         h("div", {className: "slds-grid slds-theme_shade slds-p-around_x-small slds-border_top"},

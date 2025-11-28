@@ -41,10 +41,12 @@ export let sfConn = {
     a.click();
   },
   getClientId(sfHost) {
-    //dev client id
-    const DEFAULT_CLIENT_ID = "3MVG9HxRZv05HarSKNB3JdB1Ov7RF9odlfnYj4l765rcdwRU0s7ApmRj7W4pmLPGCie0bELYeaNzVBoRoZOnk";
-    //prod client id
-    //const DEFAULT_CLIENT_ID = "3MVG9HxRZv05HarSKNB3JdB1Ov0GpOJszqSrGp5zIP4bQ2IIWODNmOo54LhwU5sTClY1BmrKC0i_hEeQCOlbk"; //Consumer Key of  default connected app
+    let DEFAULT_CLIENT_ID;
+    if (chrome.i18n.getMessage("@@extension_id") != "dbfimaflmomgldabcphgolbeoamjogji") { //dev client id
+      DEFAULT_CLIENT_ID = "3MVG9HxRZv05HarSKNB3JdB1Ov7RF9odlfnYj4l765rcdwRU0s7ApmRj7W4pmLPGCie0bELYeaNzVBoRoZOnk";
+    } else { //prod client id
+      DEFAULT_CLIENT_ID = "3MVG9HxRZv05HarSKNB3JdB1Ov0GpOJszqSrGp5zIP4bQ2IIWODNmOo54LhwU5sTClY1BmrKC0i_hEeQCOlbk";
+    }
     return localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : DEFAULT_CLIENT_ID;
   },
   async getSession(sfHost) {
