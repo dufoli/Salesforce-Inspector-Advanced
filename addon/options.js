@@ -101,7 +101,8 @@ class OptionsTabSelector extends React.Component {
         content: [
           {option: APIVersionOption, props: {key: 1}},
           {option: APIKeyOption, props: {key: 2}},
-          {option: RestHeaderOption, props: {key: 3}}
+          {option: RestHeaderOption, props: {key: 3}},
+          {option: AIProviderOption, props: {key: 4}}
         ]
       },
       {
@@ -549,6 +550,131 @@ class APIKeyOption extends React.Component {
         ),
         h("div", {hidden: !this.withAccessToken, className: "slds-form-element__control slds-col slds-col slds-size_2-of-12 text-align-middle"},
           h("button", {onClick: this.deleteAccessToken, title: "Delete access token", className: "slds-button slds-button_brand"}, "Delete access token"),
+        )
+      )
+    );
+  }
+}
+
+class AIProviderOption extends React.Component {
+
+  constructor(props) {
+    super(props);
+    this.sfHost = props.model.sfHost;
+    this.model = props.model;
+    this.onChangeProvider = this.onChangeProvider.bind(this);
+    this.onChangeOpenAIKey = this.onChangeOpenAIKey.bind(this);
+    this.onChangeMistralKey = this.onChangeMistralKey.bind(this);
+    this.onChangeAnthropicKey = this.onChangeAnthropicKey.bind(this);
+    this.state = {
+      selectedProvider: localStorage.getItem("aiProvider_selected") || "openai",
+      openaiKey: localStorage.getItem("aiProvider_openai_apiKey") || "",
+      mistralKey: localStorage.getItem("aiProvider_mistral_apiKey") || "",
+      anthropicKey: localStorage.getItem("aiProvider_anthropic_apiKey") || ""
+    };
+  }
+
+  onChangeProvider(e) {
+    let provider = e.target.value;
+    this.setState({selectedProvider: provider});
+    localStorage.setItem("aiProvider_selected", provider);
+  }
+
+  onChangeOpenAIKey(e) {
+    let key = e.target.value;
+    this.setState({openaiKey: key});
+    if (key) {
+      localStorage.setItem("aiProvider_openai_apiKey", key);
+    } else {
+      localStorage.removeItem("aiProvider_openai_apiKey");
+    }
+  }
+
+  onChangeMistralKey(e) {
+    let key = e.target.value;
+    this.setState({mistralKey: key});
+    if (key) {
+      localStorage.setItem("aiProvider_mistral_apiKey", key);
+    } else {
+      localStorage.removeItem("aiProvider_mistral_apiKey");
+    }
+  }
+
+  onChangeAnthropicKey(e) {
+    let key = e.target.value;
+    this.setState({anthropicKey: key});
+    if (key) {
+      localStorage.setItem("aiProvider_anthropic_apiKey", key);
+    } else {
+      localStorage.removeItem("aiProvider_anthropic_apiKey");
+    }
+  }
+
+  render() {
+    return h("div", {className: "slds-grid slds-grid_vertical slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
+      h("div", {className: "slds-col slds-size_12-of-12 slds-m-bottom_small"},
+        h("h3", {className: "slds-text-heading_small"}, "SOQL Generation with AI"),
+        h("p", {className: "slds-text-body_small slds-m-top_x-small"},
+          "Configure your API keys to generate SOQL queries with AI. ",
+          h("a", {href: "https://platform.openai.com/api-keys", target: "_blank"}, "OpenAI"),
+          " | ",
+          h("a", {href: "https://console.mistral.ai/api-keys/", target: "_blank"}, "Mistral"),
+          " | ",
+          h("a", {href: "https://console.anthropic.com/settings/keys", target: "_blank"}, "Claude")
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "Default AI Provider")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("select", {className: "slds-select", value: this.state.selectedProvider, onChange: this.onChangeProvider},
+            h("option", {value: "openai"}, "OpenAI (ChatGPT)"),
+            h("option", {value: "mistral"}, "Mistral AI"),
+            h("option", {value: "anthropic"}, "Anthropic (Claude)")
+          )
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "OpenAI API Key")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "sk-...",
+            value: cleanInputValue(this.state.openaiKey),
+            onChange: this.onChangeOpenAIKey
+          })
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "Mistral API Key")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "Your Mistral API key",
+            value: cleanInputValue(this.state.mistralKey),
+            onChange: this.onChangeMistralKey
+          })
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "Anthropic (Claude) API Key")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "sk-ant-...",
+            value: cleanInputValue(this.state.anthropicKey),
+            onChange: this.onChangeAnthropicKey
+          })
         )
       )
     );

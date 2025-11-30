@@ -928,3 +928,130 @@ button.toggle .button-icon {
 .sort-indicator.active {
   color: #009DDC;
 }
+
+/* Styles pour la modale de génération IA */
+.ai-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.ai-modal {
+  background-color: #F8F8F8;
+  border: 1px solid #DDDBDA;
+  border-radius: 0.25rem;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.ai-modal-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid #DDDBDA;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #F8F8F8;
+}
+
+.ai-modal-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #080707;
+  line-height: 1.25;
+}
+
+.ai-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #919191;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
+  margin-right: 0;
+}
+
+.ai-modal-close:hover {
+  background-color: #F4F6F9;
+  color: #005fb2;
+}
+
+.ai-modal-body {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ai-modal-description {
+  margin-bottom: 12px;
+  color: #706e6b;
+  font-size: 0.8125rem;
+}
+
+.ai-modal-description em {
+  color: #16325c;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.ai-modal-input {
+  width: 100%;
+  resize: vertical;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.ai-modal-error {
+  background-color: #feded8;
+  color: #c23934;
+  padding: 8px 12px;
+  border-radius: 0.25rem;
+  margin-bottom: 12px;
+  font-size: 0.8125rem;
+  border: 1px solid #DDDBDA;
+}
+
+.ai-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #DDDBDA;
+}
+
+.ai-modal-cancel {
+  margin-right: 10px;
+}
+
+.ai-modal-hint {
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: #706e6b;
+  font-style: italic;
+  text-align: center;
+}
+
+.ai-generate-btn {
+  margin-right: 10px;
+}

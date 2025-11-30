@@ -6,6 +6,7 @@ import {csvParse} from "./csv-parse.js";
 import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
+import {AIQueryGenerator} from "./ai-query-generator.js";
 
 class Model {
   constructor({sfHost, args}) {
@@ -67,6 +68,9 @@ class Model {
     this.autocompleteResultBox = null;
     this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
+    this.aiQueryGenerator = new AIQueryGenerator();
+    this.aiGenerating = false;
+    this.aiError = null;
     let queryTemplatesRawValue = localStorage.getItem("queryTemplates");
     if (queryTemplatesRawValue) {
       try {
@@ -1685,6 +1689,65 @@ class Model {
     }
     return formatedQuery;
   }
+
+  async generateSOQLWithAI(description) {
+    if (!description || description.trim() === "") {
+      this.aiError = "Please enter a description of the desired SOQL query.";
+      this.didUpdate();
+      return;
+    }
+
+    const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
+    const apiKey = localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
+
+    if (!apiKey || apiKey.trim() === "") {
+      this.aiError = `API key not configured for ${this.aiQueryGenerator.providers[selectedProvider]?.name || selectedProvider}. Please configure it in the options.`;
+      this.didUpdate();
+      return;
+    }
+
+    this.aiGenerating = true;
+    this.aiError = null;
+    this.didUpdate();
+
+    try {
+      // Récupérer la liste des objets disponibles pour le contexte
+      let availableObjects = [];
+      if (this.describeInfo && this.describeInfo.sobjects) {
+        availableObjects = Array.from(this.describeInfo.sobjects.values())
+          .slice(0, 50)
+          .map(obj => ({name: obj.name, label: obj.label}));
+      }
+
+      const context = {
+        availableObjects,
+        currentQuery: this.editor ? this.editor.value : null,
+        describeInfo: this.describeInfo // Pass describeInfo for RAG
+      };
+
+      const soqlQuery = await this.aiQueryGenerator.generateSOQL(
+        description,
+        selectedProvider,
+        apiKey,
+        context
+      );
+
+      if (this.editor) {
+        this.editor.value = soqlQuery;
+        this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+        this.editorAutocompleteHandler();
+      }
+
+      this.aiError = null;
+    } catch (error) {
+      console.error("Error generating SOQL:", error);
+      this.aiError = error.message || "Error generating SOQL query.";
+    } finally {
+      this.aiGenerating = false;
+      this.didUpdate();
+    }
+  }
+
   cleanupQuery(query, vm) {
     let remaining = query;
     let commentRegEx = /(\/\/|\/\*|'|,\s*,|,\s*FROM\s+)/gi;
@@ -2127,6 +2190,14 @@ class App extends React.Component {
     this.onSearchSelectOperator = this.onSearchSelectOperator.bind(this);
     this.getSearchFields = this.getSearchFields.bind(this);
     this.onClickSuggestion = this.onClickSuggestion.bind(this);
+    this.onGenerateWithAI = this.onGenerateWithAI.bind(this);
+    this.onAIDescriptionChange = this.onAIDescriptionChange.bind(this);
+    this.onAIDescriptionKeyDown = this.onAIDescriptionKeyDown.bind(this);
+    this.onCloseAIModal = this.onCloseAIModal.bind(this);
+    this.state = {
+      showAIModal: false,
+      aiDescription: ""
+    };
   }
   onSaveAll() {
     let {model} = this.props;
@@ -2320,6 +2391,36 @@ class App extends React.Component {
     model.autocompleteClick(r, ri);
     model.didUpdate();
   }
+  onGenerateWithAI() {
+    this.setState({showAIModal: true, aiDescription: ""});
+  }
+  onAIDescriptionChange(e) {
+    this.setState({aiDescription: e.target.value});
+  }
+  onAIDescriptionKeyDown(e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      this.handleAIGenerate();
+    } else if (e.key === "Escape") {
+      this.onCloseAIModal();
+    }
+  }
+  onCloseAIModal() {
+    this.setState({showAIModal: false, aiDescription: ""});
+    let {model} = this.props;
+    model.aiError = null;
+    model.didUpdate();
+  }
+  async handleAIGenerate() {
+    let {model} = this.props;
+    if (!this.state.aiDescription || this.state.aiDescription.trim() === "") {
+      return;
+    }
+    await model.generateSOQLWithAI(this.state.aiDescription);
+    if (!model.aiError) {
+      this.setState({showAIModal: false, aiDescription: ""});
+    }
+  }
   getSearchFields() {
     let {model} = this.props;
     let fields = model.exportedData.header.slice(1).map(h => ({label: h, value: h}));
@@ -2434,6 +2535,7 @@ class App extends React.Component {
               h("button", {tabIndex: 2, onClick: this.onFormatQuery, title: "Format query"}, "Format Query"),
               h("button", {tabIndex: 3, onClick: this.onCopyQuery, title: "Copy query url", className: "copy-id"}, "Export Query"),
               h("button", {tabIndex: 4, onClick: this.onQueryPlan, title: "Run Query Plan"}, "Query Plan"),
+              h("button", {tabIndex: 6, onClick: this.onGenerateWithAI, title: "Generate SOQL Query with AI", className: "ai-generate-btn"}, "🤖 Generate with AI"),
               h("a", {tabIndex: 5, className: "button", hidden: !model.autocompleteResults.sobjectName, href: model.showDescribeUrl(), target: "_blank", title: "Show field info for the " + model.autocompleteResults.sobjectName + " object"}, model.autocompleteResults.sobjectName + " Field Info"),
               h("button", {className: "variable-btn " + (model.showVariable ? "toggle expand" : "toggle contract"), id: "variable-btn", title: "Use list parameter in query", onClick: this.onToggleVariable},
                 h("div", {className: "icon"}),
@@ -2506,7 +2608,44 @@ class App extends React.Component {
         ),
         h("textarea", {className: "result-text", readOnly: true, value: model.exportError || "", hidden: model.exportError == null}),
         h(ScrollTable, {model: model.tableModel, hidden: model.exportError != null})
-      )
+      ),
+      // Modal pour génération IA
+      this.state.showAIModal ? h("div", {className: "ai-modal-overlay", onClick: this.onCloseAIModal},
+        h("div", {className: "ai-modal area", onClick: e => e.stopPropagation()},
+          h("div", {className: "ai-modal-header"},
+            h("h2", {}, "Generate SOQL Query with AI"),
+            h("button", {className: "ai-modal-close", onClick: this.onCloseAIModal, title: "Close"}, "×")
+          ),
+          h("div", {className: "ai-modal-body"},
+            h("p", {className: "ai-modal-description"},
+              "Describe in natural language what you want to query. For example: ",
+              h("em", {}, "\"All accounts created this month with their name and industry\"")
+            ),
+            h("textarea", {
+              className: "ai-modal-input editor_textarea",
+              placeholder: "Ex: All accounts created this month with their name and industry",
+              value: this.state.aiDescription,
+              onChange: this.onAIDescriptionChange,
+              onKeyDown: this.onAIDescriptionKeyDown,
+              rows: 4,
+              autoFocus: true
+            }),
+            model.aiError ? h("div", {className: "ai-modal-error conf-error"}, model.aiError) : null,
+            h("div", {className: "ai-modal-footer"},
+              h("button", {
+                className: "ai-modal-cancel cancel-btn",
+                onClick: this.onCloseAIModal
+              }, "Cancel"),
+              h("button", {
+                className: "highlighted",
+                disabled: !this.state.aiDescription.trim() || model.aiGenerating,
+                onClick: () => this.handleAIGenerate()
+              }, model.aiGenerating ? "Generating..." : "Generate")
+            ),
+            h("p", {className: "ai-modal-hint"}, "Tip: Press Ctrl+Enter to generate quickly")
+          )
+        )
+      ) : null
     );
   }
 }

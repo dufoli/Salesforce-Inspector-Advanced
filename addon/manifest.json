@@ -57,7 +57,10 @@
     "https://*.crmforce.mil/*",
     "https://*.force.com.mcas.ms/*",
     "https://*.salesforce-setup.com/*",
-    "https://*.builder.salesforce-experience.com/*"
+    "https://*.builder.salesforce-experience.com/*",
+    "https://api.openai.com/*",
+    "https://api.mistral.ai/*",
+    "https://api.anthropic.com/*"
   ],
   "content_scripts": [
     {

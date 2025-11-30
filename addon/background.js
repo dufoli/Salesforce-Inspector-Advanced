@@ -81,6 +81,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.message == "refresh") {
     let queryOptions = {active: true, lastFocusedWindow: true};
     chrome.tabs.query(queryOptions, (tabs) => chrome.tabs.reload(tabs[0].id));
+  } else if (request.message == "callAIAPI") {
+    // Faire les appels API IA depuis le background script pour éviter les problèmes CORS
+    const {endpoint, body, headers} = request;
+    fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body)
+    }).then(response => {
+      if (!response.ok) {
+        return response.json().then(errorData => {
+          throw new Error(errorData.error?.message || `Erreur API: ${response.status} ${response.statusText}`);
+        }).catch(() => {
+          throw new Error(`Erreur API: ${response.status} ${response.statusText}`);
+        });
+      }
+      return response.json();
+    }).then(data => {
+      sendResponse({success: true, data});
+    }).catch(error => {
+      sendResponse({success: false, error: error.message});
+    });
+    return true; // Indique que sendResponse sera appelé de manière asynchrone
   }
   return false;
 });
