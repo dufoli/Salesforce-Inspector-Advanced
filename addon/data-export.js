@@ -1698,9 +1698,16 @@ class Model {
     }
 
     const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
-    const apiKey = localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
+    const apiKey = selectedProvider === "agentforce" ? null : localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
+    const promptTemplateName = selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_promptTemplateName") : null;
 
-    if (!apiKey || apiKey.trim() === "") {
+    if (selectedProvider === "agentforce") {
+      if (!promptTemplateName || promptTemplateName.trim() === "") {
+        this.aiError = "Prompt template name not configured for AgentForce. Please configure it in the options.";
+        this.didUpdate();
+        return;
+      }
+    } else if (!apiKey || apiKey.trim() === "") {
       this.aiError = `API key not configured for ${this.aiQueryGenerator.providers[selectedProvider]?.name || selectedProvider}. Please configure it in the options.`;
       this.didUpdate();
       return;
@@ -1722,7 +1729,8 @@ class Model {
       const context = {
         availableObjects,
         currentQuery: this.editor ? this.editor.value : null,
-        describeInfo: this.describeInfo // Pass describeInfo for RAG
+        describeInfo: this.describeInfo, // Pass describeInfo for RAG
+        promptTemplateName // Pass promptTemplateName for AgentForce
       };
 
       const soqlQuery = await this.aiQueryGenerator.generateSOQL(

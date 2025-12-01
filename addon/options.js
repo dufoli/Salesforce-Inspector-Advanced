@@ -566,11 +566,16 @@ class AIProviderOption extends React.Component {
     this.onChangeOpenAIKey = this.onChangeOpenAIKey.bind(this);
     this.onChangeMistralKey = this.onChangeMistralKey.bind(this);
     this.onChangeAnthropicKey = this.onChangeAnthropicKey.bind(this);
+    this.onChangeAgentForceTemplate = this.onChangeAgentForceTemplate.bind(this);
+    this.onImportPromptTemplate = this.onImportPromptTemplate.bind(this);
     this.state = {
       selectedProvider: localStorage.getItem("aiProvider_selected") || "openai",
       openaiKey: localStorage.getItem("aiProvider_openai_apiKey") || "",
       mistralKey: localStorage.getItem("aiProvider_mistral_apiKey") || "",
-      anthropicKey: localStorage.getItem("aiProvider_anthropic_apiKey") || ""
+      anthropicKey: localStorage.getItem("aiProvider_anthropic_apiKey") || "",
+      agentForceTemplate: localStorage.getItem("aiProvider_agentforce_promptTemplateName") || "",
+      importingTemplate: false,
+      importError: null
     };
   }
 
@@ -610,10 +615,134 @@ class AIProviderOption extends React.Component {
     }
   }
 
+  onChangeAgentForceTemplate(e) {
+    let templateName = e.target.value;
+    this.setState({agentForceTemplate: templateName});
+    if (templateName) {
+      localStorage.setItem("aiProvider_agentforce_promptTemplateName", templateName);
+    } else {
+      localStorage.removeItem("aiProvider_agentforce_promptTemplateName");
+    }
+  }
+
+  async onImportPromptTemplate() {
+    this.setState({importingTemplate: true, importError: null});
+    this.model.didUpdate();
+
+    try {
+      // Load the existing ZIP file from addon folder
+      let currentBrowser;
+      if (typeof browser === "undefined") {
+        currentBrowser = chrome;
+      } else {
+        currentBrowser = browser;
+      }
+
+      const zipUrl = currentBrowser.runtime.getURL("genAiPromptTemplates.zip");
+
+      // Fetch the ZIP file and convert to base64
+      const response = await fetch(zipUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to load ZIP file: ${response.statusText}`);
+      }
+
+      const zipBlob = await response.blob();
+      const zipBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result.split(",")[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(zipBlob);
+      });
+
+      // Use Metadata API to deploy the prompt template
+      const metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+
+      // Deploy the metadata
+      const deployResult = await sfConn.soap(metadataApi, "deploy", {
+        ZipFile: zipBase64,
+        DeployOptions: {
+          allowMissingFiles: false,
+          autoUpdatePackage: false,
+          checkOnly: false,
+          ignoreWarnings: false,
+          performRetrieve: false,
+          purgeOnDelete: false,
+          rollbackOnError: true,
+          runTests: [],
+          singlePackage: true,
+          testLevel: "NoTestRun"
+        }
+      });
+
+      // Check deployment status
+      if (deployResult && deployResult.id) {
+        // Poll for deployment status
+        let statusResult = await sfConn.soap(metadataApi, "checkDeployStatus", {
+          asyncProcessId: deployResult.id,
+          includeDetails: true
+        });
+
+        // Wait for completion (with timeout)
+        let attempts = 0;
+        while (statusResult && statusResult.done === "false" && attempts < 30) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          statusResult = await sfConn.soap(metadataApi, "checkDeployStatus", {
+            asyncProcessId: deployResult.id,
+            includeDetails: true
+          });
+          attempts++;
+        }
+
+        if (statusResult && statusResult.done === "true") {
+          if (statusResult.status === "Succeeded") {
+            // Successfully deployed
+            this.setState({agentForceTemplate: "GenerateSOQL"});
+            localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
+            this.model.didUpdate();
+            alert("Prompt template 'GenerateSOQL' has been successfully imported and configured!");
+          } else {
+            // Check if component already exists
+            const details = statusResult.details || {};
+            const componentFailures = details.componentFailures || [];
+            const duplicateError = componentFailures.find(f =>
+              f.problem && (f.problem.includes("already exists") || f.problem.includes("DUPLICATE"))
+            );
+
+            if (duplicateError) {
+              // Template already exists, just fill the name
+              this.setState({agentForceTemplate: "GenerateSOQL"});
+              localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
+              this.model.didUpdate();
+              alert("Prompt template 'GenerateSOQL' already exists. It has been configured.");
+            } else {
+              throw new Error(statusResult.statusMessage || "Deployment failed");
+            }
+          }
+        } else {
+          throw new Error("Deployment timeout or failed");
+        }
+      } else {
+        throw new Error("Failed to start deployment");
+      }
+    } catch (error) {
+      console.error("Error importing prompt template:", error);
+      this.setState({
+        importError: error.message || "Failed to import prompt template. Please check your permissions and try again."
+      });
+      this.model.didUpdate();
+    } finally {
+      this.setState({importingTemplate: false});
+      this.model.didUpdate();
+    }
+  }
+
   render() {
     return h("div", {className: "slds-grid slds-grid_vertical slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
       h("div", {className: "slds-col slds-size_12-of-12 slds-m-bottom_small"},
-        h("h3", {className: "slds-text-heading_small"}, "SOQL Generation with AI"),
+        h("h3", {className: "slds-text-title_bold"}, "Integration with AI (SOQL Generation)"),
         h("p", {className: "slds-text-body_small slds-m-top_x-small"},
           "Configure your API keys to generate SOQL queries with AI. ",
           h("a", {href: "https://platform.openai.com/api-keys", target: "_blank"}, "OpenAI"),
@@ -631,10 +760,20 @@ class AIProviderOption extends React.Component {
           h("select", {className: "slds-select", value: this.state.selectedProvider, onChange: this.onChangeProvider},
             h("option", {value: "openai"}, "OpenAI (ChatGPT)"),
             h("option", {value: "mistral"}, "Mistral AI"),
-            h("option", {value: "anthropic"}, "Anthropic (Claude)")
+            h("option", {value: "anthropic"}, "Anthropic (Claude)"),
+            h("option", {value: "agentforce"}, "AgentForce (Salesforce Einstein)")
           )
         )
       ),
+      this.state.selectedProvider === "agentforce" ? h("div", {className: "slds-col slds-size_12-of-12 slds-m-bottom_small"},
+        h("div", {className: "slds-notify slds-notify_alert slds-alert_warning", role: "alert"},
+          h("span", {className: "slds-assistive-text"}, "Warning"),
+          h("pre", {className: "slds-m-top_x-small slds-text-body_small"},
+            "Please ensure Prompt Builder is enabled in Setup before using this feature.\n",
+            "Import prompt templates or create manualy in order to use this feature.",
+          )
+        )
+      ) : null,
       h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
         h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
           h("span", {}, "OpenAI API Key")
@@ -675,6 +814,33 @@ class AIProviderOption extends React.Component {
             value: cleanInputValue(this.state.anthropicKey),
             onChange: this.onChangeAnthropicKey
           })
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "AgentForce Prompt Template Name")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("div", {className: "slds-grid slds-gutters_xx-small"},
+            h("div", {className: "slds-col slds-size_8-of-12"},
+              h("input", {
+                type: "text",
+                className: "slds-input",
+                placeholder: "Prompt template name",
+                value: cleanInputValue(this.state.agentForceTemplate),
+                onChange: this.onChangeAgentForceTemplate
+              })
+            ),
+            h("div", {className: "slds-col slds-size_4-of-12"},
+              h("button", {
+                className: "slds-button slds-button_brand",
+                onClick: this.onImportPromptTemplate,
+                disabled: this.state.importingTemplate,
+                title: "Import GenerateSOQL prompt template"
+              }, this.state.importingTemplate ? "Importing..." : "Create Prompt Template")
+            )
+          ),
+          this.state.importError ? h("div", {className: "slds-text-color_error slds-m-top_xx-small", style: {fontSize: "0.75rem"}}, this.state.importError) : null
         )
       )
     );

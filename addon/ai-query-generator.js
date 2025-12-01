@@ -1,7 +1,8 @@
 /* global */
+import {sfConn, apiVersion} from "./inspector.js";
 
 /**
- * Module to generate SOQL queries using AI (ChatGPT, Mistral, Claude)
+ * Module to generate SOQL queries using AI (ChatGPT, Mistral, Claude, AgentForce)
  */
 
 export class AIQueryGenerator {
@@ -21,6 +22,11 @@ export class AIQueryGenerator {
         name: "Anthropic (Claude)",
         endpoint: "https://api.anthropic.com/v1/messages",
         model: "claude-3-5-sonnet-20241022"
+      },
+      agentforce: {
+        name: "AgentForce (Salesforce Einstein)",
+        endpoint: null, // Uses Salesforce API directly
+        model: null
       }
     };
   }
@@ -28,25 +34,31 @@ export class AIQueryGenerator {
   /**
    * Generates a SOQL query based on a natural language description
    * @param {string} description - Natural language description of what the user wants
-   * @param {string} provider - AI provider: 'openai', 'mistral', 'anthropic'
-   * @param {string} apiKey - Provider API key
-   * @param {Object} context - Additional context (available Salesforce objects, describeInfo, etc.)
+   * @param {string} provider - AI provider: 'openai', 'mistral', 'anthropic', 'agentforce'
+   * @param {string} apiKey - Provider API key (not required for agentforce)
+   * @param {Object} context - Additional context (available Salesforce objects, describeInfo, promptTemplateName, etc.)
    * @returns {Promise<string>} - The generated SOQL query
    */
   async generateSOQL(description, provider, apiKey, context = {}) {
-    if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API key not configured. Please configure your API key in the options.");
-    }
-
     if (!this.providers[provider]) {
       throw new Error(`Unrecognized AI provider: ${provider}`);
+    }
+
+    // AgentForce doesn't require API key, but needs promptTemplateName
+    if (provider !== "agentforce") {
+      if (!apiKey || apiKey.trim() === "") {
+        throw new Error("API key not configured. Please configure your API key in the options.");
+      }
+    } else if (!context.promptTemplateName || context.promptTemplateName.trim() === "") {
+      throw new Error("Prompt template name not configured. Please configure it in the options.");
     }
 
     const providerConfig = this.providers[provider];
 
     // Step 1: Identify relevant custom objects using AI (RAG step 1)
+    // Skip RAG for agentforce as it uses Salesforce Einstein API
     let ragContext = {};
-    if (context.describeInfo) {
+    if (context.describeInfo && provider !== "agentforce") {
       try {
         ragContext = await this.buildRAGContext(description, provider, apiKey, context.describeInfo);
       } catch (error) {
@@ -63,7 +75,9 @@ export class AIQueryGenerator {
     const prompt = this.buildPrompt(description, enhancedContext);
 
     try {
-      if (provider === "openai" || provider === "mistral") {
+      if (provider === "agentforce") {
+        return await this.callAgentForceAPI(context.promptTemplateName, description, enhancedContext);
+      } else if (provider === "openai" || provider === "mistral") {
         return await this.callOpenAICompatibleAPI(providerConfig, apiKey, prompt);
       } else if (provider === "anthropic") {
         return await this.callAnthropicAPI(providerConfig, apiKey, prompt);
@@ -478,9 +492,83 @@ Instructions:
   }
 
   /**
+   * Calls the AgentForce (Salesforce Einstein) API
+   * @param {string} promptTemplateName - Name of the prompt template
+   * @param {string} description - Natural language description
+   * @param {Object} context - Additional context
+   * @returns {Promise<string>} - The generated SOQL query
+   */
+  async callAgentForceAPI(promptTemplateName, description, context) {
+    // Build params object with description and context
+    const params = {
+      description
+    };
+
+    // Add custom objects and fields if available
+    if (context.customObjects && context.customObjects.length > 0) {
+      params.customObjects = JSON.stringify(context.customObjects);
+    }
+
+    // Add current query if available
+    if (context.currentQuery) {
+      params.currentQuery = context.currentQuery;
+    }
+
+    const body = {
+      isPreview: false,
+      inputParams: {
+        valueMap: params
+      },
+      additionalConfig: {
+        applicationName: "PromptTemplateGenerationsInvocable"
+      }
+    };
+
+    const endpoint = `/services/data/v${apiVersion}/einstein/prompt-templates/${promptTemplateName}/generations`;
+
+    try {
+      const response = await sfConn.rest(endpoint, {
+        method: "POST",
+        body,
+        bodyType: "json"
+      });
+
+      // Extract SOQL query from response
+      // The response structure may vary, adjust based on actual API response
+      let soqlQuery = "";
+      if (response.outputParams && response.outputParams.valueMap) {
+        soqlQuery = response.outputParams.valueMap.soqlQuery || response.outputParams.valueMap.query || "";
+      } else if (response.result) {
+        soqlQuery = response.result;
+      } else if (typeof response === "string") {
+        soqlQuery = response;
+      } else {
+        // Try to find SOQL in the response
+        soqlQuery = response.soqlQuery || response.query || JSON.stringify(response);
+      }
+
+      // Clean the response (remove markdown code blocks if present)
+      soqlQuery = soqlQuery.replace(/```soql\n?/gi, "").replace(/```sql\n?/gi, "").replace(/```\n?/g, "").trim();
+
+      if (!soqlQuery) {
+        throw new Error("No SOQL query generated by AgentForce");
+      }
+
+      return soqlQuery;
+    } catch (error) {
+      console.error("AgentForce API error:", error);
+      throw new Error(`AgentForce API error: ${error.message || "Failed to generate SOQL query"}`);
+    }
+  }
+
+  /**
    * Validates that an API key is configured for a provider
    */
   isConfigured(provider) {
+    if (provider === "agentforce") {
+      const promptTemplateName = localStorage.getItem("aiProvider_agentforce_promptTemplateName");
+      return promptTemplateName && promptTemplateName.trim() !== "";
+    }
     const apiKey = localStorage.getItem(`aiProvider_${provider}_apiKey`);
     return apiKey && apiKey.trim() !== "";
   }
