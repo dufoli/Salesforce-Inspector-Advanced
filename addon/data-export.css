@@ -610,23 +610,19 @@ button.toggle .button-icon {
   width: 100%
 }
 
-.autocomplete-results a {
-  text-decoration: none;
-  color: #006dcc;
-  background-color: white;
-}
-
-.autocomplete-results a:hover,
-.autocomplete-results a:active,
+.autocomplete-results .autocomplete-result:hover,
+.autocomplete-results .autocomplete-result:active,
 .autocomplete-results-over .active,
-.autocomplete-results-over .active a,
-.autocomplete-results-over .autocomplete-result:hover a,
-.autocomplete-results-over .autocomplete-result:hover {
+.autocomplete-results-over .autocomplete-result:hover,
+.autocomplete-results-over .autocomplete-result:active {
   background-color: #aacbff;
   color: #005fb2;
 }
 .autocomplete-result {
   white-space: nowrap;
+  text-decoration: none;
+  color: #006dcc;
+  background-color: white;
 }
 .autocomplete-results-under .autocomplete-result,
 .autocomplete-results span {

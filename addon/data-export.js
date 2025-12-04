@@ -32,7 +32,6 @@ class Model {
     this.queryAll = false;
     this.queryTooling = false;
     this.autocompleteResults = {sobjectName: "", title: "\u00A0", results: []};
-    this.autocompleteClick = null;
     this.isWorking = false;
     this.exportStatus = "Ready";
     this.exportError = null;
@@ -462,6 +461,22 @@ class Model {
     this.suggestionLeft = left;
     this.didUpdate();
   }
+  autocompleteClick({link, reload}, suggestionIndex) {
+    console.log("autocompleteClick");
+    if (reload) {
+      console.log("reload");
+      this.autocompleteReload();
+    } else if (link){
+      console.log("link");
+      window.open(link, "_blank");
+    } else {
+      this.activeSuggestion = suggestionIndex;
+      this.selectSuggestion();
+      // vm.editor.focus();
+      // vm.applyEdit(value + suffix, selStart, selEnd, "end");
+      // vm.editorAutocompleteHandler();
+    }
+  }
   /**
    * SOSL query autocomplete handling.
    * Put caret at the end of a word or select some text to autocomplete it.
@@ -506,17 +521,6 @@ class Model {
       ? query.substring(selStart, selEnd)
       : beforeSel.match(/[a-zA-Z0-9_]*$/)[0];
     selStart = selEnd - searchTerm.length;
-    vm.autocompleteClick = ({link}, suggestionIndex) => {
-      if (link){
-        window.open(link, "_blank");
-      } else {
-        this.activeSuggestion = suggestionIndex;
-        this.selectSuggestion();
-        // vm.editor.focus();
-        // vm.applyEdit(value + suffix, selStart, selEnd, "end");
-        // vm.editorAutocompleteHandler();
-      }
-    };
 
     //kind of tokenizer/lexer by advancing step by step
     //STEP 1 FIND
@@ -711,9 +715,8 @@ class Model {
           vm.autocompleteResults = {
             sobjectName: "",
             title: "Loading metadata failed.",
-            results: [{value: "Retry", title: "Retry"}]
+            results: [{value: "Retry", title: "Retry", reload: true}]
           };
-          vm.autocompleteClick = vm.autocompleteReload.bind(vm);
           return;
         default:
           vm.autocompleteResults = {
@@ -937,9 +940,8 @@ class Model {
           vm.autocompleteResults = {
             sobjectName,
             title: "Loading " + sobjectName + " metadata failed.",
-            results: [{value: "Retry", title: "Retry"}]
+            results: [{value: "Retry", title: "Retry", reload: true}]
           };
-          vm.autocompleteClick = vm.autocompleteReload.bind(vm);
           return;
         case "notfound":
           vm.autocompleteResults = {
@@ -1013,9 +1015,8 @@ class Model {
         vm.autocompleteResults = {
           sobjectName,
           title: "Loading " + sobjectStatuses.get("loadfailed") + " metadata failed.",
-          results: [{value: "Retry", title: "Retry"}]
+          results: [{value: "Retry", title: "Retry", reload: true}]
         };
-        vm.autocompleteClick = vm.autocompleteReload.bind(vm);
         return;
       }
       if (sobjectStatuses.has("notfound")) {
@@ -1297,9 +1298,8 @@ class Model {
           ctx.vm.autocompleteResults = {
             sobjectName: ctx.parentSObjectName,
             title: "Loading " + ctx.parentSObjectName + " metadata failed.",
-            results: [{value: "Retry", title: "Retry"}]
+            results: [{value: "Retry", title: "Retry", reload: true}]
           };
-          ctx.vm.autocompleteClick = ctx.vm.autocompleteReload.bind(ctx.vm);
           return;
         case "notfound":
           ctx.vm.autocompleteResults = {
@@ -1389,27 +1389,6 @@ class Model {
     if (vm.autocompleteProgress.abort) {
       vm.autocompleteProgress.abort();
     }
-
-    vm.autocompleteClick = ({link}, suggestionIndex) => {
-      if (link){
-        window.open(link, "_blank");
-      } else {
-        // vm.editor.focus();
-        // //handle when selected field is the last one before "FROM" keyword, or if an existing comma is present after selection
-        // let indexFrom = query.toLowerCase().indexOf("from");
-        // if (suffix.trim() == "," && (query.substring(selEnd + 1, indexFrom).trim().length == 0 || query.substring(selEnd).trim().startsWith(",") || query.substring(selEnd).trim().toLowerCase().startsWith("from"))) {
-        //   suffix = "";
-        // }
-        // vm.applyEdit(value + suffix, selStart, selEnd, "end");
-        // //add query suffix if needed
-        // if (value.startsWith("FIELDS") && !query.toLowerCase().includes("limit")) {
-        //   vm.editor.value += " LIMIT 200";
-        // }
-        // vm.editorAutocompleteHandler();
-        this.activeSuggestion = suggestionIndex;
-        this.selectSuggestion();
-      }
-    };
 
     // Find the token we want to autocomplete. This is the selected text, or the last word before the cursor.
     let searchTerm = selStart != selEnd
@@ -2391,6 +2370,7 @@ class App extends React.Component {
   }
   onClickSuggestion(e, r, ri) {
     let {model} = this.props;
+    console.log("onClickSuggestion", r, ri);
     e.preventDefault();
     model.autocompleteClick(r, ri);
     model.didUpdate();
@@ -2549,7 +2529,7 @@ class App extends React.Component {
           ),
           h("div", {ref: "autocompleteResultBox", className: "autocomplete-results autocomplete-results-over", hidden: !model.displaySuggestion, style: {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
             model.autocompleteResults.results.map((r, ri) =>
-              h("div", {className: "autocomplete-result" + (ri == model.activeSuggestion ? " active" : ""), key: r.value}, h("a", {tabIndex: 0, title: r.title, onMouseDown: e => this.onClickSuggestion(e, r, ri), href: "#", className: r.autocompleteType + " " + r.dataType}, h("div", {className: "autocomplete-icon"}), r.value), " ")
+              h("div", {tabIndex: 0, title: r.title, className: "autocomplete-result " + r.autocompleteType + " " + r.dataType + (ri == model.activeSuggestion ? " active" : ""), key: r.value, onMouseDown: e => this.onClickSuggestion(e, r, ri)}, h("div", {className: "autocomplete-icon"}), r.value)
             )
           ),
         ),
