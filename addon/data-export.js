@@ -6,7 +6,7 @@ import {csvParse} from "./csv-parse.js";
 import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
-import {AIQueryGenerator} from "./ai-query-generator.js";
+import {AIAssistant} from "./ai-assistant.js";
 
 class Model {
   constructor({sfHost, args}) {
@@ -68,7 +68,7 @@ class Model {
     this.autocompleteResultBox = null;
     this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
-    this.aiQueryGenerator = new AIQueryGenerator();
+    this.aiAssistant = new AIAssistant();
     this.aiGenerating = false;
     this.aiError = null;
     let queryTemplatesRawValue = localStorage.getItem("queryTemplates");
@@ -1708,7 +1708,7 @@ class Model {
         return;
       }
     } else if (!apiKey || apiKey.trim() === "") {
-      this.aiError = `API key not configured for ${this.aiQueryGenerator.providers[selectedProvider]?.name || selectedProvider}. Please configure it in the options.`;
+      this.aiError = `API key not configured for ${this.aiAssistant.providers[selectedProvider]?.name || selectedProvider}. Please configure it in the options.`;
       this.didUpdate();
       return;
     }
@@ -1733,7 +1733,7 @@ class Model {
         promptTemplateName // Pass promptTemplateName for AgentForce
       };
 
-      const soqlQuery = await this.aiQueryGenerator.generateSOQL(
+      const soqlQuery = await this.aiAssistant.generateSOQL(
         description,
         selectedProvider,
         apiKey,

@@ -2,6 +2,7 @@
 import {sfConn, apiVersion, sessionError} from "./inspector.js";
 import {getAllFieldSetupLinks} from "./setup-links.js";
 import {setupLinks} from "./links.js";
+import {AIAssistant} from "./ai-assistant.js";
 
 let h = React.createElement;
 
@@ -451,11 +452,6 @@ class App extends React.PureComponent {
     }
   }
 
-  getFlowId(contextUrl) {
-    let url = new URL(contextUrl);
-    let searchParams = new URLSearchParams(url.search.substring(1));
-    return searchParams.get("flowId");
-  }
 
   updateReleaseNotesViewed(version) {
     localStorage.setItem("latestReleaseNotesVersionViewed", version);
@@ -1172,7 +1168,7 @@ class AllDataBox extends React.PureComponent {
           h("li", {ref: "orgTab", onClick: this.onAspectClick, "data-aspect": this.SearchAspectTypes.org, className: (activeSearchAspect == this.SearchAspectTypes.org) ? "active" : ""}, h("span", {}, "O", h("u", {}, "r"), "g"))
         ),
         (activeSearchAspect == this.SearchAspectTypes.sobject)
-          ? h(AllDataBoxSObject, {ref: "showAllDataBoxSObject", sfHost, showDetailsSupported, sobjectsList, sobjectsLoading, contextRecordId, contextSobject, linkTarget, onContextRecordChange, isFieldsPresent, contextFilterName})
+          ? h(AllDataBoxSObject, {ref: "showAllDataBoxSObject", sfHost, showDetailsSupported, sobjectsList, sobjectsLoading, contextRecordId, contextSobject, linkTarget, onContextRecordChange, isFieldsPresent, contextFilterName, contextUrl: this.props.contextUrl})
           : (activeSearchAspect == this.SearchAspectTypes.users)
             ? h(AllDataBoxUsers, {ref: "showAllDataBoxUsers", sfHost, linkTarget, contextUserId, contextOrgId, contextPath, setIsLoading: (value) => { this.setIsLoading("usersBox", value); }}, "Users")
             : (activeSearchAspect == this.SearchAspectTypes.shortcuts)
@@ -1320,10 +1316,95 @@ class AllDataBoxSObject extends React.PureComponent {
     super(props);
     this.state = {
       selectedValue: null,
-      recordIdDetails: null
+      recordIdDetails: null,
+      flowAnalysisResult: null,
+      flowAnalyzing: false,
+      flowAnalysisError: null,
+      showFlowAnalysisModal: false
     };
     this.onDataSelect = this.onDataSelect.bind(this);
     this.getMatches = this.getMatches.bind(this);
+    this.analyzeFlow = this.analyzeFlow.bind(this);
+    this.onCloseFlowAnalysisModal = this.onCloseFlowAnalysisModal.bind(this);
+    this.aiAssistant = new AIAssistant();
+  }
+
+  getFlowId(contextUrl) {
+    if (!contextUrl) {
+      return null;
+    }
+    let url = new URL(contextUrl);
+    let searchParams = new URLSearchParams(url.search.substring(1));
+    return searchParams.get("flowId");
+  }
+
+  isOnFlowPage(contextUrl) {
+    return contextUrl && contextUrl.includes("builder_platform_interaction") && this.getFlowId(contextUrl);
+  }
+
+  async analyzeFlow() {
+    const flowId = this.getFlowId(this.props.contextUrl);
+    if (!flowId) {
+      return;
+    }
+
+    this.setState({
+      flowAnalyzing: true,
+      flowAnalysisError: null,
+      flowAnalysisResult: null,
+      showFlowAnalysisModal: true
+    });
+
+    try {
+      // Get flow metadata
+      const flowQuery = `SELECT Id, FullName, MasterLabel, Status, Metadata FROM Flow WHERE Id='${flowId.replace(/([\\'])/g, "\\$1")}'`;
+      const flowResponse = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(flowQuery));
+
+      if (!flowResponse.records || flowResponse.records.length === 0) {
+        throw new Error("Flow not found");
+      }
+
+      const flow = flowResponse.records[0];
+
+      // Prepare flow metadata object
+      const flowMetadata = {
+        Label: flow.MasterLabel,
+        ApiName: flow.FullName,
+        Status: flow.Status,
+        Metadata: flow.Metadata
+      };
+
+      // Get AI provider configuration
+      const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
+      const promptTemplateName = selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_flowPromptTemplateName") : null;
+
+      // Call AI to analyze the flow using the new method
+      const options = promptTemplateName ? {promptTemplateName} : {};
+      const analysis = await this.aiAssistant.generateFlowDescription(
+        flowMetadata,
+        selectedProvider,
+        options
+      );
+
+      this.setState({
+        flowAnalysisResult: analysis,
+        flowAnalyzing: false
+      });
+    } catch (error) {
+      console.error("Error analyzing flow:", error);
+      this.setState({
+        flowAnalysisError: error.message || "Failed to analyze flow",
+        flowAnalyzing: false
+      });
+    }
+  }
+
+  onCloseFlowAnalysisModal() {
+    this.setState({
+      showFlowAnalysisModal: false,
+      flowAnalysisResult: null,
+      flowAnalysisError: null
+    });
   }
 
   componentDidMount() {
@@ -1549,14 +1630,29 @@ class AllDataBoxSObject extends React.PureComponent {
   }
 
   render() {
-    let {sfHost, showDetailsSupported, sobjectsList, linkTarget, contextRecordId, isFieldsPresent, contextSobject, contextFilterName} = this.props;
+    let {sfHost, showDetailsSupported, sobjectsList, linkTarget, contextRecordId, isFieldsPresent, contextSobject, contextFilterName, contextUrl} = this.props;
     let {selectedValue, recordIdDetails} = this.state;
     return (
       h("div", {},
         h(AllDataSearch, {ref: "allDataSearch", sfHost, onDataSelect: this.onDataSelect, sobjectsList, getMatches: this.getMatches, inputSearchDelay: 0, placeholderText: "Record id, id prefix or object name", title: "Click to show recent items", resultRender: this.resultRender}),
         selectedValue
-          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject})
-          : h("div", {className: "all-data-box-inner empty"}, "No record to display")
+          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject, onAnalyzeFlow: this.analyzeFlow, isOnFlowPage: this.isOnFlowPage(contextUrl)})
+          : h("div", {className: "all-data-box-inner empty"}, "No record to display"),
+        this.state.showFlowAnalysisModal && h("div", {},
+          h("button", {className: "slds-button slds-button_icon slds-button_icon-small", title: "Close", onClick: this.onCloseFlowAnalysisModal},
+            h("svg", {className: "slds-button__icon", viewBox: "0 0 52 52"},
+              h("use", {xlinkHref: "symbols.svg#close"})
+            ),
+            h("span", {className: "slds-assistive-text"}, "Close"),
+          ),
+          h(AlertBanner, {
+            type: "info",
+            bannerText: (this.state.flowAnalysisError ? this.state.flowAnalysisError : (this.state.flowAnalyzing ? "Analyzing flow..." : this.state.flowAnalysisResult)),
+            assistiveTest: "Flow Analysis",
+            iconName: this.state.flowAnalysisError ? "error" : null,
+            iconTitle: this.state.flowAnalysisError ? "Error" : null
+          })
+        )
       )
     );
   }
@@ -2315,6 +2411,10 @@ class AllDataSelection extends React.PureComponent {
         h(ShowDetailsButton, {ref: "showDetailsBtn", sfHost, showDetailsSupported, selectedValue, contextRecordId}),
         selectedValue.recordId && selectedValue.recordId.startsWith("0Af")
           ? h("a", {href: this.getDeployStatusUrl(), target: linkTarget, className: "button page-button slds-button slds-button_neutral slds-m-top_xx-small slds-m-bottom_xx-small"}, "Check Deploy Status") : null,
+        this.props.isOnFlowPage && this.props.onAnalyzeFlow ? h("button", {
+          className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
+          onClick: this.props.onAnalyzeFlow
+        }, "Analyze Flow with AI") : null,
         buttons.map((button, index) => h("div", {key: button + "Div"}, h("a",
           {
             key: button,

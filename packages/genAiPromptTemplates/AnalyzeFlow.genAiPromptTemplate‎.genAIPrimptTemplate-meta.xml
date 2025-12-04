@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiPromptTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+    <activeVersionIdentifier>SalesforceInspectorAdvancedAnalyzeFlow_1</activeVersionIdentifier>
+    <description>Prompt used to generate a SOQL query based on a description.</description>
+    <developerName>AnalyzeFlow</developerName>
+    <masterLabel>Analyze Flow</masterLabel>
+    <templateVersions>
+        <content>Analyze this Salesforce Flow metadata and provide a clear description of what this flow does. Focus on the business logic, triggers, decisions, and actions performed by the flow.
+
+Flow Name: {!$Input:Label}
+Flow API Name: {!$Input:ApiName}
+Flow Status: {!$Input:Status}
+
+Flow Metadata:
+{!$Input:Metadata}</content>
+        <inputs>
+            <apiName>Metadata</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>Metadata</masterLabel>
+            <referenceName>Input:Metadata</referenceName>
+            <required>true</required>
+        </inputs>
+        <inputs>
+            <apiName>ApiName</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>ApiName</masterLabel>
+            <referenceName>Input:ApiName</referenceName>
+            <required>true</required>
+        </inputs>
+        <inputs>
+            <apiName>Status</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>Status</masterLabel>
+            <referenceName>Input:Status</referenceName>
+            <required>true</required>
+        </inputs>
+        <inputs>
+            <apiName>Label</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>Label</masterLabel>
+            <referenceName>Input:Label</referenceName>
+            <required>true</required>
+        </inputs>
+        <primaryModel>sfdc_ai__DefaultOpenAIGPT4</primaryModel>
+        <status>Published</status>
+        <versionIdentifier>SalesforceInspectorAdvancedAnalyzeFlow_1</versionIdentifier>
+    </templateVersions>
+    <type>einstein_gpt__flex</type>
+    <visibility>Global</visibility>
+</GenAiPromptTemplate>

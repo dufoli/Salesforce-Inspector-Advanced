@@ -567,6 +567,7 @@ class AIProviderOption extends React.Component {
     this.onChangeMistralKey = this.onChangeMistralKey.bind(this);
     this.onChangeAnthropicKey = this.onChangeAnthropicKey.bind(this);
     this.onChangeAgentForceTemplate = this.onChangeAgentForceTemplate.bind(this);
+    this.onChangeAgentForceFlowTemplate = this.onChangeAgentForceFlowTemplate.bind(this);
     this.onImportPromptTemplate = this.onImportPromptTemplate.bind(this);
     this.state = {
       selectedProvider: localStorage.getItem("aiProvider_selected") || "openai",
@@ -574,6 +575,7 @@ class AIProviderOption extends React.Component {
       mistralKey: localStorage.getItem("aiProvider_mistral_apiKey") || "",
       anthropicKey: localStorage.getItem("aiProvider_anthropic_apiKey") || "",
       agentForceTemplate: localStorage.getItem("aiProvider_agentforce_promptTemplateName") || "",
+      agentForceFlowTemplate: localStorage.getItem("aiProvider_agentforce_flowPromptTemplateName") || "",
       importingTemplate: false,
       importError: null
     };
@@ -622,6 +624,16 @@ class AIProviderOption extends React.Component {
       localStorage.setItem("aiProvider_agentforce_promptTemplateName", templateName);
     } else {
       localStorage.removeItem("aiProvider_agentforce_promptTemplateName");
+    }
+  }
+
+  onChangeAgentForceFlowTemplate(e) {
+    let templateName = e.target.value;
+    this.setState({agentForceFlowTemplate: templateName});
+    if (templateName) {
+      localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", templateName);
+    } else {
+      localStorage.removeItem("aiProvider_agentforce_flowPromptTemplateName");
     }
   }
 
@@ -698,11 +710,15 @@ class AIProviderOption extends React.Component {
 
         if (statusResult && statusResult.done === "true") {
           if (statusResult.status === "Succeeded") {
-            // Successfully deployed
-            this.setState({agentForceTemplate: "GenerateSOQL"});
+            // Successfully deployed - configure both templates
+            this.setState({
+              agentForceTemplate: "GenerateSOQL",
+              agentForceFlowTemplate: "AnalyzeFlow"
+            });
             localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
+            localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", "AnalyzeFlow");
             this.model.didUpdate();
-            alert("Prompt template 'GenerateSOQL' has been successfully imported and configured!");
+            alert("Prompt templates 'GenerateSOQL' and 'AnalyzeFlow' have been successfully imported and configured!");
           } else {
             // Check if component already exists
             const details = statusResult.details || {};
@@ -712,11 +728,15 @@ class AIProviderOption extends React.Component {
             );
 
             if (duplicateError) {
-              // Template already exists, just fill the name
-              this.setState({agentForceTemplate: "GenerateSOQL"});
+              // Templates already exist, just fill the names
+              this.setState({
+                agentForceTemplate: "GenerateSOQL",
+                agentForceFlowTemplate: "AnalyzeFlow"
+              });
               localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
+              localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", "AnalyzeFlow");
               this.model.didUpdate();
-              alert("Prompt template 'GenerateSOQL' already exists. It has been configured.");
+              alert("Prompt templates 'GenerateSOQL' and 'AnalyzeFlow' already exist. They have been configured.");
             } else {
               throw new Error(statusResult.statusMessage || "Deployment failed");
             }
@@ -818,30 +838,40 @@ class AIProviderOption extends React.Component {
       ),
       h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
         h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
-          h("span", {}, "AgentForce Prompt Template Name")
+          h("span", {}, "AgentForce SOQL Generation Prompt Template Name")
         ),
         h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
-          h("div", {className: "slds-grid slds-gutters_xx-small"},
-            h("div", {className: "slds-col slds-size_8-of-12"},
-              h("input", {
-                type: "text",
-                className: "slds-input",
-                placeholder: "Prompt template name",
-                value: cleanInputValue(this.state.agentForceTemplate),
-                onChange: this.onChangeAgentForceTemplate
-              })
-            ),
-            h("div", {className: "slds-col slds-size_4-of-12"},
-              h("button", {
-                className: "slds-button slds-button_brand",
-                onClick: this.onImportPromptTemplate,
-                disabled: this.state.importingTemplate,
-                title: "Import GenerateSOQL prompt template"
-              }, this.state.importingTemplate ? "Importing..." : "Create Prompt Template")
-            )
-          ),
-          this.state.importError ? h("div", {className: "slds-text-color_error slds-m-top_xx-small", style: {fontSize: "0.75rem"}}, this.state.importError) : null
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "Prompt template name",
+            value: cleanInputValue(this.state.agentForceTemplate),
+            onChange: this.onChangeAgentForceTemplate
+          })
         )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "AgentForce Flow Analysis Prompt Template Name")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "Prompt template name",
+            value: cleanInputValue(this.state.agentForceFlowTemplate),
+            onChange: this.onChangeAgentForceFlowTemplate
+          })
+        )
+      ),
+      h("div", {className: "slds-col slds-size_12-of-12 slds-m-bottom_small flex-right"},
+        h("button", {
+          className: "slds-button slds-button_brand flex-right",
+          onClick: this.onImportPromptTemplate,
+          disabled: this.state.importingTemplate,
+          title: "Import prompt templates"
+        }, this.state.importingTemplate ? "Importing..." : "Create Prompt Templates"),
+        this.state.importError ? h("div", {className: "slds-text-color_error slds-m-top_xx-small", style: {fontSize: "0.75rem"}}, this.state.importError) : null
       )
     );
   }
