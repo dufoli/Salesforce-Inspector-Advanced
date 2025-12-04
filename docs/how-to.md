@@ -67,7 +67,7 @@ To create the "SF Inspector Advanced" external client app:
 
    > **Warning**
    > Don't forget to replace "chromeExtensionId" with your current extension Id
-   > ![Connected App](screenshots/connectedApp.png)
+   > ![External client App](screenshots/connectedApp.png)
 6. Deselect `Require secret for Web Server Flow` and `Require secret for Refresh Token Flow`
 7. Select `Require Proof Key for Code Exchange (PKCE) extension for Supported Authorization Flows` and leave other checkbox to default
 8. Save

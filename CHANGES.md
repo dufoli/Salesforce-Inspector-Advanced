@@ -1,11 +1,15 @@
 # Release Notes
 
 ## Version 1.37
-- data export: fix filter operator behaviour with null
-- data import : support hard delete  [issue 129](https://github.com/dufoli/Salesforce-Inspector-Advanced/129)
-- data import : support Bulk API [issue267](https://github.com/dufoli/Salesforce-Inspector-Advanced/267)
-- metadata: automatic download produce zip file and not csv and add metadataStatus json file [issue 262](https://github.com/dufoli/Salesforce-Inspector-Advanced/262)
-- add a report bug button on popup [issue 264](https://github.com/dufoli/Salesforce-Inspector-Advanced/264)
+- Security: switch to oauth 2 web service flow with PKCE over external client app  [issue 254](https://github.com/dufoli/Salesforce-Inspector-Advanced/254) / [issue 265](https://github.com/dufoli/Salesforce-Inspector-Advanced/265) / [issue 255](https://github.com/dufoli/Salesforce-Inspector-Advanced/255)
+- Security : wizard to help on creation of external client app with new [documentation](https://dufoli.github.io/Salesforce-Inspector-Advanced/how-to/#use-sf-inspector-with-an-external-client-app)
+- AI: support agentforce, chatgpt, mystral and claude api to analyse flow and generate SOQL [issue 258](https://github.com/dufoli/Salesforce-Inspector-Advanced/258) / [issue 128](https://github.com/dufoli/Salesforce-Inspector-Advanced/128) / [issue 213](https://github.com/dufoli/Salesforce-Inspector-Advanced/213)
+- Data import : support hard delete  [issue 129](https://github.com/dufoli/Salesforce-Inspector-Advanced/129)
+- Data import : support Bulk API [issue267](https://github.com/dufoli/Salesforce-Inspector-Advanced/267)
+- Metadata: automatic download produce zip file and not csv and add metadataStatus json file [issue 262](https://github.com/dufoli/Salesforce-Inspector-Advanced/262)
+- Add a report bug button on popup [issue 264](https://github.com/dufoli/Salesforce-Inspector-Advanced/264)
+- Data export: fix filter operator behaviour with null
+- Data export: fix filter operator behaviour with picklist suggestion
 
 ## Version 1.36.2
 - data export: fix performance freeze with in keyword for suggestion
