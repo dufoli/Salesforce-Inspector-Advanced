@@ -1,5 +1,8 @@
 # Release Notes
 
+## Version 1.38
+- Inspect: field usage [issue 268](https://github.com/dufoli/Salesforce-Inspector-Advanced/268)
+
 ## Version 1.37
 - Security: switch to oauth 2 web service flow with PKCE over external client app  [issue 254](https://github.com/dufoli/Salesforce-Inspector-Advanced/254) / [issue 265](https://github.com/dufoli/Salesforce-Inspector-Advanced/265) / [issue 255](https://github.com/dufoli/Salesforce-Inspector-Advanced/255)
 - Security : wizard to help on creation of external client app with new [documentation](https://dufoli.github.io/Salesforce-Inspector-Advanced/how-to/#use-sf-inspector-with-an-external-client-app)
