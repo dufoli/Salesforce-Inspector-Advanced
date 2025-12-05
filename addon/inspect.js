@@ -2,6 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {getObjectSetupLinks, getFieldSetupLinks} from "./setup-links.js";
+import {copyToClipboard} from "./data-load.js";
 
 class Model {
   constructor(sfHost) {
@@ -38,6 +39,8 @@ class Model {
     this.objectActionsOpen = false;
     this.objectSetupLinks = null;
     this.objectSetupLinksRequested = false;
+    this.fieldUsageData = null;
+    this.totalRecordCount = null;
     if (localStorage.getItem(sfHost + "_isSandbox") != "true") {
       //change background color for production
       document.body.classList.add("prod");
@@ -292,6 +295,145 @@ class Model {
     }
 
   }
+  fetchFieldUsage() {
+    if (!this.sobjectName) {
+      return;
+    }
+    let objectName = this.sobjectName;
+    let apiPrefix = this.useToolingApi ? "tooling/" : "";
+    let queryBasePath = "/services/data/v" + apiVersion + "/" + apiPrefix + "query/?q=";
+    let compositeBasePath = "/services/data/v" + apiVersion + "/composite";
+
+    // Initialize fieldUsageData
+    this.fieldUsageData = {};
+
+    // First, get total count of records
+    let totalCountQuery = "SELECT COUNT(Id) cnt FROM " + objectName;
+    this.spinFor(
+      "fetching field usage data",
+      sfConn.rest(queryBasePath + encodeURIComponent(totalCountQuery))
+        .then(totalResult => {
+          this.totalRecordCount = totalResult.records[0].cnt;
+          if (this.totalRecordCount === 0) {
+            // No records found - set all fields to 0%
+            for (let fieldRow of this.fieldRows.rows) {
+              if (fieldRow.fieldDescribe && fieldRow.fieldDescribe.name) {
+                let fieldName = fieldRow.fieldDescribe.name;
+                // Set all other fields to 0%
+                fieldRow.fieldUsage = 0.0;
+                this.fieldUsageData[fieldName] = 0.0;
+              }
+            }
+            // Show the usage column
+            this.fieldRows.showHideColumn(true, "usage");
+            this.fieldRows.resortRows();
+            this.didUpdate();
+            return;
+          }
+
+          // Collect all queryable fields
+          let fieldRowsToQuery = [];
+          for (let fieldRow of this.fieldRows.rows) {
+            if (fieldRow.fieldDescribe && fieldRow.fieldDescribe.name) {
+              let fieldName = fieldRow.fieldDescribe.name;
+              let fieldDesc = fieldRow.fieldDescribe;
+
+              // Skip system fields, Id field
+              if (fieldName === "Id" || fieldName.startsWith("attributes")) {
+                continue;
+              }
+
+              // Check if field is filterable - if false, skip query and leave usage empty
+              if (fieldDesc.filterable === false) {
+                // Leave fieldUsage as undefined (empty)
+                continue;
+              }
+
+              // Check if field type is address - if true, skip query and leave usage empty
+              if (fieldDesc.type === "address") {
+                // Leave fieldUsage as undefined (empty)
+                continue;
+              }
+
+              // Check if field is nillable - if false, set usage to 100% without querying
+              if (fieldDesc.nillable === false) {
+                // Required fields must always have a value, so usage is 100%
+                fieldRow.fieldUsage = 1.0;
+                this.fieldUsageData[fieldName] = 1.0;
+                continue;
+              }
+
+              fieldRowsToQuery.push({fieldRow, fieldName});
+            }
+          }
+
+          // Group fields into batches of 5 (Composite API limit)
+          let batches = [];
+          for (let i = 0; i < fieldRowsToQuery.length; i += 5) {
+            batches.push(fieldRowsToQuery.slice(i, i + 5));
+          }
+
+          // Process each batch using Composite API
+          let batchPromises = batches.map((batch, batchIndex) => {
+            let compositeRequest = {
+              compositeRequest: batch.map((item, index) => ({
+                method: "GET",
+                url: queryBasePath + encodeURIComponent("SELECT COUNT(Id) cnt FROM " + objectName + " WHERE " + item.fieldName + " != null"),
+                referenceId: "field_" + ((batchIndex * 5) + index)
+              }))
+            };
+
+            return sfConn.rest(compositeBasePath, {method: "POST", body: compositeRequest})
+              .then(compositeResult => {
+                let results = [];
+                if (compositeResult.compositeResponse) {
+                  compositeResult.compositeResponse.forEach((response, index) => {
+                    if (response.httpStatusCode === 200 && response.body && response.body.records && response.body.records.length > 0 && response.body.records[0].cnt) {
+                      let fieldItem = batch[index];
+                      if (fieldItem) {
+                        let fieldCount = response.body.records[0].cnt;
+                        let usage = this.totalRecordCount > 0 ? (fieldCount / this.totalRecordCount) : 0;
+                        fieldItem.fieldRow.fieldUsage = usage;
+                        results.push({fieldName: fieldItem.fieldName, usage});
+                      }
+                    } else if (response.httpStatusCode !== 200) {
+                      // Some fields may not be queryable, skip them
+                      let fieldItem = batch[index];
+                      if (fieldItem) {
+                        console.warn("Could not fetch usage for field " + fieldItem.fieldName + ":", response.body);
+                      }
+                    }
+                  });
+                }
+                return results;
+              })
+              .catch(err => {
+                console.warn("Error in composite batch:", err);
+                return [];
+              });
+          });
+
+          Promise.all(batchPromises).then(allResults => {
+            this.fieldUsageData = {};
+            allResults.forEach(batchResults => {
+              batchResults.forEach(result => {
+                if (result) {
+                  this.fieldUsageData[result.fieldName] = result.usage;
+                }
+              });
+            });
+            // Show the usage column
+            this.fieldRows.showHideColumn(true, "usage");
+            this.fieldRows.resortRows();
+            this.didUpdate();
+          });
+        })
+        .catch(err => {
+          console.error("Error fetching field usage:", err);
+          this.errorMessages.push("Error fetching field usage: " + err.message);
+        })
+    );
+  }
   setRecordData(recordDataPromise) {
     this.spinFor("retrieving record", recordDataPromise.then(res => {
       for (let name in res) {
@@ -538,11 +680,13 @@ class FieldRowList extends RowList {
         : col == "value" ? "Value"
         : col == "helptext" ? "Help text"
         : col == "desc" ? "Description"
+        : col == "usage" ? "Usage"
         : col,
       className: this.getColumnClassName(col),
       reactElement:
         col == "value" ? FieldValueCell
         : col == "type" ? FieldTypeCell
+        : col == "usage" ? UsageCell
         : DefaultCell,
       columnFilter: ""
     };
@@ -624,6 +768,7 @@ class FieldRow extends TableRow {
     this.fieldActionsOpen = false;
     this.fieldSetupLinks = null;
     this.fieldSetupLinksRequested = false;
+    this.fieldUsage = undefined;
   }
   rowProperties() {
     let props = {};
@@ -892,6 +1037,7 @@ class FieldRow extends TableRow {
       case "desc": return this.fieldDesc();
       case "value": return this.dataTypedValue;
       case "type": return this.fieldTypeDesc();
+      case "usage": return this.fieldUsage;
       default: return this.rowProperties()[col];
     }
   }
@@ -1053,6 +1199,7 @@ class App extends React.Component {
     this.onCancelEdit = this.onCancelEdit.bind(this);
     this.onUpdateTableBorderSettings = this.onUpdateTableBorderSettings.bind(this);
     this.onClick = this.onClick.bind(this);
+    this.onFetchFieldUsage = this.onFetchFieldUsage.bind(this);
   }
   onClick(){
     let {model} = this.props;
@@ -1142,6 +1289,12 @@ class App extends React.Component {
     model.reloadTables();
     model.didUpdate();
     // Save to local storage
+  }
+  onFetchFieldUsage(e) {
+    e.preventDefault();
+    let {model} = this.props;
+    model.fetchFieldUsage();
+    model.didUpdate();
   }
   render() {
     let {model} = this.props;
@@ -1246,6 +1399,7 @@ class App extends React.Component {
             model.objectActionsOpen && h("div", {className: "pop-menu"},
               model.viewLink() ? h("a", {href: model.viewLink(), target: linkTarget}, "View record in Salesforce") : null,
               model.editLayoutLink() ? h("a", {href: model.editLayoutLink(), target: linkTarget}, "Edit page layout") : null,
+              model.sobjectName ? h("a", {href: "about:blank", onClick: this.onFetchFieldUsage}, "Show field usage") : null,
               model.objectSetupLinks && h("a", {href: model.objectSetupLinks.lightningSetupLink, target: linkTarget}, "Object setup (Lightning)"),
               model.objectSetupLinks && h("a", {href: model.objectSetupLinks.classicSetupLink, target: linkTarget}, "Object setup (Classic)")
             )
@@ -1357,6 +1511,8 @@ class RowTable extends React.Component {
     super(props);
     this.onToggleTableSettings = this.onToggleTableSettings.bind(this);
     this.onClickTableBorderSettings = this.onClickTableBorderSettings.bind(this);
+    this.onDownloadCSV = this.onDownloadCSV.bind(this);
+    this.onCopyExcel = this.onCopyExcel.bind(this);
     this.showTableBorder = this.props.model.showTableBorder;
     this.tableSettingsOpen = false;
   }
@@ -1381,6 +1537,85 @@ class RowTable extends React.Component {
     this.tableSettingsOpen = false;
     this.props.model.didUpdate();
   }
+  serializeToCSV(separator) {
+    let {rowList} = this.props;
+    let selectedColumns = Array.from(rowList.selectedColumnMap.values());
+    let isFieldRows = rowList.listName === "fields";
+
+    // Build header row
+    let header = selectedColumns.map(col => col.label);
+    let includeUsage = isFieldRows && rowList.model.fieldUsageData && Object.keys(rowList.model.fieldUsageData).length > 0;
+    if (includeUsage) {
+      header.push("Usage");
+    }
+    let rows = [header];
+
+    // Build data rows
+    for (let row of rowList.rows) {
+      if (!row.visible()) {
+        continue;
+      }
+      let rowData = selectedColumns.map(col => {
+        let value = row.sortKey(col.name);
+        return value == null ? "" : String(value);
+      });
+      if (includeUsage) {
+        let usage = row.fieldUsage;
+        if (usage != null && usage !== undefined) {
+          rowData.push((usage * 100).toFixed(3) + "%");
+        } else {
+          rowData.push("");
+        }
+      }
+      rows.push(rowData);
+    }
+
+    // Serialize to CSV format
+    return [header.join(separator), ...rows.map(row => row.map(text => "\"" + ("" + text).split("\"").join("\"\"") + "\"").join(separator))].join("\r\n");
+  }
+  onDownloadCSV(e) {
+    e.preventDefault();
+    let {rowList} = this.props;
+    if (rowList.listName !== "fields") {
+      return;
+    }
+
+    let separator = ",";
+    if (localStorage.getItem("csvSeparator")) {
+      separator = localStorage.getItem("csvSeparator");
+    }
+
+    let csv = this.serializeToCSV(separator);
+    let BOM = "\uFEFF";
+    let bb = new Blob([BOM, csv], {type: "text/csv;charset=utf-8"});
+    let url = URL.createObjectURL(bb);
+    let a = document.createElement("a");
+    a.href = url;
+
+    // Generate unique filename with sobjectName and timestamp
+    let sobjectName = this.props.model.sobjectName || "fields";
+    let timestamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").substring(0, 19);
+    a.download = sobjectName + "_" + timestamp + ".csv";
+
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    this.tableSettingsOpen = false;
+    this.props.model.didUpdate();
+  }
+  onCopyExcel(e) {
+    e.preventDefault();
+    let {rowList} = this.props;
+    if (rowList.listName !== "fields") {
+      return;
+    }
+
+    let csv = this.serializeToCSV("\t");
+    copyToClipboard(csv);
+    this.tableSettingsOpen = false;
+    this.props.model.didUpdate();
+  }
   render() {
     let {rowList, actionsColumn, classNameForRow} = this.props;
     let selectedColumns = Array.from(rowList.selectedColumnMap.values());
@@ -1397,11 +1632,13 @@ class RowTable extends React.Component {
             this.tableSettingsOpen && h("div", {className: "pop-menu-container"},
               h("div", {className: "pop-menu"},
                 h("a", {className: "table-settings-link", onClick: this.onClickTableBorderSettings}, this.state.showOrHideBorders),
+                rowList.listName === "fields" ? h("a", {className: "table-settings-link", onClick: this.onDownloadCSV}, "Download CSV") : null,
+                rowList.listName === "fields" ? h("a", {className: "table-settings-link", onClick: this.onCopyExcel}, "Copy Excel") : null
               )
             ),
           ),
         ),
-        rowList.model.useTab != "all" ? h("tr", {},
+        this.props.model.useTab != "all" ? h("tr", {},
           selectedColumns.map(col =>
             h(FilterCell, {key: col.name, col, rowList})
           ),
@@ -1471,6 +1708,19 @@ class DefaultCell extends React.Component {
     let {row, col} = this.props;
     return h("td", {className: col.className},
       h(TypedValue, {value: row.sortKey(col.name)})
+    );
+  }
+}
+
+class UsageCell extends React.Component {
+  render() {
+    let {row, col} = this.props;
+    let usage = row.sortKey(col.name);
+    let displayValue = usage != null && usage !== undefined
+      ? (usage * 100).toFixed(3) + "%"
+      : "";
+    return h("td", {className: col.className},
+      h("div", {className: "value-text"}, displayValue)
     );
   }
 }
