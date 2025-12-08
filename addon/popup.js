@@ -1347,7 +1347,7 @@ class AllDataBoxSObject extends React.PureComponent {
     if (!flowId) {
       return;
     }
-    const browser = chrome.i18n.getMessage("@@extension_id") ? "chrome" : "firefox";
+    const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
     window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/flow-analyze.html?flowId=${flowId}&host=${this.props.sfHost}`, "_blank");
   }
 

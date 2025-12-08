@@ -556,9 +556,16 @@ export class Model {
 
   findMissingNullHandlers(metadata) {
     const references = [];
+    // Helper function to check if a value is truthy (handles both boolean and string "true")
+    const isTrue = (value) => {
+      if (value === true) return true;
+      if (typeof value === "string") return value.toLowerCase() === "true";
+      return false;
+    };
+
     this.normalizeMetadataProperty(metadata.recordLookups).forEach(element => {
-      if (element.assignNullValuesIfNoRecordsFound && element.assignNullValuesIfNoRecordsFound.toLowerCase() === "true") {
-        if (element.storeOutputAutomatically === "true") {
+      if (isTrue(element.assignNullValuesIfNoRecordsFound)) {
+        if (isTrue(element.storeOutputAutomatically)) {
           references.push(element.name);
         } else if (element.outputReference) {
           references.push(element.outputReference);
@@ -823,7 +830,6 @@ let h = React.createElement;
 class App extends React.Component {
   render() {
     let {model} = this.props;
-    let linkTarget = "_blank";
     let hostArg = new URLSearchParams();
     hostArg.set("host", model.sfHost);
     hostArg.set("tab", 1);
@@ -895,4 +901,3 @@ class App extends React.Component {
     }
   });
 }
-
