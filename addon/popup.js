@@ -1317,14 +1317,14 @@ class AllDataBoxSObject extends React.PureComponent {
     this.state = {
       selectedValue: null,
       recordIdDetails: null,
-      flowAnalysisResult: null,
-      flowAnalyzing: false,
-      flowAnalysisError: null,
+      flowDescriptionResult: null,
+      flowAnalyzingWithIA: false,
+      flowDescriptionError: null,
       showFlowAnalysisModal: false
     };
     this.onDataSelect = this.onDataSelect.bind(this);
     this.getMatches = this.getMatches.bind(this);
-    this.analyzeFlow = this.analyzeFlow.bind(this);
+    this.describeFlow = this.describeFlow.bind(this);
     this.onCloseFlowAnalysisModal = this.onCloseFlowAnalysisModal.bind(this);
     this.aiAssistant = new AIAssistant();
   }
@@ -1342,16 +1342,25 @@ class AllDataBoxSObject extends React.PureComponent {
     return contextUrl && contextUrl.includes("builder_platform_interaction") && this.getFlowId(contextUrl);
   }
 
-  async analyzeFlow() {
+  openAnalyzeFlow() {
+    const flowId = this.getFlowId(this.props.contextUrl);
+    if (!flowId) {
+      return;
+    }
+    const browser = chrome.i18n.getMessage("@@extension_id") ? "chrome" : "firefox";
+    window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/flow-analyze.html?flowId=${flowId}&host=${this.props.sfHost}`, "_blank");
+  }
+
+  async describeFlow() {
     const flowId = this.getFlowId(this.props.contextUrl);
     if (!flowId) {
       return;
     }
 
     this.setState({
-      flowAnalyzing: true,
-      flowAnalysisError: null,
-      flowAnalysisResult: null,
+      flowAnalyzingWithIA: true,
+      flowDescriptionError: null,
+      flowDescriptionResult: null,
       showFlowAnalysisModal: true
     });
 
@@ -1387,14 +1396,14 @@ class AllDataBoxSObject extends React.PureComponent {
       );
 
       this.setState({
-        flowAnalysisResult: analysis,
-        flowAnalyzing: false
+        flowDescriptionResult: analysis,
+        flowAnalyzingWithIA: false
       });
     } catch (error) {
       console.error("Error analyzing flow:", error);
       this.setState({
-        flowAnalysisError: error.message || "Failed to analyze flow",
-        flowAnalyzing: false
+        flowDescriptionError: error.message || "Failed to analyze flow",
+        flowAnalyzingWithIA: false
       });
     }
   }
@@ -1402,8 +1411,8 @@ class AllDataBoxSObject extends React.PureComponent {
   onCloseFlowAnalysisModal() {
     this.setState({
       showFlowAnalysisModal: false,
-      flowAnalysisResult: null,
-      flowAnalysisError: null
+      flowDescriptionResult: null,
+      flowDescriptionError: null
     });
   }
 
@@ -1636,7 +1645,7 @@ class AllDataBoxSObject extends React.PureComponent {
       h("div", {},
         h(AllDataSearch, {ref: "allDataSearch", sfHost, onDataSelect: this.onDataSelect, sobjectsList, getMatches: this.getMatches, inputSearchDelay: 0, placeholderText: "Record id, id prefix or object name", title: "Click to show recent items", resultRender: this.resultRender}),
         selectedValue
-          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject, onAnalyzeFlow: this.analyzeFlow, isOnFlowPage: this.isOnFlowPage(contextUrl)})
+          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject, onDescribeFlow: this.describeFlow, onAnalyzeFlow: this.openAnalyzeFlow.bind(this), isOnFlowPage: this.isOnFlowPage(contextUrl)})
           : h("div", {className: "all-data-box-inner empty"}, "No record to display"),
         this.state.showFlowAnalysisModal && h("div", {},
           h("button", {className: "slds-button slds-button_icon slds-button_icon-small", title: "Close", onClick: this.onCloseFlowAnalysisModal},
@@ -1647,10 +1656,10 @@ class AllDataBoxSObject extends React.PureComponent {
           ),
           h(AlertBanner, {
             type: "info",
-            bannerText: (this.state.flowAnalysisError ? this.state.flowAnalysisError : (this.state.flowAnalyzing ? "Analyzing flow..." : this.state.flowAnalysisResult)),
-            assistiveTest: "Flow Analysis",
-            iconName: this.state.flowAnalysisError ? "error" : null,
-            iconTitle: this.state.flowAnalysisError ? "Error" : null
+            bannerText: (this.state.flowDescriptionError ? this.state.flowDescriptionError : (this.state.flowAnalyzingWithIA ? "Analyzing flow..." : this.state.flowDescriptionResult)),
+            assistiveTest: "Flow Description",
+            iconName: this.state.flowDescriptionError ? "error" : null,
+            iconTitle: this.state.flowDescriptionError ? "Error" : null
           })
         )
       )
@@ -2411,10 +2420,14 @@ class AllDataSelection extends React.PureComponent {
         h(ShowDetailsButton, {ref: "showDetailsBtn", sfHost, showDetailsSupported, selectedValue, contextRecordId}),
         selectedValue.recordId && selectedValue.recordId.startsWith("0Af")
           ? h("a", {href: this.getDeployStatusUrl(), target: linkTarget, className: "button page-button slds-button slds-button_neutral slds-m-top_xx-small slds-m-bottom_xx-small"}, "Check Deploy Status") : null,
+        this.props.isOnFlowPage && this.props.onDescribeFlow ? h("button", {
+          className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
+          onClick: this.props.onDescribeFlow
+        }, "Describe Flow with AI") : null,
         this.props.isOnFlowPage && this.props.onAnalyzeFlow ? h("button", {
           className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
           onClick: this.props.onAnalyzeFlow
-        }, "Analyze Flow with AI") : null,
+        }, "Analyze Flow") : null,
         buttons.map((button, index) => h("div", {key: button + "Div"}, h("a",
           {
             key: button,

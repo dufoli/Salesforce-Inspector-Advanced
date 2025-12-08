@@ -3,6 +3,7 @@ import {popupTest} from "./popup-test.js";
 import {csvParseTest} from "./csv-parse-test.js";
 import {dataImportTest} from "./data-import-test.js";
 import {dataExportTest} from "./data-export-test.js";
+import {flowAnalyzeTest} from "./flow-analyze-test.js";
 
 let seenError = false;
 class Test {
@@ -99,10 +100,42 @@ addEventListener("load", () => {
       let sfHost = args.get("host");
       await sfConn.getSession(sfHost);
       let test = new Test(sfHost);
-      await popupTest(test);
-      await csvParseTest(test);
-      await dataImportTest(test);
-      await dataExportTest(test);
+
+      // Get test parameter - can be single test name or comma-separated list
+      const testParam = args.get("test") || args.get("tests");
+      const testsToRun = testParam ? testParam.split(",").map(t => t.trim()) : null;
+
+      // Map of test names to test functions
+      const availableTests = {
+        popupTest,
+        csvParseTest,
+        dataImportTest,
+        dataExportTest,
+        flowAnalyzeTest
+      };
+
+      // If specific tests are requested, run only those
+      if (testsToRun && testsToRun.length > 0) {
+        console.log("Running specific tests:", testsToRun.join(", "));
+        for (const testName of testsToRun) {
+          const testFunction = availableTests[testName];
+          if (testFunction) {
+            console.log(`Running test: ${testName}`);
+            await testFunction(test);
+          } else {
+            console.warn(`Unknown test: ${testName}. Available tests: ${Object.keys(availableTests).join(", ")}`);
+          }
+        }
+      } else {
+        // Run all tests if no specific test is requested
+        console.log("Running all tests");
+        await popupTest(test);
+        await csvParseTest(test);
+        await dataImportTest(test);
+        await dataExportTest(test);
+        await flowAnalyzeTest(test);
+      }
+
       test.assert(!seenError, "Expected no error");
       console.log("Salesforce Inspector unit test finished successfully");
       window.result.textContent = "Salesforce Inspector unit test finished successfully";

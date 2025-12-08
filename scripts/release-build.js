@@ -24,6 +24,7 @@ fs.copySync("addon", target, {
     let file = path.replace("\\", "/");
     return !file.startsWith("addon/test-") // Skip the test framework
       && !file.endsWith("-test.js") // Skip individual tests
+      && !file.includes("addon/testing/") // Skip the testing folder
       // Skip files in .gitignore
       && (!file.endsWith(".zip") || file === "addon/genAiPromptTemplates.zip")
       && !file.endsWith(".xpi")

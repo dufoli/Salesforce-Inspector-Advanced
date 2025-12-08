@@ -1,0 +1,37 @@
+.analysis-results {
+    margin: 20px;
+  }
+  .rule-item {
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  .rule-item.warning {
+    background-color: #fff4e5;
+    border-color: #ff9800;
+  }
+  .rule-item.error {
+    background-color: #fce4ec;
+    border-color: #e91e63;
+  }
+  .rule-item.info {
+    background-color: #e3f2fd;
+    border-color: #2196f3;
+  }
+  .rule-title {
+    font-weight: bold;
+    font-size: 16px;
+    margin-bottom: 5px;
+  }
+  .rule-description {
+    margin-top: 5px;
+    color: #666;
+  }
+  .rule-details {
+    margin-top: 10px;
+    padding-left: 20px;
+  }
+  .rule-details ul {
+    margin: 5px 0;
+  }

@@ -2,6 +2,13 @@
 
 ## Version 1.38
 - Inspect: field usage [issue 268](https://github.com/dufoli/Salesforce-Inspector-Advanced/268)
+- Flow Analyzer: new tool to analyze and optimize Salesforce Flows. Accessible via "Analyze Flow" button when viewing a Flow in Flow Builder. Scans flow metadata for potential issues including:
+  - **Performance**: DML operations in loops (Get/Update/Create/Delete Record), action calls in loops, Get Record retrieving all fields
+  - **Best Practices**: Missing flow description, unused variables, unconnected elements, copy API names, not using Auto Layout
+  - **Security & Reliability**: Hardcoded IDs and URLs, missing fault paths, missing null handlers, unsafe running context
+  - **Maintainability**: High cyclomatic complexity, flow naming conventions, old API versions, too many flow versions
+  - **Logic Issues**: Recursive after update triggers, same record field updates
+  Results are displayed with severity levels (error, warning, info) and actionable recommendations to help maintain secure, performant, and reliable Flow automations. [issue 251](https://github.com/dufoli/Salesforce-Inspector-Advanced/251)
 
 ## Version 1.37
 - Security: switch to oauth 2 web service flow with PKCE over external client app  [issue 254](https://github.com/dufoli/Salesforce-Inspector-Advanced/254) / [issue 265](https://github.com/dufoli/Salesforce-Inspector-Advanced/265) / [issue 255](https://github.com/dufoli/Salesforce-Inspector-Advanced/255)
