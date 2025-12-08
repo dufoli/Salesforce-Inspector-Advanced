@@ -35,9 +35,9 @@ export class Model {
       this.title = `Flow Analyzer: ${this.flowMetadata.MasterLabel}`;
 
       // Get flow versions count
-      const versionsQuery = `SELECT COUNT() FROM Flow WHERE DefinitionId='${this.flowMetadata.DefinitionId.replace(/([\\'])/g, "\\$1")}'`;
+      const versionsQuery = `SELECT COUNT(Id) cnt FROM Flow WHERE DefinitionId='${this.flowMetadata.DefinitionId.replace(/([\\'])/g, "\\$1")}'`;
       const versionsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(versionsQuery));
-      this.flowVersionCount = versionsResponse.totalSize;
+      this.flowVersionCount = versionsResponse.records[0].cnt;
 
       // Run analysis
       this.analysisResults = this.analyzeFlow(this.flowMetadata);
@@ -90,10 +90,6 @@ export class Model {
         message: `Flow API version is ${flow.ApiVersion}. Current API version is ${apiVersion}. Consider updating the flow to use a newer API version.`
       });
     }
-
-    // Rule 3: PRB or workflow to migrate to flow
-    // This would require checking for related Process Builder or Workflow Rules
-    // For now, we'll note if flow type is not AutoLaunched or Screen
 
     // Rule 4: Hardcoded ID in code instead of label
     const hardcodedIds = this.findHardcodedIds(metadata);
