@@ -136,7 +136,7 @@ class ApexAnalyzer {
             }
 
             // Query MetadataComponentDependency to find class references
-            let dependencyQuery = "SELECT MetadataComponentName, RefMetadataComponentName FROM MetadataComponentDependency WHERE MetadataComponentType = 'ApexClass' AND RefMetadataComponentType = 'ApexClass'";
+            let dependencyQuery = "SELECT MetadataComponentName, RefMetadataComponentName FROM MetadataComponentDependency WHERE RefMetadataComponentType = 'ApexClass'";
             let dependencyResult = {rows: []};
             await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(dependencyQuery), {}), dependencyResult)
               .catch(error => {
