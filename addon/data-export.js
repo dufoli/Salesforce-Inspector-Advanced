@@ -1900,9 +1900,10 @@ class Model {
       if (error && error.name == "Unauthorized") {
         let rootEl = document.getElementById("insext");
         let popupEl = document.getElementsByClassName("insext-popup-iframe")[0];
+        const allowedOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
         popupEl.contentWindow.postMessage({
           showInvalidTokenBanner: true
-        }, "*");
+        }, allowedOrigin);
         rootEl.classList.add("insext-active");
       }
       vm.isWorking = false;
@@ -2635,20 +2636,14 @@ class App extends React.Component {
 }
 
 {
-
   let args = new URLSearchParams(location.search);
   let sfHost = args.get("host");
-  let hash = new URLSearchParams(location.hash); //User-agent OAuth flow
-  if (!sfHost && hash) {
-    sfHost = decodeURIComponent(hash.get("instance_url")).replace(/^https?:\/\//i, "");
+  //oauth2 server flow with state parameter
+  if (!sfHost && args.has("state")) {
+    sfHost = decodeURIComponent(args.get("state"));
   }
   initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
-    //refresh sfHost after oauth flow
-    if (sfConn.instanceHostname && sfConn.instanceHostname != sfHost) {
-      sfHost = sfConn.instanceHostname;
-    }
-
     let root = document.getElementById("root");
     let model = new Model({sfHost, args});
     model.reactCallback = cb => {
@@ -2659,7 +2654,6 @@ class App extends React.Component {
     if (parent && parent.isUnitTest) { // for unit tests
       parent.insextTestLoaded({model, sfConn});
     }
-
   });
 
 }

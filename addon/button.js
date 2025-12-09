@@ -147,17 +147,17 @@ function initButton(sfHost, inInspector) {
       headerFlow.appendChild(overflowLabel);
       // Set the overflow property to "auto"
       overflowCheckbox.checked ? style.textContent = ".canvas {overflow : auto!important ; }" : style.textContent = ".canvas {overflow : hidden!important ; }";
-
+      const allowedOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
       whereItIsUsedButton.addEventListener("click", () => {
         popupEl.contentWindow.postMessage({
           whereFlowIsUsed: JSON.stringify({contextUrl: window.location.href})
-        }, "*");
+        }, allowedOrigin);
       });
 
       versionDetailsButton.addEventListener("click", () => {
         popupEl.contentWindow.postMessage({
           showFlowVersionDetails: JSON.stringify({contextUrl: window.location.href})
-        }, "*");
+        }, allowedOrigin);
       });
 
       clearFlowButton.addEventListener("click", () => {
@@ -166,7 +166,7 @@ function initButton(sfHost, inInspector) {
         };
         popupEl.contentWindow.postMessage({
           clearOlderFlows: JSON.stringify(clearArgs)
-        }, "*");
+        }, allowedOrigin);
       });
 
       // Listen for changes to the checkbox state
@@ -177,7 +177,7 @@ function initButton(sfHost, inInspector) {
           updateLocalStorage: true,
           key: "scrollOnFlowBuilder",
           value: JSON.stringify(this.checked)
-        }, "*");
+        }, allowedOrigin);
         // Set the overflow property to "auto"
         this.checked ? style.textContent = ".canvas {overflow : auto!important ; }" : style.textContent = ".canvas {overflow : hidden!important ; }";
       });
@@ -306,6 +306,7 @@ function initButton(sfHost, inInspector) {
     popupWrapper.classList.add(popupArrowOrientation == "horizontal" ? "insext-popup-horizontal" : "insext-popup-vertical");
 
     popupEl.src = popupSrc;
+    const allowedOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
     addEventListener("message", e => {
       if (e.source != popupEl.contentWindow) {
         return;
@@ -323,7 +324,7 @@ function initButton(sfHost, inInspector) {
           inLightning: !!document.querySelector("#auraLoadingBox"),
           inInspector,
           contextUrl: location.href
-        }, "*");
+        }, allowedOrigin);
 
         // Open popup by default if showInvalidTokenBanner is true and pathname matches banner conditions
         let showInvalidTokenBanner = iFrameLocalStorage.showInvalidTokenBanner;
@@ -432,7 +433,7 @@ function initButton(sfHost, inInspector) {
       if (!evt.skipMessage) {
         popupEl.contentWindow.postMessage({
           trackMouseMove: false
-        }, "*");
+        }, allowedOrigin);
       }
       resizeX = 0;
       resizeY = 0;
@@ -442,7 +443,7 @@ function initButton(sfHost, inInspector) {
       window.addEventListener("mouseup", endResizeMove);
       popupEl.contentWindow.postMessage({
         trackMouseMove: true
-      }, "*");
+      }, allowedOrigin);
     });
 
 
@@ -486,7 +487,7 @@ function initButton(sfHost, inInspector) {
       popupEl.contentWindow.postMessage({insextUpdateRecordId: true,
         locationHref: location.href,
         isFieldsPresent
-      }, "*");
+      }, allowedOrigin);
       rootEl.classList.add("insext-active");
       // These event listeners are only enabled when the popup is active to avoid interfering with Salesforce when not using the inspector
       //addEventListener("click", outsidePopupClick);
