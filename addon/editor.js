@@ -296,7 +296,13 @@ export class Editor extends React.Component {
     let caretEle = model.editorMirror.getElementsByClassName("editor_caret")[0];
     if (caretEle) {
       const rect = caretEle.getBoundingClientRect();
-      model.setSuggestionPosition(rect.top + rect.height, rect.left);
+      const textareaRect = model.editor.getBoundingClientRect();
+      let suggestionLeft = rect.left;
+      // If caret's right edge is too close to the left of textarea, position suggestion to the left of caret
+      if (rect.left + 200 > textareaRect.right) {
+        suggestionLeft = textareaRect.right - 200;
+      }
+      model.setSuggestionPosition(rect.top + rect.height, suggestionLeft);
     } else {
       model.displaySuggestion = false;
     }
