@@ -1075,10 +1075,11 @@ class EntityAnalyzer {
   async analyse() {
     let objWithoutDescRule = this.model.isRuleEnable("Custom SObject without description");
     let fieldWithoutDescRule = this.model.isRuleEnable("Custom Field without description");
+    let fieldNotReferencedRule = this.model.isRuleEnable("Custom Field not referenced");
     let objWithManyFieldsDescRule = this.model.isRuleEnable("Entity with too many fields");
     let objWithManyValidationRulesRule = this.model.isRuleEnable("Entity with too many validation rules");
     let objWithManyTriggersRule = this.model.isRuleEnable("Entity with too many triggers");
-    if (!objWithoutDescRule && !fieldWithoutDescRule && !objWithManyFieldsDescRule && !objWithManyValidationRulesRule && !objWithManyTriggersRule){
+    if (!objWithoutDescRule && !fieldWithoutDescRule && !fieldNotReferencedRule && !objWithManyFieldsDescRule && !objWithManyValidationRulesRule && !objWithManyTriggersRule){
       return;
     }
 
@@ -1100,8 +1101,9 @@ class EntityAnalyzer {
       this.model.didUpdate();
     }
     let {globalDescribe} = this.model.describeInfo.describeGlobal(false);
+    let fieldMap = new Map();
     //const validationRuleSelect = "SELECT Id, Active, EntityDefinitionId, EntityDefinition.DeveloperName, ErrorMessage, ValidationName FROM ValidationRule WHERE ErrorMessage LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-    query = "SELECT Id, QualifiedApiName, EntityDefinition.QualifiedApiName, Description FROM FieldDefinition WHERE PublisherId!= 'System' AND EntityDefinition.QualifiedApiName in ([RANGE])";
+    query = "SELECT Id, DurableId, QualifiedApiName, EntityDefinition.QualifiedApiName, Description FROM FieldDefinition WHERE PublisherId!= 'System' AND EntityDefinition.QualifiedApiName in ([RANGE])";
     let objectList = globalDescribe.sobjects.filter(s => (s.associateEntityType == null));
     for (let index = 0; index < objectList.length; index += 50) {
       let entityNames = objectList.slice(index, index + 50).map(e => "'" + e.name + "'");
@@ -1114,6 +1116,13 @@ class EntityAnalyzer {
       for (let j = 0; j < fieldsFesult.rows.length; j++){
         let field = fieldsFesult.rows[j];
         //&& field.QualifiedApiName.endsWith("__c")
+        if (field.QualifiedApiName.endsWith("__c")){
+          let durableIdParts = field.DurableId.split(".");
+          if (durableIdParts.length > 1) {
+            let fieldDurableId = durableIdParts[1]; // Second part is the field ID
+            fieldMap.set(fieldDurableId, field);
+          }
+        }
         if (!field.Description && fieldWithoutDescRule){
           logs2.push({reference: field.EntityDefinition.QualifiedApiName + "." + field.QualifiedApiName, name: "Custom Field without description", description: "Add description from SETUP > Object Manager > (select entity) > Fields & Relationships > (select field) > Edit", priority: 5});//5 low
         }
@@ -1128,6 +1137,46 @@ class EntityAnalyzer {
       this.model.resultTableModel.dataChange(this.recordTable);
       this.model.didUpdate();
     }
+
+    // Check for custom fields not referenced in MetadataComponentDependency
+    if (fieldNotReferencedRule) {
+      let logsFieldNotReferenced = [];
+      let referencedFieldIds = new Set();
+
+      // Query MetadataComponentDependency for CustomField references
+      let dependencyQuery = "SELECT RefMetadataComponentId FROM MetadataComponentDependency WHERE RefMetadataComponentType = 'CustomField'";
+      let dependencyResult = {rows: []};
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(dependencyQuery), {}), dependencyResult)
+        .catch(error => {
+          console.error(error);
+        });
+
+      // Build set of referenced field IDs (RefMetadataComponentId contains the field DurableId second part)
+      for (let dep of dependencyResult.rows) {
+        if (dep.RefMetadataComponentId) {
+          referencedFieldIds.add(dep.RefMetadataComponentId.substring(0, 15));
+        }
+      }
+
+      // Filter the list of custom fields using the map - find fields not in referencedFieldIds
+      for (let [fieldDurableId, field] of fieldMap) {
+        // If this field ID is not in the referenced set, log it
+        if (!referencedFieldIds.has(fieldDurableId)) {
+          let fieldFullName = field.EntityDefinition.QualifiedApiName + "." + field.QualifiedApiName;
+          logsFieldNotReferenced.push({
+            reference: fieldFullName,
+            name: "Custom Field not referenced",
+            description: "This custom field does not appear to be referenced in any metadata components (Apex classes, Flows, Process Builders, etc.). Consider reviewing if this field is still needed or if it should be removed.",
+            priority: 4
+          });
+        }
+      }
+
+      this.recordTable.addToTable(logsFieldNotReferenced, {column: "priority"});
+      this.model.resultTableModel.dataChange(this.recordTable);
+      this.model.didUpdate();
+    }
+
     let logs3 = [];
     if (objWithManyFieldsDescRule){
       for (let [key, value] of tableFields) {
@@ -1273,6 +1322,8 @@ class Model {
     this.rules = [
       {name: "Custom SObject without description", selected: true},
       {name: "Custom Field without description", selected: true},
+      //TODO not working seems metadata component dependency is not working
+      //{name: "Custom Field not referenced", selected: true},
       {name: "Entity with too many fields", selected: true},
       {name: "Entity with too many validation rules", selected: true},
       {name: "Entity with too many triggers", selected: true},
