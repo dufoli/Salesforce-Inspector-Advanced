@@ -93,6 +93,9 @@ export class Editor extends React.Component {
   }
   editorAutocompleteEvent(e) {
     let {model} = this.props;
+    if (e.type == "select" && !model.displaySuggestion) {
+      return;
+    }
     model.editorAutocompleteHandler(e);
     model.didUpdate();
   }
@@ -269,7 +272,7 @@ export class Editor extends React.Component {
       model.displaySuggestion = true;
     }
   }
-  handleMouseUp(e) {
+  handleMouseUp() {
     let {model} = this.props;
     if (!model.displaySuggestion) {
       model.activeSuggestion = -1;
@@ -296,11 +299,16 @@ export class Editor extends React.Component {
     let caretEle = model.editorMirror.getElementsByClassName("editor_caret")[0];
     if (caretEle) {
       const rect = caretEle.getBoundingClientRect();
+      let threshold = 200;
+      if (model.autocompleteResultBox) {
+        const autocompleteResultBoxRect = model.autocompleteResultBox.getBoundingClientRect();
+        threshold = autocompleteResultBoxRect.width;
+      }
       const textareaRect = model.editor.getBoundingClientRect();
       let suggestionLeft = rect.left;
       // If caret's right edge is too close to the left of textarea, position suggestion to the left of caret
-      if (rect.left + 200 > textareaRect.right) {
-        suggestionLeft = textareaRect.right - 200;
+      if (rect.left + threshold > textareaRect.right) {
+        suggestionLeft = rect.left - threshold;
       }
       model.setSuggestionPosition(rect.top + rect.height, suggestionLeft);
     } else {
