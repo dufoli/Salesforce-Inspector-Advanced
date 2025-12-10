@@ -2607,7 +2607,7 @@ class App extends React.Component {
               h("em", {}, "\"All accounts created this month with their name and industry\"")
             ),
             h("textarea", {
-              className: "ai-modal-input editor_textarea",
+              className: "ai-modal-input slds-textarea",
               placeholder: "Ex: All accounts created this month with their name and industry",
               value: this.state.aiDescription,
               onChange: this.onAIDescriptionChange,
