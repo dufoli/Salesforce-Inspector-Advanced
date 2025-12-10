@@ -132,3 +132,26 @@ input:disabled:hover {
   width: 16px;
   height: 16px;
 }
+.drag-drop-zone {
+  border: 2px dashed #dddbda;
+  border-radius: 0.25rem;
+  padding: 1.25rem;
+  text-align: center;
+  background-color: #fafaf9;
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+}
+.drag-drop-zone.drag-over {
+  border-color: #0176d3;
+  background-color: #f0f8ff;
+}
+.file-input-hidden {
+  display: none;
+}
+.package-xml-tools {
+  border: 1px solid #dddbda;
+  border-radius: 0.25rem;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+  background-color: #fafaf9;
+}

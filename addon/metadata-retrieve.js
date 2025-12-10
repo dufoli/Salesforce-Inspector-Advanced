@@ -26,6 +26,25 @@ class Model {
     this.filteredMetadataObjects = null;
     this.selectAll = null;
     this.downloadAuto = false;
+    // Deploy state
+    this.deployProgress = "ready";
+    this.deployLogMessages = [];
+    this.selectedFile = null;
+    this.deployStatusLink = null;
+    this.showDeployOptions = false;
+    // Drag and drop state
+    this.dragOverPackageXml = false;
+    this.dragOverZip = false;
+    // Deploy options
+    this.checkOnly = false;
+    this.allowMissingFiles = false;
+    this.ignoreWarnings = false;
+    this.performRetrieve = true;
+    this.purgeOnDelete = false;
+    this.rollbackOnError = true;
+    this.singlePackage = false;
+    this.testLevel = "NoTestRun";
+    this.runTests = "";
   }
   /**
    * Notify React that we changed something, so it will rerender the view.
@@ -48,6 +67,9 @@ class Model {
   title() {
     if (this.progress == "working") {
       return "(Loading) Download Metadata";
+    }
+    if (this.deployProgress == "working") {
+      return "(Deploying) Upload Metadata";
     }
     return "Download Metadata";
   }
@@ -322,6 +344,307 @@ class Model {
     this.didUpdate();
   }
 
+  async readZipFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const arrayBuffer = event.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+        // Convert to base64
+        let binary = "";
+        for (let i = 0; i < uint8Array.length; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64 = btoa(binary);
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  async readPackageXmlFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        resolve(event.target.result);
+      };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+  generatePackageXml() {
+    if (!this.metadataObjects) {
+      this.logMessages.push({level: "error", text: "(Error: Please wait for metadata objects to load)"});
+      this.didUpdate();
+      return;
+    }
+
+    let selectedMetadataObjects = this.metadataObjects
+      .filter(metadataObject => metadataObject.selected);
+
+    if (selectedMetadataObjects.length === 0) {
+      this.logMessages.push({level: "error", text: "(Error: Please select at least one metadata type)"});
+      this.didUpdate();
+      return;
+    }
+
+    // Group selected metadata by type
+    let typeMap = {};
+    for (let metadataObject of selectedMetadataObjects) {
+      let xmlName = metadataObject.xmlName;
+      if (!typeMap[xmlName]) {
+        typeMap[xmlName] = [];
+      }
+      // For now, we'll use "*" to indicate all members of this type
+      // In a more advanced version, we could track individual members
+      typeMap[xmlName].push("*");
+    }
+
+    // Build package.xml
+    let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    xml += "<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n";
+
+    // Sort types for consistent output
+    let sortedTypes = Object.keys(typeMap).sort();
+    for (let typeName of sortedTypes) {
+      xml += "    <types>\n";
+      // Add all members (using * for all)
+      for (let member of typeMap[typeName]) {
+        xml += "        <members>" + member + "</members>\n";
+      }
+      xml += "        <name>" + typeName + "</name>\n";
+      xml += "    </types>\n";
+    }
+
+    xml += "    <version>" + apiVersion + "</version>\n";
+    xml += "</Package>";
+
+    // Create download link
+    let downloadLink = document.createElement("a");
+    downloadLink.download = "package.xml";
+    let blob = new Blob([xml], {type: "application/xml"});
+    downloadLink.href = window.URL.createObjectURL(blob);
+    downloadLink.click();
+
+    this.logMessages.push({level: "info", text: "(Package.xml generated successfully)"});
+    this.didUpdate();
+  }
+
+  async importPackageXml(file) {
+    try {
+      this.progress = "working";
+      this.logMessages.push({level: "info", text: "(Reading package.xml file)"});
+      this.didUpdate();
+
+      const xmlContent = await this.readPackageXmlFile(file);
+
+      // Parse XML
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlContent, "text/xml");
+
+      // Check for parsing errors
+      const parseError = xmlDoc.querySelector("parsererror");
+      if (parseError) {
+        throw new Error("Invalid XML format: " + parseError.textContent);
+      }
+
+      const packageElement = xmlDoc.querySelector("Package");
+      if (!packageElement) {
+        throw new Error("Invalid package.xml: Package element not found");
+      }
+
+      // Get all type elements
+      const typeElements = packageElement.querySelectorAll("types");
+
+      if (!this.metadataObjects) {
+        throw new Error("Metadata objects not loaded. Please wait and try again.");
+      }
+
+      // First, unselect all
+      for (let metadataObject of this.metadataObjects) {
+        metadataObject.selected = false;
+      }
+
+      // Map of XML names to metadata objects
+      let xmlNameMap = {};
+      for (let metadataObject of this.metadataObjects) {
+        xmlNameMap[metadataObject.xmlName] = metadataObject;
+        // Also check child XML names
+        if (metadataObject.childXmlNames) {
+          let childNames = sfConn.asArray(metadataObject.childXmlNames);
+          for (let childName of childNames) {
+            xmlNameMap[childName] = metadataObject;
+          }
+        }
+      }
+
+      // Select metadata objects based on package.xml
+      let selectedCount = 0;
+      for (let typeElement of typeElements) {
+        const nameElement = typeElement.querySelector("name");
+        if (nameElement) {
+          const typeName = nameElement.textContent.trim();
+          if (xmlNameMap[typeName]) {
+            xmlNameMap[typeName].selected = true;
+            selectedCount++;
+          } else {
+            this.logMessages.push({level: "warning", text: "(Warning: Unknown metadata type in package.xml: " + typeName + ")"});
+          }
+        }
+      }
+
+      // Update filtered list if search is active
+      if (this.searchValue) {
+        this.filterMetadata(this.searchValue);
+      } else {
+        this.filteredMetadataObjects = this.metadataObjects;
+      }
+
+      this.logMessages.push({level: "info", text: "(Package.xml imported successfully. Selected " + selectedCount + " metadata type(s))"});
+      this.progress = "ready";
+      this.didUpdate();
+    } catch (e) {
+      this.logError(e);
+    }
+  }
+
+  startDeploying() {
+    let logMsg = msg => {
+      this.deployLogMessages.push({level: "info", text: msg});
+      this.didUpdate();
+    };
+    let logWait = this.logWaitDeploy.bind(this);
+    (async () => {
+      try {
+        if (!this.selectedFile) {
+          throw new Error("Please select a zip file to deploy");
+        }
+        this.deployProgress = "working";
+        this.deployLogMessages = [];
+        this.deployStatusLink = null;
+        this.didUpdate();
+
+        logMsg("(Reading zip file)");
+        const zipBase64 = await this.readZipFile(this.selectedFile);
+        logMsg("(File read: " + this.selectedFile.name + ")");
+
+        let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+        logMsg("(Starting deployment)");
+        let deployResult = await logWait(
+          "Deploy",
+          sfConn.soap(metadataApi, "deploy", {
+            ZipFile: zipBase64,
+            DeployOptions: {
+              allowMissingFiles: this.allowMissingFiles,
+              checkOnly: this.checkOnly,
+              ignoreWarnings: this.ignoreWarnings,
+              performRetrieve: this.performRetrieve,
+              purgeOnDelete: this.purgeOnDelete,
+              rollbackOnError: this.rollbackOnError,
+              runTests: this.runTests ? this.runTests.split(",").map(t => t.trim()).filter(t => t) : [],
+              singlePackage: this.singlePackage,
+              testLevel: this.testLevel
+            }
+          })
+        );
+
+        logMsg("(Deployment Id: " + deployResult.id + ")");
+        let res;
+        for (let interval = 2000; ;) {
+          await logWait(
+            "(Waiting)",
+            timeout(interval)
+          );
+          res = await logWait(
+            "CheckDeployStatus",
+            sfConn.soap(metadataApi, "checkDeployStatus", {
+              asyncProcessId: deployResult.id,
+              includeDetails: true
+            })
+          );
+          if (res.done !== "false") {
+            break;
+          }
+        }
+
+        if (res.status !== "Succeeded") {
+          let err = new Error("Deploy failed");
+          err.result = res;
+          throw err;
+        }
+
+        let statusJson = JSON.stringify({
+          id: res.id,
+          status: res.status,
+          success: res.success,
+          done: res.done,
+          numberComponentErrors: res.numberComponentErrors,
+          numberComponentsDeployed: res.numberComponentsDeployed,
+          numberComponentsTotal: res.numberComponentsTotal,
+          numberTestErrors: res.numberTestErrors,
+          numberTestsCompleted: res.numberTestsCompleted,
+          numberTestsTotal: res.numberTestsTotal,
+          details: res.details,
+          messages: res.messages
+        }, null, "    ");
+
+        logMsg("(Finished)");
+        this.deployStatusLink = URL.createObjectURL(new Blob([statusJson], {type: "application/json"}));
+        this.deployProgress = "done";
+        this.didUpdate();
+      } catch (e) {
+        this.logDeployError(e);
+      }
+    })();
+  }
+
+  logWaitDeploy(msg, promise) {
+    let message = {level: "working", text: msg};
+    this.deployLogMessages.push(message);
+    this.didUpdate();
+    promise.then(res => {
+      message.level = "info";
+      this.didUpdate();
+      return res;
+    }, err => {
+      message.level = "error";
+      this.didUpdate();
+      throw err;
+    });
+    return promise;
+  }
+
+  logDeployError(err) {
+    this.deployProgress = "error";
+    console.error(err);
+    let msg;
+    if (err.message == "Deploy failed") {
+      let result = err.result;
+      if (result && result.details && result.details.componentFailures) {
+        let failures = sfConn.asArray(result.details.componentFailures);
+        if (failures.length > 0) {
+          msg = "(Error: Deploy failed - " + failures.length + " component failure(s). Status: " + (result.status || "Unknown") + ")";
+          failures.forEach((failure, index) => {
+            this.deployLogMessages.push({level: "error", text: "  Component " + (index + 1) + ": " + (failure.fullName || "Unknown") + " - " + (failure.problem || failure.problemType || "Unknown error")});
+          });
+        } else {
+          msg = "(Error: Deploy failed. Status: " + (result.status || "Unknown") + ", Message: " + (result.statusMessage || "No details available") + ")";
+        }
+      } else {
+        msg = "(Error: Deploy failed. Status: " + (result && result.status ? result.status : "Unknown") + ")";
+        if (result && result.statusMessage) {
+          this.deployLogMessages.push({level: "error", text: "  Message: " + result.statusMessage});
+        }
+      }
+    } else {
+      msg = "(Error: " + err.message + ")";
+    }
+    this.deployLogMessages.push({level: "error", text: msg});
+    this.didUpdate();
+  }
+
 }
 
 let timeout = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -336,6 +659,19 @@ class App extends React.Component {
     this.onSearchInput = this.onSearchInput.bind(this);
     this.onDownloadAutoChange = this.onDownloadAutoChange.bind(this);
     this.onClickDataModel = this.onClickDataModel.bind(this);
+    this.onFileChange = this.onFileChange.bind(this);
+    this.onDeployClick = this.onDeployClick.bind(this);
+    this.onCheckOnlyChange = this.onCheckOnlyChange.bind(this);
+    this.onToggleDeployOptions = this.onToggleDeployOptions.bind(this);
+    this.onDeployOptionChange = this.onDeployOptionChange.bind(this);
+    this.onGeneratePackageXml = this.onGeneratePackageXml.bind(this);
+    this.onImportPackageXml = this.onImportPackageXml.bind(this);
+    this.onDragOverPackageXml = this.onDragOverPackageXml.bind(this);
+    this.onDragLeavePackageXml = this.onDragLeavePackageXml.bind(this);
+    this.onDropPackageXml = this.onDropPackageXml.bind(this);
+    this.onDragOverZip = this.onDragOverZip.bind(this);
+    this.onDragLeaveZip = this.onDragLeaveZip.bind(this);
+    this.onDropZip = this.onDropZip.bind(this);
   }
   onSelectAllChange(e) {
     let {model} = this.props;
@@ -367,6 +703,112 @@ class App extends React.Component {
     model.downloadDataModel();
     model.didUpdate();
   }
+  onFileChange(e) {
+    let {model} = this.props;
+    model.selectedFile = e.target.files[0] || null;
+    model.didUpdate();
+  }
+  onDeployClick() {
+    let {model} = this.props;
+    model.startDeploying();
+  }
+  onCheckOnlyChange(e) {
+    let {model} = this.props;
+    model.checkOnly = e.target.checked;
+    model.didUpdate();
+  }
+  onToggleDeployOptions() {
+    let {model} = this.props;
+    model.showDeployOptions = !model.showDeployOptions;
+    model.didUpdate();
+  }
+  onDeployOptionChange(optionName, value) {
+    let {model} = this.props;
+    model[optionName] = value;
+    model.didUpdate();
+  }
+  onGeneratePackageXml() {
+    let {model} = this.props;
+    model.generatePackageXml();
+  }
+  onImportPackageXml(e) {
+    let {model} = this.props;
+    const file = e.target.files[0];
+    if (file) {
+      model.importPackageXml(file);
+    }
+    // Reset the input so the same file can be selected again
+    e.target.value = "";
+  }
+  onDragOverPackageXml(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {model} = this.props;
+    if (!model.dragOverPackageXml) {
+      model.dragOverPackageXml = true;
+      model.didUpdate();
+    }
+  }
+  onDragLeavePackageXml(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {model} = this.props;
+    if (model.dragOverPackageXml) {
+      model.dragOverPackageXml = false;
+      model.didUpdate();
+    }
+  }
+  onDropPackageXml(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {model} = this.props;
+    model.dragOverPackageXml = false;
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.name.endsWith(".xml") || file.type === "application/xml" || file.type === "text/xml") {
+        model.importPackageXml(file);
+      } else {
+        model.logMessages.push({level: "error", text: "(Error: Please drop a valid package.xml file)"});
+        model.didUpdate();
+      }
+    }
+  }
+  onDragOverZip(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {model} = this.props;
+    if (!model.dragOverZip) {
+      model.dragOverZip = true;
+      model.didUpdate();
+    }
+  }
+  onDragLeaveZip(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {model} = this.props;
+    if (model.dragOverZip) {
+      model.dragOverZip = false;
+      model.didUpdate();
+    }
+  }
+  onDropZip(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {model} = this.props;
+    model.dragOverZip = false;
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.name.endsWith(".zip") || file.type === "application/zip" || file.type === "application/x-zip-compressed") {
+        model.selectedFile = file;
+        model.didUpdate();
+      } else {
+        model.deployLogMessages.push({level: "error", text: "(Error: Please drop a valid zip file)"});
+        model.didUpdate();
+      }
+    }
+  }
   componentDidMount() {
     let {model} = this.props;
     let selectAll = this.refs.selectref;
@@ -385,38 +827,223 @@ class App extends React.Component {
             ),
             " Salesforce Home"
           ),
-          h("span", {className: "progress progress-" + model.progress},
-            model.progress == "ready" ? "Ready"
-            : model.progress == "working" ? "Downloading..."
-            : model.progress == "done" ? "Finished"
-            : "Error!"
+          h("span", {className: "progress progress-" + (model.progress == "working" ? model.progress : model.deployProgress)},
+            model.progress == "working" ? "Downloading..."
+            : model.deployProgress == "working" ? "Deploying..."
+            : model.progress == "done" || model.deployProgress == "done" ? "Finished"
+            : model.progress == "error" || model.deployProgress == "error" ? "Error!"
+            : "Ready"
           )
         ),
         h("div", {className: "body"},
           h("h1", {}, "Data Model"),
-          h("button", {onClick: this.onClickDataModel, disabled: (model.progress == "working"), title: "Download Data Model"},
+          h("button", {onClick: this.onClickDataModel, disabled: (model.progress == "working" || model.deployProgress == "working"), title: "Download Data Model"},
             h("svg", {className: "download-icon"},
               h("use", {xlinkHref: "symbols.svg#download"})
             )
           ),
-          h("h1", {}, "Metadata"),
-          h("div", {hidden: !model.metadataObjects},
-            model.downloadLink ? h("a", {href: model.downloadLink, download: "metadata.zip", className: "button"}, "Save downloaded metadata") : null,
-            model.statusLink ? h("a", {href: model.statusLink, download: "status.json", className: "button"}, "Save status info") : null,
-            h("div", {className: "flex"}),
-            h("label", {htmlFor: "search-text"}, "Search"),
-            h("input", {id: "searchText", name: "searchText", ref: "searchText", placeholder: "Filter metadata", type: "search", value: model.searchValue, onInput: this.onSearchInput}),
-            h("label", {},
-              h("input", {type: "checkbox", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange}),
-              "Select all"
+          h("h1", {}, "Upload Metadata"),
+          h("div", {},
+            h("div", {
+              onDragOver: this.onDragOverZip,
+              onDragLeave: this.onDragLeaveZip,
+              onDrop: this.onDropZip,
+              className: "drag-drop-zone" + (model.dragOverZip ? " drag-over" : "")
+            },
+            h("p", {className: "slds-text-heading_small slds-m-bottom_x-small"}, "Drop zip file here or"),
+            h("label", {htmlFor: "zipFile", className: "slds-button slds-button_link"}, "click to browse"),
+            h("input", {
+              id: "zipFile",
+              name: "zipFile",
+              type: "file",
+              accept: ".zip",
+              onChange: this.onFileChange,
+              disabled: (model.deployProgress == "working"),
+              className: "file-input-hidden"
+            }),
+            model.selectedFile ? h("p", {className: "slds-text-body_small slds-m-top_x-small slds-text-color_weak"}, "Selected: " + model.selectedFile.name) : null
             ),
-            h("p", {}, "Select what to download above, and then click the button below. If downloading fails, try unchecking some of the boxes."),
-            h("button", {onClick: this.onStartClick, disabled: (model.progress == "working")}, "Create metadata package"),
-            h("label", {},
-              h("input", {type: "checkbox", checked: model.downloadAuto, onChange: this.onDownloadAutoChange}),
-              "Download package when ready"
-            ),
+            h("button", {
+              onClick: this.onToggleDeployOptions,
+              disabled: (model.deployProgress == "working"),
+              className: "slds-button slds-button_neutral slds-m-top_small slds-m-bottom_small"
+            }, model.showDeployOptions ? "Hide Deploy Options" : "Show Deploy Options"),
+            model.showDeployOptions ? h("div", {className: "slds-card slds-m-top_small slds-m-bottom_small"},
+              h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Deploy Options"),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.checkOnly,
+                  onChange: e => this.onDeployOptionChange("checkOnly", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Check only (validate without deploying)")
+              ),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.allowMissingFiles,
+                  onChange: e => this.onDeployOptionChange("allowMissingFiles", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Allow missing files")
+              ),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.ignoreWarnings,
+                  onChange: e => this.onDeployOptionChange("ignoreWarnings", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Ignore warnings")
+              ),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.performRetrieve,
+                  onChange: e => this.onDeployOptionChange("performRetrieve", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Perform retrieve")
+              ),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.purgeOnDelete,
+                  onChange: e => this.onDeployOptionChange("purgeOnDelete", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Purge on delete")
+              ),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.rollbackOnError,
+                  onChange: e => this.onDeployOptionChange("rollbackOnError", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Rollback on error")
+              ),
+              h("label", {className: "slds-checkbox slds-m-top_x-small"},
+                h("input", {
+                  type: "checkbox",
+                  checked: model.singlePackage,
+                  onChange: e => this.onDeployOptionChange("singlePackage", e.target.checked),
+                  disabled: (model.deployProgress == "working"),
+                  className: "slds-checkbox__input"
+                }),
+                h("span", {className: "slds-checkbox__label"}, " Single package")
+              ),
+              h("div", {className: "slds-form-element slds-m-top_x-small"},
+                h("label", {className: "slds-form-element__label"}, "Test Level:"),
+                h("div", {className: "slds-form-element__control"},
+                  h("select", {
+                    value: model.testLevel,
+                    onChange: e => this.onDeployOptionChange("testLevel", e.target.value),
+                    disabled: (model.deployProgress == "working"),
+                    className: "slds-select"
+                  },
+                  h("option", {value: "NoTestRun"}, "NoTestRun"),
+                  h("option", {value: "RunSpecifiedTests"}, "RunSpecifiedTests"),
+                  h("option", {value: "RunLocalTests"}, "RunLocalTests"),
+                  h("option", {value: "RunAllTestsInOrg"}, "RunAllTestsInOrg")
+                  )
+                )
+              ),
+              h("div", {className: "slds-form-element slds-m-top_x-small"},
+                h("label", {className: "slds-form-element__label"}, "Run Tests (comma-separated, for RunSpecifiedTests):"),
+                h("div", {className: "slds-form-element__control"},
+                  h("input", {
+                    type: "text",
+                    value: model.runTests,
+                    onChange: e => this.onDeployOptionChange("runTests", e.target.value),
+                    disabled: (model.deployProgress == "working" || model.testLevel !== "RunSpecifiedTests"),
+                    placeholder: "e.g., MyTestClass1, MyTestClass2",
+                    className: "slds-input"
+                  })
+                )
+              )
+            ) : null,
             h("br", {}),
+            h("button", {onClick: this.onDeployClick, disabled: (model.deployProgress == "working" || !model.selectedFile)}, "Deploy metadata"),
+            h("br", {}),
+            model.deployStatusLink ? h("a", {href: model.deployStatusLink, download: "deployStatus.json", className: "button"}, "Save deployment status") : null,
+            h("div", {},
+              model.deployLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
+            )
+          ),
+          h("h1", {}, "Download Metadata"),
+          h("div", {hidden: !model.metadataObjects},
+            h("div", {className: "package-xml-tools"},
+              h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Package.xml Tools"),
+              h("div", {
+                onDragOver: this.onDragOverPackageXml,
+                onDragLeave: this.onDragLeavePackageXml,
+                onDrop: this.onDropPackageXml,
+                className: "drag-drop-zone" + (model.dragOverPackageXml ? " drag-over" : "")
+              },
+              h("p", {className: "slds-text-body_regular slds-m-bottom_x-small slds-text-color_weak"}, "Drop package.xml here or"),
+              h("label", {
+                htmlFor: "packageXmlFile",
+                className: "slds-button slds-button_link"
+              }, "click to browse"),
+              h("input", {
+                id: "packageXmlFile",
+                name: "packageXmlFile",
+                type: "file",
+                accept: ".xml",
+                onChange: this.onImportPackageXml,
+                disabled: (model.progress == "working" || model.deployProgress == "working"),
+                className: "file-input-hidden"
+              })
+              ),
+              h("div", {className: "slds-m-top_small"},
+                h("button", {
+                  onClick: this.onGeneratePackageXml,
+                  disabled: (model.progress == "working" || model.deployProgress == "working" || !model.metadataObjects),
+                  className: "slds-button slds-button_brand"
+                }, "Generate Package.xml")
+              )
+            ),
+            model.downloadLink ? h("div", {className: "slds-m-bottom_small"},
+              h("a", {href: model.downloadLink, download: "metadata.zip", className: "button slds-m-right_x-small"}, "Save downloaded metadata"),
+              model.statusLink ? h("a", {href: model.statusLink, download: "status.json", className: "button"}, "Save status info") : null
+            ) : null,
+            h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-bottom_small slds-wrap"},
+              h("label", {htmlFor: "search-text", className: "slds-form-element__label"}, "Search:"),
+              h("input", {
+                id: "searchText",
+                name: "searchText",
+                ref: "searchText",
+                placeholder: "Filter metadata",
+                type: "search",
+                value: model.searchValue,
+                onInput: this.onSearchInput,
+                className: "slds-input"
+              }),
+              h("label", {className: "slds-checkbox"},
+                h("input", {type: "checkbox", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange, className: "slds-checkbox__input"}),
+                h("span", {className: "slds-checkbox__label"}, "Select all")
+              )
+            ),
+            h("p", {className: "slds-text-body_regular slds-m-bottom_small slds-text-color_weak"}, "Select what to download above, and then click the button below. If downloading fails, try unchecking some of the boxes."),
+            h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-bottom_small slds-wrap"},
+              h("button", {
+                onClick: this.onStartClick,
+                disabled: (model.progress == "working" || model.deployProgress == "working"),
+                className: "slds-button slds-button_brand"
+              }, "Create metadata package"),
+              h("label", {className: "slds-checkbox"},
+                h("input", {type: "checkbox", checked: model.downloadAuto, onChange: this.onDownloadAutoChange, className: "slds-checkbox__input"}),
+                h("span", {className: "slds-checkbox__label"}, "Download package when ready")
+              )
+            ),
             model.metadataObjects
               ? h("div", {},
                 h("div", {className: "slds-grid slds-wrap"},
