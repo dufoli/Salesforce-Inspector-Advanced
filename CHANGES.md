@@ -9,6 +9,9 @@
   - **Maintainability**: High cyclomatic complexity, flow naming conventions, old API versions, too many flow versions
   - **Logic Issues**: Recursive after update triggers, same record field updates
   Results are displayed with severity levels (error, warning, info) and actionable recommendations to help maintain secure, performant, and reliable Flow automations. [issue 251](https://github.com/dufoli/Salesforce-Inspector-Advanced/251)
+- Metadata: upload and generate package.xml
+- Editor: improve suggestion position 
+  
 
 ## Version 1.37
 - Security: switch to oauth 2 web service flow with PKCE over external client app  [issue 254](https://github.com/dufoli/Salesforce-Inspector-Advanced/254) / [issue 265](https://github.com/dufoli/Salesforce-Inspector-Advanced/265) / [issue 255](https://github.com/dufoli/Salesforce-Inspector-Advanced/255)
