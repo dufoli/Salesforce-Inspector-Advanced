@@ -662,24 +662,44 @@ class SecurityAnalyzer {
 
       // Analyze External Client Apps
       if (extAppSelfAuthRule || extAppNotUsedRule) {
-        let extAppQuery = "SELECT Id, Name, CreatedBy.Name, CreatedDate, LastModifiedBy.Name, LastModifiedDate, OptionsAllowAdminApprovedUsersOnly FROM ExternalClientApplication ORDER BY Name";
+        let extAppQuery = "SELECT Id, DeveloperName, CreatedBy.Name, CreatedDate, LastModifiedBy.Name, LastModifiedDate FROM ExternalClientApplication ORDER BY DeveloperName";
         let extAppResult = {rows: []};
         await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(extAppQuery), {}), extAppResult)
           .catch(error => {
             console.error(error);
           });
 
+        // Query OAuth policy configuration for external client apps
+        let extAppPolicyMap = new Map();
+        if (extAppSelfAuthRule) {
+          let extAppPolicyQuery = "SELECT ExternalClientApplicationId, PermittedUsersPolicyType FROM ExtlClntAppOauthPlcyCnfg WHERE ExternalClientApplicationId != null";
+          let extAppPolicyResult = {rows: []};
+          await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(extAppPolicyQuery), {}), extAppPolicyResult)
+            .catch(error => {
+              console.error(error);
+            });
+          for (let policy of extAppPolicyResult.rows) {
+            if (policy.ExternalClientApplicationId) {
+              extAppPolicyMap.set(policy.ExternalClientApplicationId, policy.PermittedUsersPolicyType);
+            }
+          }
+        }
+
         for (let extApp of extAppResult.rows) {
-          let appName = extApp.Name;
+          let appName = extApp.DeveloperName || extApp.Id;
 
           // Check self-authorization rule for external client apps
-          if (extAppSelfAuthRule && !extApp.OptionsAllowAdminApprovedUsersOnly) {
-            logs.push({
-              reference: appName,
-              name: "External client app allows self-authorization",
-              description: "This external client app allows users to self-authorize. Consider restricting authorization to admin-approved users only to enhance security.",
-              priority: 2
-            });
+          if (extAppSelfAuthRule) {
+            let policyType = extAppPolicyMap.get(extApp.Id);
+            // If policy type is "AllSelfAuthorized" or not set (null), it allows self-authorization
+            if (policyType === "AllSelfAuthorized" || policyType === null) {
+              logs.push({
+                reference: appName,
+                name: "External client app allows self-authorization",
+                description: "This external client app allows users to self-authorize. Consider restricting authorization to admin-approved users only to enhance security.",
+                priority: 2
+              });
+            }
           }
 
           // Check OAuth token usage for external client apps (using shared data)
