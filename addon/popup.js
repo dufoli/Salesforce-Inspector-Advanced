@@ -2351,9 +2351,14 @@ class UserDetails extends React.PureComponent {
         }
       }
 
-      alert("User cloned successfully! New User ID: " + newUserId);
-      // Refresh the page or reload user data
-      currentBrowser.runtime.sendMessage({message: "refresh"});
+      // Redirect to the new user's detail page
+      const newUserDetailLink = this.getUserDetailLink(newUserId);
+      const {linkTarget} = this.props;
+      if (linkTarget === "_blank") {
+        window.open(newUserDetailLink, "_blank");
+      } else {
+        window.location.href = newUserDetailLink;
+      }
 
     } catch (err) {
       console.error("Error cloning user:", err);
