@@ -57,23 +57,56 @@ function showApiName(e) {
   }
 }
 function generateFavIcon({sfHost}) {
+  // remove favicon for official site
+  const isMySalesforce = !sfHost.includes(".salesforce.com") || sfHost.includes(".my.salesforce.com");
+  if (!isMySalesforce) {
+    return null;
+  }
   let fav = localStorage.getItem(sfHost + "_customFavicon");
   let genCustomIcon = localStorage.getItem("generateCustomFavicon");
   if (!fav && genCustomIcon != "false") {
     let org = sfHost.split(".", 2)[0];
-    const letters = "0123456789ABCDEF";
-    fav = "#";
-    if (org.indexOf("--") >= 0) {
-      fav += "8";//sandbox is not red-ish
-      for (let i = 1; i < 6; i++) {
-        fav += letters[6 + Math.floor(Math.random() * 10)];
-      }
-    } else {
-      fav += "F";//prod is red-ish
-      for (let i = 1; i < 6; i++) {
-        fav += letters[6 + Math.floor(Math.random() * 10)];
-      }
+
+    // Simple hash function to generate consistent colors per org
+    let hash = 0;
+    for (let i = 0; i < org.length; i++) {
+      hash = ((hash << 5) - hash) + org.charCodeAt(i);
+      hash = hash & hash; // Convert to 32-bit integer
     }
+    hash = Math.abs(hash);
+
+    const isSandbox = org.indexOf("--") >= 0;
+
+    // Generate distinct colors based on environment
+    // Use prime numbers for multipliers to ensure better color distribution
+    if (isSandbox) {
+      // Sandbox: less reddish colors (lower R, higher G and B)
+      // R: 00-80 (less red), G: 80-FF (more green), B: 80-FF (more blue)
+      const r = Math.floor((hash % 129)); // 0-128 (0x00-0x80)
+      const g = Math.floor((hash * 17 % 128)) + 128; // 128-255 (0x80-0xFF)
+      const b = Math.floor((hash * 31 % 128)) + 128; // 128-255 (0x80-0xFF)
+
+      // Ensure colors are distinct by using different prime multipliers
+      const rHex = Math.min(0x80, Math.max(0x00, r)).toString(16).padStart(2, "0").toUpperCase();
+      const gHex = Math.min(0xFF, Math.max(0x80, g)).toString(16).padStart(2, "0").toUpperCase();
+      const bHex = Math.min(0xFF, Math.max(0x80, b)).toString(16).padStart(2, "0").toUpperCase();
+
+      fav = "#" + rHex + gHex + bHex;
+    } else {
+      // Production: reddish colors (high R, lower G and B)
+      // R: C0-FF (high red), G: 00-80 (lower green), B: 00-80 (lower blue)
+      const r = Math.floor((hash % 64)) + 192; // 192-255 (0xC0-0xFF)
+      const g = Math.floor((hash * 17 % 129)); // 0-128 (0x00-0x80)
+      const b = Math.floor((hash * 31 % 129)); // 0-128 (0x00-0x80)
+
+      // Ensure colors are distinct by using different prime multipliers
+      const rHex = Math.min(0xFF, Math.max(0xC0, r)).toString(16).padStart(2, "0").toUpperCase();
+      const gHex = Math.min(0x80, Math.max(0x00, g)).toString(16).padStart(2, "0").toUpperCase();
+      const bHex = Math.min(0x80, Math.max(0x00, b)).toString(16).padStart(2, "0").toUpperCase();
+
+      fav = "#" + rHex + gHex + bHex;
+    }
+
     localStorage.setItem(sfHost + "_customFavicon", fav);
   }
   return fav;

@@ -87,7 +87,7 @@ class OptionsTabSelector extends React.Component {
           {option: Option, props: {type: "toggle", title: "Disable query input autofocus", key: "disableQueryInputAutoFocus"}},
           {option: Option, props: {type: "toggle", title: "Enable generation of favicon color automatically", key: "generateCustomFavicon", default: true}},
           {option: Option, props: {type: "toggle", title: "Enable custom favicon for Salesforce", key: "customFaviconSF", default: true}},
-          {option: Option, props: {type: "option", title: "Custom favicon (org specific)", key: this.sfHost + "_customFavicon", values: ["blue", "green", "orange", "pink", "purple", "red", "yellow"]}},
+          {option: AllHostsColorPickerOption, props: {currentHost: this.sfHost}},
           {option: CustomLinkOption, props: {title: "Custom links (org specific)", key: this.sfHost + "_orgLinks"}},
           {option: Option, props: {type: "number", title: "Number of flow version to keep", key: "clearOlderFlowsKeep", placeholder: "5 by default", default: 5}},
           {option: Option, props: {type: "number", title: "Height of popup menu", key: "popupHeight", placeholder: "600 by default", default: 600}},
@@ -185,7 +185,7 @@ class OptionsContainer extends React.Component {
   }
 
   render() {
-    return h("div", {id: this.props.id, className: this.getClass(), role: "tabpanel"}, this.props.content.map((c) => h(c.option, {storageKey: c.props?.key, ...c.props, model: this.model})));
+    return h("div", {id: this.props.id, className: this.getClass(), role: "tabpanel"}, this.props.content.map((c, i) => h(c.option, {key: "option-" +i, storageKey: c.props?.key, ...c.props, model: this.model})));
   }
 
 }
@@ -474,6 +474,213 @@ class Option extends React.Component {
       console.error("Invalid render type: " + this.type);
       return h("div", {}, "Invalid option type: " + this.type);
     }
+  }
+}
+
+class ColorPickerOption extends React.Component {
+  constructor(props) {
+    super(props);
+    this.key = props.storageKey || props.key;
+    this.title = props.title;
+    this.onColorChange = this.onColorChange.bind(this);
+    this.onTextChange = this.onTextChange.bind(this);
+
+    // Color name to hex mapping for backward compatibility
+    this.colorMap = {
+      "blue": "#0070d2",
+      "green": "#04844b",
+      "orange": "#ff6633",
+      "pink": "#ef7ead",
+      "purple": "#906ab4",
+      "red": "#c23934",
+      "yellow": "#ffb75d"
+    };
+
+    // Get initial value from localStorage
+    let storedValue = localStorage.getItem(this.key);
+
+    // Convert color name to hex if needed
+    if (storedValue && this.colorMap[storedValue.toLowerCase()]) {
+      storedValue = this.colorMap[storedValue.toLowerCase()];
+      localStorage.setItem(this.key, storedValue);
+    }
+
+    // Ensure it's in #rrggbb format
+    if (storedValue && !storedValue.startsWith("#")) {
+      storedValue = "#" + storedValue;
+      localStorage.setItem(this.key, storedValue);
+    }
+
+    // Default to a color if none exists
+    if (!storedValue || !this.isValidHexColor(storedValue)) {
+      storedValue = "#0070d2"; // Default blue
+      localStorage.setItem(this.key, storedValue);
+    }
+
+    this.state = {
+      colorValue: storedValue
+    };
+  }
+
+  isValidHexColor(color) {
+    return /^#[0-9A-F]{6}$/i.test(color);
+  }
+
+  normalizeHexColor(color) {
+    // Remove # if present
+    color = color.replace("#", "");
+    // Ensure it's 6 characters
+    if (color.length === 3) {
+      color = color.split("").map(c => c + c).join("");
+    }
+    // Add # back
+    return "#" + color.toUpperCase();
+  }
+
+  onColorChange(e) {
+    let colorValue = e.target.value.toUpperCase();
+    // Ensure it starts with #
+    if (!colorValue.startsWith("#")) {
+      colorValue = "#" + colorValue;
+    }
+    this.setState({colorValue});
+    localStorage.setItem(this.key, colorValue);
+  }
+
+  onTextChange(e) {
+    let inputValue = e.target.value;
+    // Allow empty or partial input while typing
+    if (inputValue === "" || inputValue === "#") {
+      this.setState({colorValue: inputValue});
+      return;
+    }
+
+    // Normalize the color
+    let normalizedColor = this.normalizeHexColor(inputValue);
+
+    if (this.isValidHexColor(normalizedColor)) {
+      this.setState({colorValue: normalizedColor});
+      localStorage.setItem(this.key, normalizedColor);
+    } else {
+      // Allow invalid input while typing, but don't save
+      this.setState({colorValue: inputValue});
+    }
+  }
+
+  render() {
+    return h("div", {className: "slds-grid slds-p-horizontal_small slds-p-vertical_xx-small"},
+      h("div", {className: "slds-col slds-size_8-of-12 slds-form-element slds-grid slds-grid_align-end slds-grid_vertical-align-center slds-gutters_small"},
+        h("div", {className: "slds-col slds-size_6-of-12 slds-form-element__control"},
+          h("input", {
+            type: "color",
+            id: this.key + "_color",
+            className: "slds-input color-picker-input",
+            value: this.state.colorValue,
+            onChange: this.onColorChange
+          })
+        ),
+        h("div", {className: "slds-col slds-size_3-of-12 slds-form-element__control"},
+          h("input", {
+            type: "text",
+            id: this.key + "_text",
+            className: "slds-input slds-theme_default",
+            placeholder: "#rrggbb",
+            value: this.state.colorValue,
+            onChange: this.onTextChange,
+            pattern: "^#[0-9A-Fa-f]{6}$",
+            maxLength: 7
+          })
+        ),
+        h("div", {className: "slds-col slds-size_3-of-12 slds-text-align_left slds-p-left_small"},
+          h("span", {className: "slds-text-body_small slds-text-color_weak"}, "Format: #rrggbb")
+        )
+      )
+    );
+  }
+}
+
+class AllHostsColorPickerOption extends React.Component {
+  constructor(props) {
+    super(props);
+    this.currentHost = props.currentHost;
+    this.getAllHosts = this.getAllHosts.bind(this);
+    this.deleteFavicon = this.deleteFavicon.bind(this);
+    this.state = {hosts: this.getAllHosts()};
+  }
+
+  getAllHosts() {
+    // Get all hosts from localStorage keys ending with "_customFavicon"
+    let hosts = new Set();
+    for (let i = 0; i < localStorage.length; i++) {
+      let key = localStorage.key(i);
+      if (key && key.endsWith("_customFavicon")) {
+        let host = key.replace("_customFavicon", "");
+        hosts.add(host);
+      }
+    }
+    // Always include current host
+    if (this.currentHost) {
+      hosts.add(this.currentHost);
+    }
+    // Sort hosts alphabetically
+    return Array.from(hosts).sort();
+  }
+
+  deleteFavicon(host) {
+    localStorage.removeItem(host + "_customFavicon");
+    this.setState({hosts: this.getAllHosts()});
+  }
+
+  render() {
+    if (this.state.hosts.length === 0) {
+      return h("div", {className: "slds-grid slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "Custom favicon (all orgs)")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12"},
+          h("span", {className: "slds-text-body_small slds-text-color_weak"}, "No orgs found")
+        )
+      );
+    }
+
+    return h("div", {className: "slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
+      h("div", {className: "slds-grid slds-m-bottom_x-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "Custom favicon (all orgs)")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12"},
+          h("span", {className: "slds-text-body_small slds-text-color_weak"}, this.state.hosts.length + " org(s) configured")
+        )
+      ),
+      h("div", {className: "slds-m-left_medium"},
+        this.state.hosts.map(host => {
+          let isCurrentHost = host === this.currentHost;
+          return h("div", {
+            key: host + "_customFavicon",
+            className: "slds-grid slds-border_bottom slds-p-vertical_xx-small" + (isCurrentHost ? " slds-theme_info" : "")
+          },
+          h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+            h("span", {
+              className: "slds-text-body_small" + (isCurrentHost ? " slds-text-color_default" : " slds-text-color_weak")
+            }, host + (isCurrentHost ? " (current)" : ""))
+          ),
+          h("div", {className: "slds-col slds-size_6-of-12"},
+            h(ColorPickerOption, {
+              title: "",
+              storageKey: host + "_customFavicon"
+            })
+          ),
+          h("div", {className: "slds-col slds-size_2-of-12 text-align-middle"},
+            h("button", {
+              onClick: () => this.deleteFavicon(host),
+              title: "Delete custom favicon",
+              className: "slds-button slds-button_destructive"
+            }, "Delete")
+          )
+          );
+        })
+      )
+    );
   }
 }
 
