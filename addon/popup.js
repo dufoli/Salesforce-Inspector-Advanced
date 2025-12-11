@@ -1967,6 +1967,7 @@ class UserDetails extends React.PureComponent {
     this.enableDebugLog = this.enableDebugLog.bind(this);
     this.clickLoginIncognito = this.clickLoginIncognito.bind(this);
     this.clickResetPassword = this.clickResetPassword.bind(this);
+    this.clickCloneUser = this.clickCloneUser.bind(this);
     this.toggleDebugAura = this.toggleDebugAura.bind(this);
   }
   async toggleDebugAura() {
@@ -2144,6 +2145,222 @@ class UserDetails extends React.PureComponent {
     }
   }
 
+  async clickCloneUser() {
+    let {user} = this.props;
+    if (!user || !user.IsActive) {
+      alert("Cannot clone inactive user");
+      return;
+    }
+
+    // Prompt for new user details
+    const username = prompt("Enter username for the new user:", "");
+    if (!username) {
+      return;
+    }
+
+    const firstname = prompt("Enter first name:", "");
+    if (!firstname) {
+      return;
+    }
+
+    const lastname = prompt("Enter last name:", "");
+    if (!lastname) {
+      return;
+    }
+
+    try {
+      // Query source user's full details including all properties
+      const userQuery = "SELECT "
+        + "FIELDS(ALL) "
+        + "FROM User WHERE Id = '" + user.Id + "'";
+
+      // Query permission set assignments (where PermissionSetId is not null)
+      const permSetQuery = "SELECT PermissionSetId, PermissionSet.Name FROM PermissionSetAssignment WHERE AssigneeId = '" + user.Id + "' AND PermissionSetId != null";
+
+      // Query permission set group assignments (where PermissionSetGroupId is not null)
+      const permSetGroupQuery = "SELECT PermissionSetGroupId, PermissionSetGroup.DeveloperName FROM PermissionSetAssignment WHERE AssigneeId = '" + user.Id + "' AND PermissionSetGroupId != null";
+
+      // Query public group memberships
+      const groupQuery = "SELECT GroupId, Group.Name FROM GroupMember WHERE UserOrGroupId = '" + user.Id + "' AND Group.Type = 'Regular'";
+
+      // Execute composite query
+      const compositeQuery = toCompositeRequest({
+        userData: userQuery,
+        permSets: permSetQuery,
+        permSetGroups: permSetGroupQuery,
+        groups: groupQuery
+      });
+
+      const results = await sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery});
+
+      // Check for errors in composite response
+      const userDataResponse = results.compositeResponse.find(r => r.referenceId === "userData");
+      if (!userDataResponse || userDataResponse.httpStatusCode !== 200) {
+        throw new Error("Failed to retrieve source user data: " + (userDataResponse?.body?.message || "Unknown error"));
+      }
+
+      const sourceUser = userDataResponse.body?.records?.[0];
+      if (!sourceUser) {
+        throw new Error("Source user not found");
+      }
+
+      // Prepare new user object with copied properties
+      const newUser = {
+        Username: username,
+        Email: username, // Email same as username
+        FirstName: firstname,
+        LastName: lastname,
+        Alias: (firstname.substring(0, 1) + lastname.substring(0, 7)).toUpperCase(),
+        ProfileId: sourceUser.ProfileId,
+        UserRoleId: sourceUser.UserRoleId || null,
+        LocaleSidKey: sourceUser.LocaleSidKey || "en_US",
+        LanguageLocaleKey: sourceUser.LanguageLocaleKey || "en_US",
+        TimeZoneSidKey: sourceUser.TimeZoneSidKey || "America/New_York",
+        EmailEncodingKey: sourceUser.EmailEncodingKey || "UTF-8",
+        FederationIdentifier: username,
+        IsActive: true,
+      };
+      Object.keys(sourceUser)
+        .filter(userField => userField !== "Id"
+          && userField !== "Attributes"
+          && userField !== "IsDeleted"
+          && userField !== "LastModifiedDate"
+          && userField !== "LastModifiedById"
+          && userField !== "SystemModstamp"
+          && userField !== "CreatedDate"
+          && userField !== "CreatedById"
+          && userField !== "ProfileId"
+          && userField !== "UserRoleId"
+          && userField !== "LocaleSidKey"
+          && userField !== "LanguageLocaleKey"
+          && userField !== "TimeZoneSidKey"
+          && userField !== "EmailEncodingKey"
+          && userField !== "FederationIdentifier"
+          && userField !== "Username"
+          && userField !== "Email"
+          && userField !== "FirstName"
+          && userField !== "LastName"
+          && userField !== "Alias"
+          && userField !== "CommunityNickname"
+          && userField !== "Phone"
+          && userField !== "MobilePhone"
+          && userField !== "Title"
+          && userField !== "Department"
+          && userField !== "IsActive"
+          && userField !== "Address"
+          && userField !== "SuAccessExpirationDate"
+          && userField !== "BadgeText"
+          && userField !== "IsProfilePhotoActive"
+          && userField !== "PasswordExpirationDate"
+          && userField !== "NumberOfFailedLogins"
+          && userField !== "UserType"
+          && userField !== "Profile__c"
+          && userField !== "HasUserVerifiedEmail"
+          && userField !== "LastPasswordChangeDate"
+          && userField !== "SmallPhotoUrl"
+          && userField !== "Role__c"
+          && userField !== "SmallBannerPhotoUrl"
+          && userField !== "FullPhotoUrl"
+          && userField !== "MediumBannerPhotoUrl"
+          && userField !== "HasUserVerifiedPhone"
+          && userField !== "LastLoginDate"
+          && userField !== "IsExtIndicatorVisible"
+          && userField !== "Name"
+          && userField !== "BannerPhotoUrl"
+          && userField !== "MediumPhotoUrl"
+          && userField !== "LastViewedDate"
+          && userField !== "OutOfOfficeMessage"
+          && userField !== "LastReferencedDate"
+          && sourceUser[userField] != null)
+        .forEach(userField => {
+          newUser[userField] = sourceUser[userField];
+        });
+      // Create the new user
+      const createUserResponse = await sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User", {method: "POST", body: newUser});
+      const newUserId = createUserResponse.id;
+
+      if (!newUserId) {
+        throw new Error("Failed to create new user");
+      }
+
+      // Prepare assignments for composite request
+      const assignments = [];
+
+      // Add permission set assignments
+      const permSetResults = results.compositeResponse.find(r => r.referenceId === "permSets")?.body?.records || [];
+      permSetResults.forEach(psa => {
+        if (psa.PermissionSetId) {
+          assignments.push({
+            method: "POST",
+            url: "/services/data/v" + apiVersion + "/sobjects/PermissionSetAssignment",
+            body: {
+              AssigneeId: newUserId,
+              PermissionSetId: psa.PermissionSetId
+            },
+            referenceId: "psa_" + psa.PermissionSetId
+          });
+        }
+      });
+
+      // Add permission set group assignments
+      const permSetGroupResults = results.compositeResponse.find(r => r.referenceId === "permSetGroups")?.body?.records || [];
+      permSetGroupResults.forEach(psga => {
+        if (psga.PermissionSetGroupId) {
+          assignments.push({
+            method: "POST",
+            url: "/services/data/v" + apiVersion + "/sobjects/PermissionSetAssignment",
+            body: {
+              AssigneeId: newUserId,
+              PermissionSetGroupId: psga.PermissionSetGroupId
+            },
+            referenceId: "psga_" + psga.PermissionSetGroupId
+          });
+        }
+      });
+
+      // Add public group memberships
+      const groupResults = results.compositeResponse.find(r => r.referenceId === "groups")?.body?.records || [];
+      groupResults.forEach(gm => {
+        if (gm.GroupId) {
+          assignments.push({
+            method: "POST",
+            url: "/services/data/v" + apiVersion + "/sobjects/GroupMember",
+            body: {
+              UserOrGroupId: newUserId,
+              GroupId: gm.GroupId
+            },
+            referenceId: "gm_" + gm.GroupId
+          });
+        }
+      });
+
+      // Execute assignments in batches (Salesforce composite API limit is 25 subrequests)
+      const batchSize = 25;
+      for (let i = 0; i < assignments.length; i += batchSize) {
+        const batch = assignments.slice(i, i + batchSize);
+        const compositeAssignments = {
+          compositeRequest: batch,
+          allOrNone: false
+        };
+
+        try {
+          await sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeAssignments});
+        } catch (err) {
+          console.warn("Some assignments failed:", err);
+          // Continue with next batch even if some fail
+        }
+      }
+
+      alert("User cloned successfully! New User ID: " + newUserId);
+      // Refresh the page or reload user data
+      currentBrowser.runtime.sendMessage({message: "refresh"});
+
+    } catch (err) {
+      console.error("Error cloning user:", err);
+      alert("Error cloning user: " + (err.message || JSON.stringify(err)));
+    }
+  }
+
   render() {
     let {user, linkTarget} = this.props;
     let debugAuraLabel = user.UserPreferencesUserDebugModePref ? "Disable" : "Enable";
@@ -2206,6 +2423,7 @@ class UserDetails extends React.PureComponent {
           this.canLoginAsPortal(user) ? h("a", {href: this.getLoginAsPortalLink(user), target: linkTarget, className: "slds-button slds-button_neutral"}, "Login to Experience") : null, //internal_share or people
           this.doSupportLoginAs(user) ? h("a", {onClick: this.clickLoginIncognito, target: linkTarget, className: "slds-button slds-button_neutral"}, "Login as Incognito") : null, // meet_focus_equal or new_window
           user?.IsActive ? h("a", {onClick: this.clickResetPassword, target: linkTarget, className: "slds-button slds-button_neutral"}, "Reset Password") : null,
+          user?.IsActive ? h("a", {onClick: this.clickCloneUser, target: linkTarget, className: "slds-button slds-button_neutral", title: "Clone user with all properties and assignments"}, "Clone") : null,
         )
       )
     );
