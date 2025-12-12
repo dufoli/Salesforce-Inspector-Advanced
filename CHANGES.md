@@ -1,16 +1,88 @@
 # Release Notes
 
 ## Version 1.38
-- Inspect: field usage [issue 268](https://github.com/dufoli/Salesforce-Inspector-Advanced/268)
-- Flow Analyzer: new tool to analyze and optimize Salesforce Flows. Accessible via "Analyze Flow" button when viewing a Flow in Flow Builder. Scans flow metadata for potential issues including:
-  - **Performance**: DML operations in loops (Get/Update/Create/Delete Record), action calls in loops, Get Record retrieving all fields
-  - **Best Practices**: Missing flow description, unused variables, unconnected elements, copy API names, not using Auto Layout
-  - **Security & Reliability**: Hardcoded IDs and URLs, missing fault paths, missing null handlers, unsafe running context
-  - **Maintainability**: High cyclomatic complexity, flow naming conventions, old API versions, too many flow versions
-  - **Logic Issues**: Recursive after update triggers, same record field updates
-  Results are displayed with severity levels (error, warning, info) and actionable recommendations to help maintain secure, performant, and reliable Flow automations. [issue 251](https://github.com/dufoli/Salesforce-Inspector-Advanced/251)
-- Metadata: upload and generate package.xml
-- Editor: improve suggestion position 
+
+### Inspect
+- **Field Usage Analysis**: New feature to analyze field usage across your Salesforce org. View the percentage of records that have values populated for each field, helping you identify unused or underutilized fields. Accessible via the "Show field usage" option in the object actions menu. [issue 268](https://github.com/dufoli/Salesforce-Inspector-Advanced/268)
+- **Polymorphic Field Types Display**: Improved display of polymorphic reference fields in the Type column. When a field references multiple object types, only the first 3 types are shown initially with a clickable "...(X more)" link to expand and view all remaining types. This makes the interface cleaner and easier to read when dealing with fields that reference many object types.
+
+### Flow Analyzer
+New comprehensive tool to analyze and optimize Salesforce Flows. Accessible via the "Analyze Flow" button when viewing a Flow in Flow Builder. The analyzer scans flow metadata for potential issues across multiple categories:
+
+- **Performance Issues**: 
+  - DML operations in loops (Get/Update/Create/Delete Record)
+  - Action calls within loops
+  - Get Record elements retrieving all fields instead of specific fields
+  
+- **Best Practices**: 
+  - Missing flow descriptions
+  - Unused variables
+  - Unconnected elements
+  - Copy API names (should use labels)
+  - Not using Auto Layout
+  
+- **Security & Reliability**: 
+  - Hardcoded IDs and URLs
+  - Missing fault paths
+  - Missing null handlers
+  - Unsafe running context configurations
+  
+- **Maintainability**: 
+  - High cyclomatic complexity
+  - Flow naming convention violations
+  - Old API versions in use
+  - Too many flow versions
+  
+- **Logic Issues**: 
+  - Recursive after update triggers
+  - Same record field updates
+
+Results are displayed with severity levels (error, warning, info) and include actionable recommendations to help maintain secure, performant, and reliable Flow automations. [issue 251](https://github.com/dufoli/Salesforce-Inspector-Advanced/251)
+
+### Org Analyzer
+Expanded with many new detection rules to help identify potential issues and optimization opportunities:
+
+- **Unused Resources**: 
+  - Custom fields with no references (flow, Apex, layout) and no data
+  
+- **Code Quality**: 
+  - Too many validation rules per object
+  - Too many triggers per object
+  - SOQL queries in loops
+  - DML operations in loops
+  - Hardcoded IDs in code instead of custom labels
+  - SOQL injection vulnerabilities (missing escape on parameters)
+  - Apex classes without explicit sharing model
+  - Apex triggers containing logic, SOQL, or DML instead of delegating to service classes
+  - Unreferenced Apex classes (excluding REST Apex)
+  - Batchable, Queueable, or Schedulable classes without jobs in the last 365 days
+  
+- **Flow Management**: 
+  - Flows with too many versions
+  - Flows using old API versions
+  
+- **Migration Opportunities**: 
+  - Process Builder or Workflow Rules that should be migrated to Flow
+  - Visualforce pages or Lightning Components that should be migrated to LWC
+  
+- **Security & Access Management**: 
+  - Too many system administrators
+  - Role Hierarchy with too many levels
+  - Users without login activity for extended periods or never logged in
+  - Connected Apps with admin pre-authorized users having too many permissions
+  - Connected Apps with admin pre-authorized users without proper permissions
+
+### Metadata
+- **Package.xml Generation**: Upload metadata files and automatically generate a `package.xml` file, streamlining the process of creating deployment packages.
+
+### Editor
+- **Suggestion Positioning**: Improved positioning of code suggestions to better align with the cursor and provide a more intuitive editing experience.
+
+### Options
+- **Favicon Color Picker**: New color picker in the options page to customize the favicon color for your Salesforce environment and extension, making it easier to visually distinguish between different orgs.
+
+### Popup
+- **Clone User**: New functionality to clone user records directly from the popup interface, simplifying user management tasks.
   
 
 ## Version 1.37

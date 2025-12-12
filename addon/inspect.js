@@ -1883,13 +1883,47 @@ class FieldValueCell extends React.Component {
 }
 
 class FieldTypeCell extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      showAllTypes: false
+    };
+    this.onShowMoreClick = this.onShowMoreClick.bind(this);
+  }
+  onShowMoreClick(e) {
+    e.preventDefault();
+    this.setState({showAllTypes: true});
+  }
   render() {
     let {row, col} = this.props;
+    const MAX_INITIAL_TYPES = 3;
+    let referenceTypes = row.referenceTypes();
+    
+    if (referenceTypes && referenceTypes.length > 0) {
+      const isPolymorphic = referenceTypes.length > MAX_INITIAL_TYPES;
+      const typesToShow = this.state.showAllTypes 
+        ? referenceTypes 
+        : referenceTypes.slice(0, MAX_INITIAL_TYPES);
+      const remainingCount = referenceTypes.length - MAX_INITIAL_TYPES;
+      
+      return h("td", {className: col.className + " quick-select"},
+        typesToShow.map(data =>
+          h("span", {key: data}, h("a", {href: row.showReferenceUrl(data)}, data), " ")
+        ),
+        isPolymorphic && !this.state.showAllTypes && remainingCount > 0
+          ? h("span", {key: "more"},
+              h("a", {
+                href: "about:blank",
+                onClick: this.onShowMoreClick,
+                style: {cursor: "pointer", textDecoration: "underline", color: "#0066cc"}
+              }, "...(" + remainingCount + " more)")
+            )
+          : null
+      );
+    }
+    
     return h("td", {className: col.className + " quick-select"},
-      row.referenceTypes() ? row.referenceTypes().map(data =>
-        h("span", {key: data}, h("a", {href: row.showReferenceUrl(data)}, data), " ")
-      ) : null,
-      !row.referenceTypes() ? h(TypedValue, {value: row.sortKey(col.name)}) : null
+      h(TypedValue, {value: row.sortKey(col.name)})
     );
   }
 }
