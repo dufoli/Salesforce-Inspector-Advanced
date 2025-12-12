@@ -222,7 +222,7 @@ class Model {
     this.editor.focus();
   }
   addToHistory() {
-    this.savedHistory.add({script: this.editor.value, name: this.scriptName});
+    this.savedHistory.add({script: this.editor.value, name: this.scriptName, tags: []});
   }
   saveClientId() {
     localStorage.setItem(this.sfHost + "_clientId", this.clientId);
@@ -1158,18 +1158,19 @@ class Model {
   }
   getHistory() {
     let historyMap = new Map();
-    this.scriptHistory.list.forEach(q => historyMap.set(q.script, {value: q.script, label: q.script.substring(0, 300), favorite: false}));
+    this.scriptHistory.list.forEach(q => historyMap.set(q.script, {value: q.script, label: q.script.substring(0, 300), favorite: false, tags: q.tags || []}));
     this.scriptTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true}));
     this.savedHistory.list.forEach(q => {
       let delimiter = ":";
       let itm;
       if (q.name){
-        itm = {value: q.script, label: q.name, favorite: true};
+        itm = {value: q.script, label: q.name, name: q.name, favorite: true, tags: q.tags || []};
       } else if (q.script.includes(delimiter)){
-        itm = {label: q.script.split(delimiter)[0], favorite: true};
+        itm = {label: q.script.split(delimiter)[0], favorite: true, tags: q.tags || []};
+        itm.name = itm.label;
         itm.value = q.script.substring(itm.label.length + 1);
       } else {
-        itm = {value: q.script, label: q.script, favorite: true};
+        itm = {value: q.script, label: q.script, favorite: true, tags: q.tags || []};
       }
       historyMap.set(itm.value, itm);
     });
@@ -1208,13 +1209,22 @@ class Model {
   }
   updateHistoryItem(history) {
     if (history.favorite) {
-      let itm = this.scriptHistory.list.find(item => item.script == history.value);
+      // For saved scripts (favorites), find and update in savedHistory
+      // Match by script value (name might be changing, so don't match by name)
+      let itm = this.savedHistory.list.find(item =>
+        item.script == history.value
+      );
       if (itm) {
-        this.scriptHistory.remove(itm);
+        // Use tags from history if provided, otherwise preserve existing tags
+        const tagsToUse = Array.isArray(history.tags) ? history.tags : (itm.tags || []);
+        // Remove old entry
+        this.savedHistory.remove(itm);
+        // Add updated entry with new name and tags
+        let newSaved = {script: history.value, name: history.name, tags: tagsToUse};
+        this.savedHistory.add(newSaved);
       }
-      let newSaved = {script: history.value};
-      this.savedHistory.add(newSaved);
     } else {
+      // For regular history items, check if they're in savedHistory first
       let itm = this.savedHistory.list.find(item => (item.script == history.value && item.name && item.name == history.label) || (item.script == history.label + ":" + history.value) || (item.script == history.value && item.script == history.label));
       if (itm) {
         this.savedHistory.remove(itm);
@@ -1225,9 +1235,17 @@ class Model {
           localStorage.setItem("scriptTemplates", JSON.stringify(this.scriptTemplates));
         }
       }
+      // Find existing history item to preserve tags
+      let existingHistory = this.scriptHistory.list.find(item => item.script == history.value);
       let newHistory = {script: history.value};
       if (itm && itm.name) {
         newHistory.name = itm.name;
+      }
+      // Preserve tags from history object or existing history item
+      if (Array.isArray(history.tags) && history.tags.length > 0) {
+        newHistory.tags = history.tags;
+      } else if (existingHistory && existingHistory.tags) {
+        newHistory.tags = existingHistory.tags;
       }
       this.scriptHistory.add(newHistory);
     }

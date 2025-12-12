@@ -1,6 +1,29 @@
 /* global React */
-import {sfConn, apiVersion} from "./inspector.js";
 const h = React.createElement;
+
+// Helper function to extract main object from FROM clause
+function extractMainObject(query) {
+  if (!query) return null;
+  const fromMatch = query.match(/\bFROM\s+(\w+)/i);
+  if (fromMatch && fromMatch[1]) {
+    return fromMatch[1];
+  }
+  return null;
+}
+
+// Helper function to generate color from tag hash
+function getTagColor(tag) {
+  if (!tag) return "#808080";
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  // Generate a color with good contrast (avoid too dark or too light)
+  const hue = Math.abs(hash % 360);
+  const saturation = 50 + (Math.abs(hash) % 30); // 50-80%
+  const lightness = 45 + (Math.abs(hash) % 15); // 45-60%
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
 
 export class QueryHistory {
   constructor(storageKey, max, compare, sorter) {
@@ -23,6 +46,17 @@ export class QueryHistory {
     }
     // A previous version stored just strings. Skip entries from that to avoid errors.
     history = history.filter(e => typeof e == "object");
+    // Ensure tags array exists and auto-add main object as tag for all queries
+    history.forEach(entry => {
+      if (!entry.tags || !Array.isArray(entry.tags)) {
+        entry.tags = [];
+      }
+      // Auto-add main object as tag if not present
+      const mainObject = extractMainObject(entry.query);
+      if (mainObject && !entry.tags.includes(mainObject)) {
+        entry.tags.push(mainObject);
+      }
+    });
     this.sort(this.storageKey, history);
     return history;
   }
@@ -32,6 +66,15 @@ export class QueryHistory {
     let historyIndex = history.findIndex(e => this.compare(e, entry));
     if (historyIndex > -1) {
       history.splice(historyIndex, 1);
+    }
+    // Ensure tags array exists
+    if (!entry.tags || !Array.isArray(entry.tags)) {
+      entry.tags = [];
+    }
+    // Auto-add main object as tag if not present for all queries
+    const mainObject = extractMainObject(entry.query);
+    if (mainObject && !entry.tags.includes(mainObject)) {
+      entry.tags.push(mainObject);
     }
     history.splice(0, 0, entry);
     if (history.length > this.max) {
@@ -65,6 +108,7 @@ export class QueryHistory {
     this.list = history;
   }
 }
+
 export class HistoryBox extends React.Component {
   constructor(props) {
     super(props);
@@ -73,12 +117,46 @@ export class HistoryBox extends React.Component {
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onFocus = this.onFocus.bind(this);
     this.onBlur = this.onBlur.bind(this);
+    this.onDeleteTag = this.onDeleteTag.bind(this);
+    this.onAddTag = this.onAddTag.bind(this);
+    this.onTagInputKeyDown = this.onTagInputKeyDown.bind(this);
+    this.onRenameStart = this.onRenameStart.bind(this);
+    this.onRenameChange = this.onRenameChange.bind(this);
+    this.onRenameKeyDown = this.onRenameKeyDown.bind(this);
+    this.onRenameBlur = this.onRenameBlur.bind(this);
+    this.onToggleExpand = this.onToggleExpand.bind(this);
+    this.matchesSearchTerms = this.matchesSearchTerms.bind(this);
     this.state = {
       activeSuggestion: 0,
       filteredSuggestions: [],
       showSuggestions: false,
-      seachTerms: ""
+      seachTerms: "",
+      expandedQueries: new Set(),
+      renamingIndex: null,
+      renameValue: "",
+      tagInputs: {}
     };
+  }
+  matchesSearchTerms(suggestion, searchTerms) {
+    if (!searchTerms || !searchTerms.trim()) {
+      return true;
+    }
+    // Split search terms by spaces and filter out empty strings
+    const terms = searchTerms.toLowerCase().split(/\s+/).filter(term => term.length > 0);
+    if (terms.length === 0) {
+      return true;
+    }
+    // Get all searchable text from the suggestion
+    const labelText = (suggestion.label || "").toLowerCase();
+    const queryText = (suggestion.value || suggestion.query || "").toLowerCase();
+    const tagTexts = (suggestion.tags || []).map(tag => tag.toLowerCase());
+    // Check if ALL terms are found individually in any of the searchable fields
+    // Each term must be found in at least one field (label, query, or tags)
+    return terms.every(term =>
+      labelText.indexOf(term) > -1
+      || queryText.indexOf(term) > -1
+      || tagTexts.some(tag => tag.indexOf(term) > -1)
+    );
   }
   onFocus() {
     let {didUpdate, suggestions} = this.props;
@@ -86,10 +164,7 @@ export class HistoryBox extends React.Component {
 
     let filteredSuggestions = this.sortSuggestion(suggestions);
     if (seachTerms) {
-      filteredSuggestions = suggestions.filter(
-        suggestion =>
-          suggestion.label.toLowerCase().indexOf(seachTerms.toLowerCase()) > -1
-      );
+      filteredSuggestions = suggestions.filter(suggestion => this.matchesSearchTerms(suggestion, seachTerms));
     }
     this.setState({
       activeSuggestion: 0,
@@ -99,13 +174,23 @@ export class HistoryBox extends React.Component {
     didUpdate();
   }
   onBlur(e) {
-    if (e.currentTarget.parentElement.parentElement.parentElement.contains(e.relatedTarget) && e.relatedTarget.tagName !== "BUTTON") {
+    const dropdownContainer = e.currentTarget.parentElement.parentElement.parentElement;
+    // Don't close if focus is moving to an element within the dropdown (buttons, inputs, etc.)
+    if (dropdownContainer.contains(e.relatedTarget)) {
+      return;
+    }
+    // Don't close if we're currently renaming
+    if (this.state && this.state.renamingIndex !== null) {
       return;
     }
     let {didUpdate} = this.props;
     setTimeout(() => {
       //no need to refresh if already refresh by click on value
       if (!this.state || !this.state.showSuggestions) {
+        return;
+      }
+      // Don't close if we're currently renaming
+      if (this.state.renamingIndex !== null) {
         return;
       }
       this.setState({
@@ -115,15 +200,14 @@ export class HistoryBox extends React.Component {
         seachTerms: ""
       });
       didUpdate();
-    }, 100); // Set timeout for 500ms
+    }, 100);
   }
   onChange(e) {
     let {didUpdate, suggestions} = this.props;
     const userInput = e.target.value;
 
     const filteredSuggestions = this.sortSuggestion(suggestions).filter(
-      suggestion =>
-        suggestion.label.toLowerCase().indexOf(userInput.toLowerCase()) > -1
+      suggestion => this.matchesSearchTerms(suggestion, userInput)
     );
 
     this.setState({
@@ -135,7 +219,7 @@ export class HistoryBox extends React.Component {
     didUpdate();
   }
   onSuggestionClick(e, activeSuggestion) {
-    if (e.target.tagName == "BUTTON" || e.target.tagName == "USE") {
+    if (e.target.tagName == "BUTTON" || e.target.tagName == "USE" || e.target.tagName == "INPUT") {
       return;
     }
     let {onSelect} = this.props;
@@ -149,7 +233,6 @@ export class HistoryBox extends React.Component {
 
     onSelect(filteredSuggestions[activeSuggestion]);
   }
-  //TODO store on value json stringify du json plutot que seulement value et utilisé ca pour le retrouver 
   onKeyDown(e){
     const {activeSuggestion, filteredSuggestions} = this.state;
     let {onSelect} = this.props;
@@ -184,7 +267,6 @@ export class HistoryBox extends React.Component {
       }
       return a.favorite ? -1 : 1;
     });
-
   }
   onDeleteItem(e, index) {
     e.preventDefault();
@@ -199,6 +281,132 @@ export class HistoryBox extends React.Component {
     onDelete(suggestion);
     didUpdate();
   }
+  onDeleteTag(e, index, tagIndex) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {didUpdate, onUpdate} = this.props;
+    let {filteredSuggestions} = this.state;
+    let suggestion = filteredSuggestions[index];
+    if (suggestion.tags && suggestion.tags.length > tagIndex) {
+      suggestion.tags.splice(tagIndex, 1);
+      if (onUpdate) {
+        onUpdate(suggestion);
+      }
+      this.setState({
+        filteredSuggestions: [...filteredSuggestions]
+      });
+      didUpdate();
+    }
+  }
+  onAddTag(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {didUpdate, onUpdate} = this.props;
+    let {filteredSuggestions, tagInputs} = this.state;
+    let suggestion = filteredSuggestions[index];
+    const tagInput = tagInputs[index] || "";
+    const tag = tagInput.trim();
+    if (tag) {
+      // Initialize tags array if it doesn't exist
+      if (!suggestion.tags) {
+        suggestion.tags = [];
+      }
+      // Add tag if it doesn't already exist
+      if (!suggestion.tags.includes(tag)) {
+        suggestion.tags.push(tag);
+        tagInputs[index] = "";
+        if (onUpdate) {
+          onUpdate(suggestion);
+        }
+        this.setState({
+          filteredSuggestions: [...filteredSuggestions],
+          tagInputs: {...tagInputs}
+        });
+        didUpdate();
+      } else {
+        // Tag already exists, just clear the input
+        tagInputs[index] = "";
+        this.setState({
+          tagInputs: {...tagInputs}
+        });
+      }
+    }
+  }
+  onTagInputKeyDown(e, index) {
+    if (e.keyCode === 13) {
+      e.preventDefault();
+      this.onAddTag(e, index);
+    } else if (e.keyCode === 27) {
+      let {tagInputs} = this.state;
+      tagInputs[index] = "";
+      this.setState({tagInputs: {...tagInputs}});
+    }
+  }
+  onRenameStart(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {filteredSuggestions} = this.state;
+    let suggestion = filteredSuggestions[index];
+    this.setState({
+      renamingIndex: index,
+      renameValue: suggestion.name || suggestion.label || ""
+    });
+  }
+  onRenameChange(e) {
+    this.setState({
+      renameValue: e.target.value
+    });
+  }
+  onRenameKeyDown(e, index) {
+    if (e.keyCode === 13) {
+      e.preventDefault();
+      this.onRenameBlur(e, index);
+    } else if (e.keyCode === 27) {
+      this.setState({
+        renamingIndex: null,
+        renameValue: ""
+      });
+    }
+  }
+  onRenameBlur(e, index) {
+    // Don't save if focus is moving to another element in the dropdown
+    const dropdownContainer = e.currentTarget.closest(".slds-dropdown");
+    if (dropdownContainer && dropdownContainer.contains(e.relatedTarget)) {
+      return;
+    }
+    let {didUpdate, onUpdate} = this.props;
+    let {filteredSuggestions, renameValue} = this.state;
+    let suggestion = filteredSuggestions[index];
+    const newName = renameValue.trim();
+    if (newName && newName !== (suggestion.name || suggestion.label)) {
+      suggestion.name = newName;
+      suggestion.label = newName;
+      if (onUpdate) {
+        onUpdate(suggestion);
+      }
+      this.setState({
+        filteredSuggestions: [...filteredSuggestions]
+      });
+      didUpdate();
+    }
+    this.setState({
+      renamingIndex: null,
+      renameValue: ""
+    });
+  }
+  onToggleExpand(e, index) {
+    e.preventDefault();
+    e.stopPropagation();
+    let {expandedQueries} = this.state;
+    if (expandedQueries.has(index)) {
+      expandedQueries.delete(index);
+    } else {
+      expandedQueries.add(index);
+    }
+    this.setState({
+      expandedQueries: new Set(expandedQueries)
+    });
+  }
   toggleFav(e, index) {
     e.preventDefault();
     e.stopPropagation();
@@ -212,12 +420,12 @@ export class HistoryBox extends React.Component {
     didUpdate();
   }
   render() {
-    let {activeSuggestion, filteredSuggestions, showSuggestions} = this.state;
+    let {activeSuggestion, filteredSuggestions, showSuggestions, expandedQueries, renamingIndex, renameValue, tagInputs} = this.state;
     return h("div", {className: "slds-form-element slds-nowrap"},
       h("div", {className: "slds-form-element__control slds-wrap"},
         h("div", {className: "slds-combobox_container"},
           h("div", {className: "slds-combobox slds-dropdown-trigger slds-dropdown-trigger_click slds-is-open"},
-            h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"}, // slds-button slds-button_first slds-nowrap
+            h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"},
               h("input", {type: "text", className: "slds-input slds-combobox__input" + (showSuggestions ? " slds-has-focus" : ""), "aria-autocomplete": "list", "aria-controls": "listbox-id-2", "aria-expanded": (showSuggestions ? "true" : "false"), "aria-haspopup": "listbox", autoComplete: "off", role: "combobox", placeholder: showSuggestions ? "Search..." : this.props.title, value: this.state.seachTerms, onChange: this.onChange, onFocus: this.onFocus, onBlur: this.onBlur, onKeyDown: this.onKeyDown}),
               h("span", {className: "slds-icon_container slds-icon-utility-search slds-input__icon slds-input__icon_right"},
                 h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": "true"},
@@ -229,29 +437,151 @@ export class HistoryBox extends React.Component {
               ? h("div", {id: "listbox-id-2", className: "slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid", role: "listbox", "aria-label": "{{Placeholder for Dropdown Items}}", tabIndex: "0", "aria-busy": "false"},
                 h("ul", {className: "slds-listbox slds-listbox_vertical", role: "presentation"},
                   filteredSuggestions.map((suggestion, index) => {
-                    let SuggestionClass = "slds-listbox-item"; //slds-media
+                    let SuggestionClass = "slds-listbox-item";
                     if (index === activeSuggestion) {
                       SuggestionClass += " history-suggestion-active";
                     }
+                    const isExpanded = expandedQueries.has(index);
+                    const isRenaming = renamingIndex === index;
+                    const hasName = suggestion.name || (suggestion.label && suggestion.label !== suggestion.value);
+                    const queryValue = suggestion.value || suggestion.query || "";
+                    const displayName = suggestion.name || suggestion.label || queryValue.substring(0, 50);
+                    const tags = suggestion.tags || [];
+
                     return h("li", {role: "presentation", className: SuggestionClass, key: "historySuggestion" + index, onMouseDown: (e) => this.onSuggestionClick(e, index)},
-                      h("div", {id: "option" + index, className: "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small", role: "option", "aria-selected": (index === activeSuggestion ? "true" : "false")}, // slds-listbox__option slds-listbox__option_plain slds-media_small slds-combobox__form-element
-                        // h("span", {className: "slds-media__figure slds-listbox__option-icon slds-align-middle", title: suggestion.favorite ? "Remove from favorite" : "Add to favorite"},
-                        //   h("span", {className: "slds-icon_container slds-current-color slds-icon-utility-check slds-current-color", onMouseDown: (e) => this.toggleFav(e, index)},
-                        //     h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default" + (suggestion.favorite ? " " : " favorite-inverse"), "aria-hidden": "true"},
-                        //       h("use", {xlinkHref: "symbols.svg#favorite"})
-                        //     )
-                        //   )
-                        // ),
-                        h("span", {className: "slds-media__body slds-align-middle"},
-                          h("span", {className: "slds-truncate", title: suggestion.label},
-                            suggestion.label
-                          )
-                        ),
-                        this.props.onDelete ? h("button", {className: "slds-button slds-button_icon slds-input__icon", title: "Delete", onMouseDown: (e) => this.onDeleteItem(e, index)},
-                          h("svg", {className: "slds-button__icon", "aria-hidden": "true"},
-                            h("use", {xlinkHref: "symbols.svg#delete"})
-                          )
-                        ) : null
+                      h("div", {id: "option" + index, className: "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small", role: "option", "aria-selected": (index === activeSuggestion ? "true" : "false")},
+                        h("span", {className: "slds-media__body slds-align-middle", style: {width: "100%"}},
+                          // Title/Name section
+                          h("div", {className: "slds-grid slds-grid_align-spread slds-m-bottom_xx-small"},
+                            h("div", {className: "slds-col", style: {flex: "1", minWidth: 0}},
+                              isRenaming ? h("input", {
+                                type: "text",
+                                className: "slds-input slds-input_small",
+                                value: renameValue,
+                                onChange: (e) => this.onRenameChange(e, index),
+                                onKeyDown: (e) => this.onRenameKeyDown(e, index),
+                                onBlur: (e) => this.onRenameBlur(e, index),
+                                onClick: (e) => e.stopPropagation(),
+                                onMouseDown: (e) => e.stopPropagation(),
+                                style: {width: "100%"},
+                                autoFocus: true
+                              })
+                              : h("span", {
+                                className: "slds-truncate",
+                                title: displayName,
+                                style: {fontWeight: hasName ? "bold" : "normal"}
+                              }, displayName)
+                            ),
+                            h("div", {className: "slds-col slds-no-flex"},
+                              h("div", {className: "slds-button-group", style: {display: "flex", gap: "2px"}},
+                                hasName && this.props.onUpdate ? h("button", {
+                                  className: "slds-button slds-button_icon slds-button_icon-x-small",
+                                  title: "Rename",
+                                  onMouseDown: (e) => this.onRenameStart(e, index),
+                                  onClick: (e) => e.stopPropagation()
+                                },
+                                h("svg", {className: "slds-button__icon slds-button__icon_small", "aria-hidden": "true"},
+                                  h("use", {xlinkHref: "symbols.svg#edit"})
+                                )
+                                ) : null,
+                                queryValue ? h("button", {
+                                  className: "slds-button slds-button_icon slds-button_icon-x-small",
+                                  title: isExpanded ? "Collapse query" : "Expand query",
+                                  onMouseDown: (e) => this.onToggleExpand(e, index),
+                                  onClick: (e) => e.stopPropagation()
+                                },
+                                h("svg", {className: "slds-button__icon slds-button__icon_small", "aria-hidden": "true"},
+                                  h("use", {xlinkHref: isExpanded ? "symbols.svg#chevronup" : "symbols.svg#chevrondown"})
+                                )
+                                ) : null,
+                                this.props.onDelete ? h("button", {
+                                  className: "slds-button slds-button_icon slds-button_icon-x-small",
+                                  title: "Delete",
+                                  onMouseDown: (e) => this.onDeleteItem(e, index),
+                                  onClick: (e) => e.stopPropagation()
+                                },
+                                h("svg", {className: "slds-button__icon slds-button__icon_small", "aria-hidden": "true"},
+                                  h("use", {xlinkHref: "symbols.svg#delete"})
+                                )
+                                ) : null
+                              )
+                            )
+                          ),
+                          // Expanded query display
+                          isExpanded && queryValue ? h("div", {
+                            className: "slds-m-top_xx-small slds-p-around_xx-small",
+                            style: {
+                              backgroundColor: "#f3f2f2",
+                              borderRadius: "4px",
+                              fontSize: "0.75rem",
+                              fontFamily: "monospace",
+                              whiteSpace: "pre-wrap",
+                              wordBreak: "break-word",
+                              maxHeight: "200px",
+                              overflow: "auto"
+                            },
+                            onClick: (e) => e.stopPropagation(),
+                            onMouseDown: (e) => e.stopPropagation()
+                          }, queryValue) : null,
+                          // Tags section
+                          tags.length > 0 || this.props.onUpdate ? h("div", {
+                            className: "slds-m-top_xx-small",
+                            style: {display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center"}
+                          },
+                          tags.map((tag, tagIndex) => {
+                            const tagColor = getTagColor(tag);
+                            return h("span", {
+                              key: "tag-" + index + "-" + tagIndex,
+                              className: "slds-badge",
+                              style: {
+                                backgroundColor: tagColor,
+                                color: "#fff",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                padding: "2px 6px",
+                                fontSize: "0.75rem"
+                              },
+                              onClick: (e) => e.stopPropagation(),
+                              onMouseDown: (e) => e.stopPropagation()
+                            },
+                            h("span", {}, tag),
+                            this.props.onUpdate ? h("button", {
+                              className: "slds-button slds-button_icon slds-button_icon-x-small",
+                              title: "Remove tag",
+                              style: {color: "#fff", padding: "0", marginLeft: "2px"},
+                              onMouseDown: (e) => this.onDeleteTag(e, index, tagIndex),
+                              onClick: (e) => e.stopPropagation()
+                            },
+                            h("svg", {className: "slds-button__icon slds-button__icon_x-small", "aria-hidden": "true", style: {width: "0.5rem", height: "0.5rem"}},
+                              h("use", {xlinkHref: "symbols.svg#close"})
+                            )
+                            ) : null
+                            );
+                          }),
+                          this.props.onUpdate ? h("span", {
+                            style: {display: "inline-flex", alignItems: "center", gap: "2px"},
+                            onClick: (e) => e.stopPropagation(),
+                            onMouseDown: (e) => e.stopPropagation()
+                          },
+                          h("input", {
+                            type: "text",
+                            className: "slds-input slds-input_small",
+                            placeholder: "Add tag...",
+                            value: tagInputs[index] || "",
+                            onChange: (e) => {
+                              let newTagInputs = {...tagInputs};
+                              newTagInputs[index] = e.target.value;
+                              this.setState({tagInputs: newTagInputs});
+                            },
+                            onKeyDown: (e) => this.onTagInputKeyDown(e, index),
+                            onClick: (e) => e.stopPropagation(),
+                            onMouseDown: (e) => e.stopPropagation(),
+                            style: {width: "80px", height: "20px", fontSize: "0.75rem", padding: "2px 4px"}
+                          })
+                          ) : null
+                          ) : null
+                        )
                       )
                     );
                   })
