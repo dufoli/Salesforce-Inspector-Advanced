@@ -6926,3 +6926,80 @@ input[readonly][role="combobox"][disabled] {
   -ms-flex: 0 1 auto;
   flex: 0 1 auto;
 }
+/* Badge */
+.slds-badge {
+  display: -webkit-inline-box;
+  display: -ms-inline-flexbox;
+  display: inline-flex;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  color: var(--slds-c-badge-text-color, var(--sds-c-badge-text-color, var(--slds-g-color-neutral-base-10, #181818)));
+  font-size: var(--slds-c-badge-font-size, var(--sds-c-badge-font-size, 0.75rem));
+  font-weight: 700;
+  line-height: var(--slds-c-badge-line-height, var(--sds-c-badge-line-height, normal));
+  white-space: nowrap;
+  border-width: var(--slds-c-badge-sizing-border, var(--sds-c-badge-sizing-border, 1px));
+  border-style: solid;
+  border-color: var(--slds-c-badge-color-border, var(--sds-c-badge-color-border, transparent));
+  border-radius: var(--slds-c-badge-radius-border, var(--sds-c-badge-radius-border, 15rem));
+  background-color: var(
+    --slds-c-badge-color-background,
+    var(--sds-c-badge-color-background, var(--slds-g-color-neutral-base-95, #f3f3f3))
+  );
+}
+.slds-badge + .slds-badge {
+  margin-left: 0.5rem;
+}
+.slds-badge:empty {
+  padding: 0;
+}
+.slds-badge_inverse {
+  /*! @css-var-fallback background-color */
+  --slds-c-badge-color-background: var(
+    --slds-c-badge-inverse-color-background,
+    var(--sds-c-badge-inverse-color-background, var(--slds-g-color-neutral-base-50, #747474))
+  );
+  /*! @css-var-fallback color */
+  --slds-c-badge-text-color: var(
+    --slds-c-badge-inverse-text-color,
+    var(--sds-c-badge-inverse-text-color, var(--slds-g-color-neutral-base-100, white))
+  );
+}
+.slds-badge_lightest {
+  /*! @css-var-fallback background-color */
+  --slds-c-badge-color-background: var(
+    --slds-c-badge-lightest-color-background,
+    var(--sds-c-badge-lightest-color-background, var(--slds-g-color-neutral-base-100, white))
+  );
+  /*! @css-var-fallback border-color */
+  --slds-c-badge-color-border: var(
+    --slds-c-badge-lightest-color-border,
+    var(--sds-c-badge-lightest-color-border, var(--slds-g-color-border-base-1, #e5e5e5))
+  );
+}
+.slds-badge__icon {
+  display: -webkit-inline-box;
+  display: -ms-inline-flexbox;
+  display: inline-flex;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  color: var(
+    --slds-c-badge-icon-color-foreground,
+    var(--sds-c-badge-icon-color-foreground, var(--slds-g-color-neutral-base-50, #747474))
+  );
+  line-height: 1;
+  vertical-align: middle;
+}
+.slds-badge__icon.slds-badge__icon_inverse {
+  /*! @css-var-fallback color */
+  --slds-c-badge-icon-color-foreground: var(--slds-c-badge-icon-inverse-color-foreground, currentColor);
+}
+.slds-badge__icon_left {
+  margin-right: 0.25rem;
+}
+.slds-badge__icon_right {
+  margin-left: 0.25rem;
+}

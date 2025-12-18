@@ -167,6 +167,7 @@ class App extends React.PureComponent {
       apexRunnerHref: "apex-runner.html?" + hostArg,
       streamingHref: "streaming.html?" + hostArg,
       limitsHref: "limits.html?" + hostArg,
+      dependencyHref: "dependency.html?" + hostArg,
       latestNotesViewed: localStorage.getItem("latestReleaseNotesVersionViewed") === this.props.addonVersion,
       buttonTooltip: ""
     };
@@ -181,6 +182,7 @@ class App extends React.PureComponent {
     this.onGetNewToken = this.onGetNewToken.bind(this);
     this.getBannerSecureApp = this.getBannerSecureApp.bind(this);
     this.getBannerInvalidToken = this.getBannerInvalidToken.bind(this);
+    this.getFlowId = this.getFlowId.bind(this);
   }
   async onContextRecordChange(e) {
     let {sfHost} = this.props;
@@ -367,8 +369,31 @@ class App extends React.PureComponent {
       importHref: "data-import.html?" + importArg,
       apexRunnerHref: "apex-runner.html?" + limitsArg,
       streamingHref: "streaming.html?" + limitsArg,
-      limitsHref: "limits.html?" + limitsArg
+      limitsHref: "limits.html?" + limitsArg,
+      dependencyHref: "dependency.html?" + limitsArg
     });
+  }
+  async getFlowId() {
+    if (!this.state.contextUrl) {
+      return null;
+    }
+    let url = new URL(this.state.contextUrl);
+    let searchParams = new URLSearchParams(url.search.substring(1));
+    let flowInfo = {};
+    if (searchParams.has("flowDefId")) {
+      flowInfo.flowDefId = searchParams.get("flowDefId");
+    }
+    if (searchParams.has("flowId")) {
+      flowInfo.flowId = searchParams.get("flowId");
+    }
+    if (!flowInfo.flowId && flowInfo.flowDefId) {
+      const res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Id,ActiveVersionId,LatestVersionId+FROM+FlowDefinition+WHERE+Id='" + flowInfo.flowDefId.replace(/([\\'])/g, "\\$1") + "'", {method: "GET"});
+      if (res.records.length === 0) {
+        return null;
+      }
+      return res.records[0].ActiveVersionId ?? res.records[0].LatestVersionId;
+    }
+    return flowInfo.flowId ?? null;
   }
   onMouseMove(event) {
     parent.postMessage({mouseX: event.clientX, mouseY: event.clientY}, "*");
@@ -416,7 +441,7 @@ class App extends React.PureComponent {
   }
 
   async showFlowVersionDetails({contextUrl}) {
-    let flowId = this.getFlowId(contextUrl);
+    let flowId = await this.getFlowId(contextUrl);
     if (!flowId) {
       return;
     }
@@ -428,12 +453,12 @@ class App extends React.PureComponent {
     });
   }
   async whereFlowIsUsed({contextUrl}) {
-    let flowId = this.getFlowId(contextUrl);
+    let flowId = await this.getFlowId(contextUrl);
     const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
     sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Definition.DeveloperName+FROM+Flow+WHERE+Id='" + flowId + "'", {method: "GET"}).then(res => {
       res.records.forEach(async recentItem => {
         let flowName = recentItem.Definition.DeveloperName;
-        window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/dependency.html?name=${flowName}&host=${this.props.sfHost}`, "_blank");
+        window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/dependency.html?name=${flowName}&type=Flow&host=${this.props.sfHost}`, "_blank");
       });
     });
   }
@@ -445,7 +470,7 @@ class App extends React.PureComponent {
       return;
     }
     try {
-      let recordId = this.getFlowId(contextUrl);
+      let recordId = await this.getFlowId(contextUrl);
       if (!recordId) {
         return;
       }
@@ -686,7 +711,7 @@ class App extends React.PureComponent {
       inInspector,
       addonVersion
     } = this.props;
-    let {isInSetup, contextUrl, apiVersionInput, exportHref, importHref, apexRunnerHref, streamingHref, limitsHref, isFieldsPresent, latestNotesViewed, buttonTooltip} = this.state;
+    let {isInSetup, contextUrl, apiVersionInput, exportHref, importHref, apexRunnerHref, streamingHref, limitsHref, dependencyHref, isFieldsPresent, latestNotesViewed, buttonTooltip} = this.state;
     let hostArg = new URLSearchParams();
     hostArg.set("host", sfHost);
     let linkInNewTab = JSON.parse(localStorage.getItem("openLinksInNewTab"));
@@ -765,7 +790,7 @@ class App extends React.PureComponent {
           })
         ),
         h("div", {className: "main" + (showExternalClientAppBanner ? " mask" : ""), id: "mainTabs"},
-          h(AllDataBox, {ref: "showAllDataBox", sfHost, showDetailsSupported: !inLightning && !inInspector, linkTarget, contextUrl, onContextRecordChange: this.onContextRecordChange, isFieldsPresent}),
+          h(AllDataBox, {ref: "showAllDataBox", sfHost, showDetailsSupported: !inLightning && !inInspector, linkTarget, contextUrl, onContextRecordChange: this.onContextRecordChange, getFlowId: this.getFlowId, isFieldsPresent}),
           h("div", {role: "tooltip"}, h("strong", {}, buttonTooltip)),
           h("div", {className: "slds-p-vertical_x-small slds-p-horizontal_x-small slds-border_bottom"},
             h("a",
@@ -871,6 +896,19 @@ class App extends React.PureComponent {
               },
               h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#description", style: {fill: "#706E6B"}})),
               h("span", {className: "slds-assistive-text"}, "Explore API"),
+            ),
+            h("a",
+              {
+                ref: "dependencyBtn",
+                href: dependencyHref,
+                target: linkTarget,
+                className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
+                title: "Dependencies",
+                onMouseEnter: () => { this.setButtonTooltip("Find Dependencies"); },
+                onMouseLeave: () => { this.setButtonTooltip(""); }
+              },
+              h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#link", style: {fill: "#706E6B"}})),
+              h("span", {className: "slds-assistive-text"}, "Dependencies"),
             ),
             // Workaround for in Lightning the link to Setup always opens a new tab, and the link back cannot open a new tab.
             inLightning && isInSetup && h("a",
@@ -1201,7 +1239,7 @@ class AllDataBox extends React.PureComponent {
           h("li", {ref: "orgTab", onClick: this.onAspectClick, "data-aspect": this.SearchAspectTypes.org, className: (activeSearchAspect == this.SearchAspectTypes.org) ? "active" : ""}, h("span", {}, "O", h("u", {}, "r"), "g"))
         ),
         (activeSearchAspect == this.SearchAspectTypes.sobject)
-          ? h(AllDataBoxSObject, {ref: "showAllDataBoxSObject", sfHost, showDetailsSupported, sobjectsList, sobjectsLoading, contextRecordId, contextSobject, linkTarget, onContextRecordChange, isFieldsPresent, contextFilterName, contextUrl: this.props.contextUrl})
+          ? h(AllDataBoxSObject, {ref: "showAllDataBoxSObject", sfHost, showDetailsSupported, sobjectsList, sobjectsLoading, contextRecordId, contextSobject, linkTarget, onContextRecordChange, isFieldsPresent, contextFilterName, getFlowId: this.props.getFlowId, contextUrl: this.props.contextUrl})
           : (activeSearchAspect == this.SearchAspectTypes.users)
             ? h(AllDataBoxUsers, {ref: "showAllDataBoxUsers", sfHost, linkTarget, contextUserId, contextOrgId, contextPath, setIsLoading: (value) => { this.setIsLoading("usersBox", value); }}, "Users")
             : (activeSearchAspect == this.SearchAspectTypes.shortcuts)
@@ -1355,6 +1393,7 @@ class AllDataBoxSObject extends React.PureComponent {
       flowDescriptionError: null,
       showFlowAnalysisModal: false
     };
+    this.getFlowId = this.props.getFlowId.bind(this);
     this.onDataSelect = this.onDataSelect.bind(this);
     this.getMatches = this.getMatches.bind(this);
     this.describeFlow = this.describeFlow.bind(this);
@@ -1362,21 +1401,13 @@ class AllDataBoxSObject extends React.PureComponent {
     this.aiAssistant = new AIAssistant();
   }
 
-  getFlowId(contextUrl) {
-    if (!contextUrl) {
-      return null;
-    }
-    let url = new URL(contextUrl);
-    let searchParams = new URLSearchParams(url.search.substring(1));
-    return searchParams.get("flowId");
+
+  async isOnFlowPage(contextUrl) {
+    return contextUrl && contextUrl.includes("builder_platform_interaction");
   }
 
-  isOnFlowPage(contextUrl) {
-    return contextUrl && contextUrl.includes("builder_platform_interaction") && this.getFlowId(contextUrl);
-  }
-
-  openAnalyzeFlow() {
-    const flowId = this.getFlowId(this.props.contextUrl);
+  async openAnalyzeFlow() {
+    const flowId = await this.getFlowId(this.props.contextUrl);
     if (!flowId) {
       return;
     }
@@ -1385,7 +1416,7 @@ class AllDataBoxSObject extends React.PureComponent {
   }
 
   async describeFlow() {
-    const flowId = this.getFlowId(this.props.contextUrl);
+    const flowId = await this.getFlowId(this.props.contextUrl);
     if (!flowId) {
       return;
     }
