@@ -188,9 +188,9 @@ class Model {
       this.updateResult(null);
       return;
     }
-
+    let importOptions;
     if (data[0] && data[0][0] && data[0][0].trimStart().startsWith("salesforce-inspector-import-options")) {
-      let importOptions = new URLSearchParams(data.shift()[0].trim());
+      importOptions = new URLSearchParams(data.shift()[0].trim());
       if (importOptions.get("useToolingApi") == "1") this.apiType = "Tooling";
       if (importOptions.get("useToolingApi") == "0") this.apiType = "Enterprise";
       // Keep the above two checks, in order to support old import options
@@ -204,6 +204,7 @@ class Model {
       if (importOptions.get("externalId") && this.importAction == "upsert") this.externalId = importOptions.get("externalId");
       if (importOptions.get("batchSize")) this.batchSize = importOptions.get("batchSize");
       if (importOptions.get("threads")) this.batchConcurrency = importOptions.get("threads");
+      this.importActionName = this.allActions.filter(a => a.value == this.importAction).map(a => a.label).shift();
     }
 
     if (data.length < 2) {
@@ -227,8 +228,11 @@ class Model {
     //automatically select update if header contains id
     if (this.hasIdColumn(header) && !this.importActionSelected && this.apiType != "Metadata") {
       this.importAction = "update";
-      this.importActionName = "Update";
     }
+    if (importOptions) {
+      this.importAction = importOptions.get("action");
+    }
+    this.importActionName = this.allActions.filter(a => a.value == this.importAction).map(a => a.label).shift();
     this.refreshColumn();
     this.updateResult(this.importData.importTable);
   }
