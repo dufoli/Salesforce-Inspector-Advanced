@@ -16,7 +16,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.cookies.get({url: request.url, name: "sid", storeId: sender.tab.cookieStoreId}, cookie => {
       if (!cookie || currentDomain.endsWith(".mcas.ms")) { //Domain used by Microsoft Defender for Cloud Apps, where sid exists but cannot be read
         sendResponse(currentDomain);
-        sfHost = currentDomain;
         return;
       }
       const [orgId] = cookie.value.split("!");
@@ -24,10 +23,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       orderedDomains.forEach(currentDomain => {
         chrome.cookies.getAll({name: "sid", domain: currentDomain, secure: true, storeId: sender.tab.cookieStoreId}, cookies => {
-          let sessionCookie = cookies.find(c => c.value.startsWith(orgId + "!"));
+          let filteredCookies = cookies.filter(c => c.value.startsWith(orgId + "!"));
+          let sessionCookie = null;
+          if (filteredCookies.length > 1) {
+            sessionCookie = filteredCookies.find(c => c.domain.startsWith(currentDomain.split(".")[0]));
+          }
+          if (filteredCookies.length === 1) {
+            sessionCookie = filteredCookies[0];
+          }
           if (sessionCookie) {
             sendResponse(sessionCookie.domain);
-            sfHost = sessionCookie.domain;
+            return;
           }
         });
       });
@@ -35,6 +41,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Tell Chrome that we want to call sendResponse asynchronously.
   }
   if (request.message == "getSession") {
+    sfHost = request.sfHost;
     chrome.cookies.get({url: "https://" + request.sfHost, name: "sid", storeId: sender.tab.cookieStoreId}, sessionCookie => {
       if (!sessionCookie) {
         sendResponse(null);
@@ -42,31 +49,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
       let session = {key: sessionCookie.value, hostname: sessionCookie.domain};
       sendResponse(session);
-    });
-    return true; // Tell Chrome that we want to call sendResponse asynchronously.
-  }
-  if (request.message == "getAllSessions") {
-    chrome.cookies.get({url: "https://" + request.sfHost, name: "sid", storeId: sender.tab.cookieStoreId}, cookie => {
-      if (!cookie) { //Domain used by Microsoft Defender for Cloud Apps, where sid exists but cannot be read
-        sendResponse(null);
-        return;
-      }
-      const [orgId] = cookie.value.split("!");
-      const orderedDomains = ["salesforce.com", "cloudforce.com", "salesforce.mil", "cloudforce.mil", "sfcrmproducts.cn", "force.com", "salesforce-setup.com", "visualforce.com", "sfcrmapps.cn", "force.mil", "visualforce.mil", "crmforce.mil"];
-      orderedDomains.splice(orderedDomains.indexOf(request.sfHost), 1);
-      orderedDomains.unshift(request.sfHost);
-      let cookiesFullList = [];
-      let i = 0;
-      //Promise all do not worked here so just wait for all return with index.
-      orderedDomains.forEach(currentDomain => chrome.cookies.getAll({name: "sid", domain: currentDomain, secure: true, storeId: sender.tab.cookieStoreId}, cookies => {
-        cookiesFullList.push(...cookies);
-        i++;
-        if (i === orderedDomains.length) {
-          cookiesFullList = cookiesFullList.filter(c => c.value.startsWith(orgId + "!"));
-          sendResponse(cookiesFullList.map(c => ({key: c.value, hostname: c.domain})));
-        }
-      })
-      );
     });
     return true; // Tell Chrome that we want to call sendResponse asynchronously.
   }
@@ -112,19 +94,19 @@ chrome.runtime.onInstalled.addListener(({reason}) => {
       url: "https://dufoli.github.io/Salesforce-Inspector-Advanced/welcome/"
     });
   }
-});
+    });
 if (chrome.commands) {
   chrome.commands.onCommand.addListener((command) => {
     //TODO home to open setup
     chrome.tabs.create({
       url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/${command}.html?host=${sfHost}`
     });
-  });
+});
 }
 if (chrome.action) {
   chrome.action.onClicked.addListener(() => {
     chrome.tabs.create({
       url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html?host=${sfHost}`
     });
-  });
+});
 }
