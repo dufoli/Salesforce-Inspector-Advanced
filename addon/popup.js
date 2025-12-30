@@ -988,7 +988,14 @@ class App extends React.PureComponent {
           h("div", {className: "slds-col slds-size_4-of-12 slds-text-align_left"},
             h("span", {className: "footer-small-text"}, (navigator.userAgentData && navigator.userAgentData.platform.toLowerCase().indexOf("mac") > -1) ? "[ctrl+option+i]" : "[ctrl+alt+i]" + " to open")
           ),
-          h("div", {className: "slds-col slds-size_2-of-12 slds-text-align_right slds-icon_container slds-m-right_small", title: "Documentation"},
+          h("div", {className: "slds-col slds-size_1-of-12 slds-text-align_right slds-icon_container slds-m-right_small", title: "Donate"},
+            h("a", {href: "https://github.com/sponsors/dufoli", target: linkTarget},
+              h("svg", {className: "slds-button slds-icon_x-small slds-icon-text-default slds-m-top_xxx-small", viewBox: "0 0 52 52"},
+                h("use", {xlinkHref: "symbols.svg#heart", style: {fill: "#9c9c9c"}})
+              )
+            )
+          ),
+          h("div", {className: "slds-col slds-size_1-of-12 slds-text-align_right slds-icon_container slds-m-right_small", title: "Documentation"},
             h("a", {href: "https://dufoli.github.io/Salesforce-Inspector-Advanced/", target: linkTarget},
               h("svg", {className: "slds-button slds-icon_x-small slds-icon-text-default slds-m-top_xxx-small", viewBox: "0 0 52 52"},
                 h("use", {xlinkHref: "symbols.svg#info_alt", style: {fill: "#9c9c9c"}})
