@@ -1402,7 +1402,7 @@ class AllDataBoxSObject extends React.PureComponent {
   }
 
 
-  async isOnFlowPage(contextUrl) {
+  isOnFlowPage(contextUrl) {
     return contextUrl && contextUrl.includes("builder_platform_interaction");
   }
 
