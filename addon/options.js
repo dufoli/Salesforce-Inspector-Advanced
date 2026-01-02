@@ -110,7 +110,8 @@ class OptionsTabSelector extends React.Component {
         tabTitle: "Tab3",
         title: "Data Export",
         content: [
-          {option: Option, props: {type: "text", title: "csv file separator", key: "csvSeparator", suggestions: [",", ";", "|"], default: ","}},
+          {option: Option, props: {type: "text", title: "csv file separator", key: "csvSeparator", suggestions: [",", ";", "|", "`", "^", "\t"], default: ","}},
+          {option: Option, props: {type: "option", title: "csv file line ending", key: "csvLineEnding", values: ["LF", "CRLF"], default: "LF"}},
           {option: Option, props: {type: "toggle", title: "Display Query Execution Time", key: "displayQueryPerformance", default: true}},
           {option: Option, props: {type: "toggle", title: "Use SObject context on Data Export", key: "useSObjectContextOnDataImportLink", default: true}},
           {option: Option, props: {type: "toggle", title: "Skip technical comlumns", key: "skipTechnicalColumns", default: true}},

@@ -30,14 +30,18 @@ class Model {
     this.batchSize = 1;
     this.userInfo = "...";
     this.queryAll = false;
-    this.queryTooling = false;
+    this.queryTooling = false; // Keep for backward compatibility
+    this.apiType = "query"; // "query", "tooling", or "bulk"
+    this.bulkJobId = null;
+    this.bulkJobStatus = null;
+    this.bulkPollInterval = null;
     this.autocompleteResults = {sobjectName: "", title: "\u00A0", results: []};
     this.isWorking = false;
     this.exportStatus = "Ready";
     this.exportError = null;
     this.exportedData = null;
     function compare(a, b) {
-      return ((a.query == b.query && (!b.name || a.name == b.name)) || a.query == b.name + ":" + b.query) && a.useToolingApi == b.useToolingApi;
+      return ((a.query == b.query && (!b.name || a.name == b.name)) || a.query == b.name + ":" + b.query) && a.useToolingApi == b.useToolingApi && (a.apiType || (a.useToolingApi ? "tooling" : "query")) == (b.apiType || (b.useToolingApi ? "tooling" : "query"));
     }
     function sort(a, b) {
       return ((a.name ? a.name + a.query : a.query) > (b.name ? b.name + b.query : b.query)) ? 1 : (((b.name ? b.name + b.query : b.query) > (a.name ? a.name + a.query : a.query)) ? -1 : 0);
@@ -97,12 +101,17 @@ class Model {
     if (args.has("query")) {
       this.initialQuery = args.get("query");
       this.queryTooling = args.has("useToolingApi");
+      if (args.has("useToolingApi")) {
+        this.apiType = "tooling";
+      }
     } else if (this.queryHistory.list[0]) {
       this.initialQuery = this.queryHistory.list[0].query;
       this.queryTooling = this.queryHistory.list[0].useToolingApi;
+      this.apiType = this.queryHistory.list[0].useToolingApi ? "tooling" : "query";
     } else {
       this.initialQuery = "SELECT Id FROM Account LIMIT 200";
       this.queryTooling = false;
+      this.apiType = "query";
     }
 
     if (args.has("error")) {
@@ -177,6 +186,7 @@ class Model {
       this.editor.value = this.selectedHistoryEntry.query;
       this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
       this.queryTooling = this.selectedHistoryEntry.useToolingApi;
+      this.apiType = this.selectedHistoryEntry.apiType || (this.selectedHistoryEntry.useToolingApi ? "tooling" : "query");
       this.editorAutocompleteHandler();
       this.selectedHistoryEntry = null;
     }
@@ -184,6 +194,7 @@ class Model {
   selectQuery(val) {
     this.editor.value = val.value.trimStart();
     this.queryTooling = val.useToolingApi;
+    this.apiType = val.apiType || (val.useToolingApi ? "tooling" : "query");
     this.queryName = val.name ?? "";
     this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
     this.editor.focus();
@@ -250,6 +261,7 @@ class Model {
         }
       }
       this.queryTooling = this.selectedSavedEntry.useToolingApi;
+      this.apiType = this.selectedSavedEntry.apiType || (this.selectedSavedEntry.useToolingApi ? "tooling" : "query");
       this.editorAutocompleteHandler();
       this.selectedSavedEntry = null;
     }
@@ -258,10 +270,10 @@ class Model {
     this.savedHistory.clear();
   }
   addToHistory() {
-    this.savedHistory.add({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling, tags: []});
+    this.savedHistory.add({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling, apiType: this.apiType, tags: []});
   }
   removeFromHistory() {
-    this.savedHistory.remove({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling});
+    this.savedHistory.remove({query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling, apiType: this.apiType});
   }
   autocompleteReload() {
     this.describeInfo.reloadAll();
@@ -312,7 +324,9 @@ class Model {
       return "search";
     } else if (this.isGraphMode()) {
       return "graphql";
-    } else if (this.queryTooling) {
+    } else if (this.apiType === "bulk") {
+      return "bulk"; // Special handling for bulk
+    } else if (this.apiType === "tooling" || this.queryTooling) {
       return "tooling/query";
     } else if (this.queryAll) {
       return "queryAll";
@@ -1888,8 +1902,15 @@ class Model {
   }
   doExport() {
     let vm = this; // eslint-disable-line consistent-this
+
+    // Handle Bulk API separately
+    if (vm.apiType === "bulk") {
+      vm.doBulkExport();
+      return;
+    }
+
     let exportedData = new RecordTable(st => { vm.exportStatus = st; }, vm);
-    exportedData.isTooling = vm.queryTooling;
+    exportedData.isTooling = vm.queryTooling || vm.apiType === "tooling";
     exportedData.describeInfo = vm.describeInfo;
     exportedData.sfHost = vm.sfHost;
     vm.initPerf();
@@ -1965,7 +1986,7 @@ class Model {
           return pr;
         }
         //save query with comments
-        vm.queryHistory.add({query: vm.editor.value, useToolingApi: exportedData.isTooling});
+        vm.queryHistory.add({query: vm.editor.value, useToolingApi: exportedData.isTooling, apiType: vm.apiType});
         if (recs == 0) {
           vm.isWorking = false;
           vm.exportStatus = "No data exported." + (total > 0 ? ` ${total} record${s(total)}.` : "");
@@ -2027,8 +2048,232 @@ class Model {
     vm.exportedData = exportedData;
     vm.updatedExportedData();
   }
+
+  async doBulkExport() {
+    let vm = this; // eslint-disable-line consistent-this
+    vm.initPerf();
+    let query = this.cleanupQuery(vm.editor.value, vm);
+
+    function onError(error) {
+      console.error(error);
+      if (error && error.name == "Unauthorized") {
+        let rootEl = document.getElementById("insext");
+        let popupEl = document.getElementsByClassName("insext-popup-iframe")[0];
+        const allowedOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
+        popupEl.contentWindow.postMessage({
+          showInvalidTokenBanner: true
+        }, allowedOrigin);
+        rootEl.classList.add("insext-active");
+      }
+      vm.isWorking = false;
+      vm.exportStatus = "Error";
+      vm.exportError = "UNEXPECTED EXCEPTION:" + error;
+      vm.bulkJobId = null;
+      vm.bulkJobStatus = null;
+      vm.markPerf();
+      vm.didUpdate();
+    }
+
+    try {
+      vm.isWorking = true;
+      vm.exportStatus = "Creating bulk query job...";
+      vm.exportError = null;
+      vm.exportedData = null; // Don't use ScrollTable for bulk
+      vm.didUpdate();
+
+      const job = await vm.createBulkQueryJob(query);
+      vm.bulkJobId = job.id;
+      vm.bulkJobStatus = job.state;
+
+      // Save query to history
+      vm.queryHistory.add({query: vm.editor.value, useToolingApi: false, apiType: "bulk"});
+
+      // Start polling
+      vm.startBulkJobPolling(job.id);
+      vm.exportStatus = `Bulk Query job created. Status: ${job.state}...`;
+      vm.markPerf();
+      vm.didUpdate();
+    } catch (error) {
+      onError(error);
+    }
+  }
   stopExport() {
-    this.exportProgress.abort();
+    if (this.bulkPollInterval) {
+      clearInterval(this.bulkPollInterval);
+      this.bulkPollInterval = null;
+    }
+    if (this.exportProgress.abort) {
+      this.exportProgress.abort();
+    }
+  }
+  getCsvSeparator() {
+    let csvSeparator = ",";
+    if (localStorage.getItem("csvSeparator")) {
+      csvSeparator = localStorage.getItem("csvSeparator");
+    }
+    switch (csvSeparator) {
+      case ",":
+        return "COMMA";
+      case ";":
+        return "SEMICOLON";
+      case "|":
+        return "PIPE";
+      case "`":
+        return "BACKQUOTE";
+      case "^":
+        return "CARET";
+      case "\t":
+        return "TAB";
+    }
+    return "COMMA";
+  }
+  getCsvLineEnding() {
+    let csvLineEnding = "LF";
+    if (localStorage.getItem("csvLineEnding")) {
+      csvLineEnding = localStorage.getItem("csvLineEnding");
+    }
+    return csvLineEnding;
+  }
+  async createBulkQueryJob(query) {
+    const jobBody = {
+      operation: this.queryAll ? "queryAll" : "query",
+      query,
+      contentType: "CSV",
+      lineEnding: this.getCsvLineEnding(),
+      columnDelimiter: this.getCsvSeparator()
+    };
+
+    try {
+      const job = await sfConn.rest(
+        "/services/data/v" + apiVersion + "/jobs/query",
+        {
+          method: "POST",
+          body: jobBody,
+          withoutCache: true
+        }
+      );
+      this.bulkJobId = job.id;
+      this.bulkJobStatus = job.state;
+      return job;
+    } catch (error) {
+      console.error("Error creating bulk query job:", error);
+      throw error;
+    }
+  }
+
+  async getBulkJobStatus(jobId) {
+    try {
+      const job = await sfConn.rest(
+        "/services/data/v" + apiVersion + "/jobs/query/" + jobId,
+        {
+          method: "GET",
+          withoutCache: true
+        }
+      );
+      this.bulkJobStatus = job.state;
+      return job;
+    } catch (error) {
+      console.error("Error getting bulk job status:", error);
+      throw error;
+    }
+  }
+
+  async downloadBulkJobResults(jobId) {
+    try {
+      const results = await sfConn.rest(
+        "/services/data/v" + apiVersion + "/jobs/query/" + jobId + "/results",
+        {
+          method: "GET",
+          withoutCache: true,
+          responseType: "text",
+          headers: {
+            "Accept": "text/csv"
+          }
+        }
+      );
+      return results;
+    } catch (error) {
+      console.error("Error downloading bulk job results:", error);
+      throw error;
+    }
+  }
+
+  startBulkJobPolling(jobId) {
+    // Clear any existing polling
+    if (this.bulkPollInterval) {
+      clearInterval(this.bulkPollInterval);
+    }
+
+    // Poll every 10 seconds
+    this.bulkPollInterval = setInterval(async () => {
+      try {
+        const job = await this.getBulkJobStatus(jobId);
+        this.bulkJobStatus = job.state;
+
+        if (job.state === "JobComplete") {
+          clearInterval(this.bulkPollInterval);
+          this.bulkPollInterval = null;
+          this.isWorking = false;
+          this.exportStatus = `Bulk Query completed. ${job.numberRecordsProcessed || 0} records processed.`;
+          this.exportError = null;
+          this.didUpdate();
+        } else if (job.state === "Failed" || job.state === "Aborted") {
+          clearInterval(this.bulkPollInterval);
+          this.bulkPollInterval = null;
+          this.isWorking = false;
+          this.exportStatus = "Error";
+          this.exportError = `Bulk Query ${job.state.toLowerCase()}. ${job.errorMessage || "Unknown error"}`;
+          this.didUpdate();
+        } else {
+          // Still processing
+          this.exportStatus = `Bulk Query ${job.state}... ${job.numberRecordsProcessed || 0} records processed.`;
+          this.didUpdate();
+        }
+      } catch (error) {
+        clearInterval(this.bulkPollInterval);
+        this.bulkPollInterval = null;
+        this.isWorking = false;
+        this.exportStatus = "Error";
+        this.exportError = error.message || "Error polling bulk job status";
+        this.didUpdate();
+      }
+    }, 10000); // 10 seconds
+  }
+
+  async downloadBulkResults() {
+    if (!this.bulkJobId) {
+      this.exportError = "No bulk job ID available";
+      this.didUpdate();
+      return;
+    }
+
+    try {
+      this.isWorking = true;
+      this.exportStatus = "Downloading results...";
+      this.exportError = null;
+      this.didUpdate();
+
+      const csvData = await this.downloadBulkJobResults(this.bulkJobId);
+
+      // Create download link
+      const date = new Date();
+      const timestamp = date.toISOString().replace(/[^0-9]/g, "");
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `bulk-export${timestamp}.csv`;
+      const BOM = "\uFEFF";
+      const bb = new Blob([BOM, csvData], {type: "text/csv;charset=utf-8"});
+      downloadLink.href = window.URL.createObjectURL(bb);
+      downloadLink.click();
+
+      this.isWorking = false;
+      this.exportStatus = "Download completed.";
+      this.didUpdate();
+    } catch (error) {
+      this.isWorking = false;
+      this.exportStatus = "Error";
+      this.exportError = error.message || "Error downloading bulk results";
+      this.didUpdate();
+    }
   }
   callRest(query){
     let queryMethod = this.getQueryMethod();
@@ -2071,19 +2316,19 @@ class Model {
   //TODO query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling
   getHistory() {
     let historyMap = new Map();
-    this.queryHistory.list.forEach(q => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, tags: q.tags || []}));
-    this.queryTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false}));
+    this.queryHistory.list.forEach(q => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []}));
+    this.queryTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false, apiType: "query"}));
     this.savedHistory.list.forEach(q => {
       let delimiter = ":";
       let itm;
       if (q.name){
-        itm = {value: q.query, label: q.name, name: q.name, favorite: true, useToolingApi: q.useToolingApi, tags: q.tags || []};
+        itm = {value: q.query, label: q.name, name: q.name, favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []};
       } else if (q.query.includes(delimiter)){
-        itm = {label: q.query.split(delimiter)[0], favorite: true, useToolingApi: q.useToolingApi, tags: q.tags || []};
+        itm = {label: q.query.split(delimiter)[0], favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []};
         itm.name = itm.label;
         itm.value = q.query.substring(itm.label.length + 1);
       } else {
-        itm = {value: q.query, label: q.query, favorite: true, useToolingApi: q.useToolingApi, tags: q.tags || []};
+        itm = {value: q.query, label: q.query, favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []};
       }
       historyMap.set(itm.value, itm);
     });
@@ -2111,7 +2356,7 @@ class Model {
     if (history.favorite) {
       // For saved queries (favorites), find and update in savedHistory
       // Match by query value and useToolingApi (name might be changing, so don't match by name)
-      let itm = this.savedHistory.list.find(item => 
+      let itm = this.savedHistory.list.find(item =>
         item.query == history.value && item.useToolingApi == history.useToolingApi
       );
       if (itm) {
@@ -2158,7 +2403,7 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.onQueryAllChange = this.onQueryAllChange.bind(this);
-    this.onQueryToolingChange = this.onQueryToolingChange.bind(this);
+    this.onApiTypeChange = this.onApiTypeChange.bind(this);
     this.onSelectQuery = this.onSelectQuery.bind(this);
     this.onClearHistory = this.onClearHistory.bind(this);
     this.onClearSavedHistory = this.onClearSavedHistory.bind(this);
@@ -2175,6 +2420,7 @@ class App extends React.Component {
     this.onDownloadCsv = this.onDownloadCsv.bind(this);
     this.onCopyAsJson = this.onCopyAsJson.bind(this);
     this.onDeleteRecords = this.onDeleteRecords.bind(this);
+    this.onDownloadBulkResults = this.onDownloadBulkResults.bind(this);
     this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
     this.onSetQueryName = this.onSetQueryName.bind(this);
     this.onStopExport = this.onStopExport.bind(this);
@@ -2217,9 +2463,10 @@ class App extends React.Component {
     model.queryAll = e.target.checked;
     model.didUpdate();
   }
-  onQueryToolingChange(e) {
+  onApiTypeChange(e) {
     let {model} = this.props;
-    model.queryTooling = e.target.checked;
+    model.apiType = e.target.value;
+    model.queryTooling = (model.apiType === "tooling");
     model.editorAutocompleteHandler();
     model.didUpdate();
   }
@@ -2319,6 +2566,11 @@ class App extends React.Component {
   onDeleteRecords(e) {
     let {model} = this.props;
     model.deleteRecords(e);
+    model.didUpdate();
+  }
+  onDownloadBulkResults() {
+    let {model} = this.props;
+    model.downloadBulkResults();
     model.didUpdate();
   }
   onResultsFilterInput(e) {
@@ -2517,14 +2769,17 @@ class App extends React.Component {
           ),
           h("div", {className: "query-options"},
             h("label", {},
-              h("input", {type: "checkbox", checked: model.queryAll, onChange: this.onQueryAllChange, disabled: model.queryTooling}),
+              h("input", {type: "checkbox", checked: model.queryAll, onChange: this.onQueryAllChange, disabled: model.apiType === "tooling"}),
               " ",
               h("span", {}, "Add deleted records?")
             ),
-            h("label", {title: "With the tooling API you can query more metadata, but you cannot query regular data"},
-              h("input", {type: "checkbox", checked: model.queryTooling, onChange: this.onQueryToolingChange, disabled: model.queryAll}),
-              " ",
-              h("span", {}, "Tooling API?")
+            h("label", {title: "Query API: Query (standard), Tooling (metadata), Bulk (large datasets - download only)"},
+              h("span", {}, "API Type: "),
+              h("select", {value: model.apiType, onChange: this.onApiTypeChange},
+                h("option", {value: "query"}, "Query"),
+                h("option", {value: "tooling"}, "Tooling"),
+                h("option", {value: "bulk"}, "Bulk")
+              )
             ),
           ),
         ),
@@ -2609,7 +2864,18 @@ class App extends React.Component {
           ),
         ),
         h("textarea", {className: "result-text", readOnly: true, value: model.exportError || "", hidden: model.exportError == null}),
-        h(ScrollTable, {model: model.tableModel, hidden: model.exportError != null})
+        model.apiType === "bulk" && model.bulkJobId ? h("div", {className: "bulk-status"},
+          h("div", {className: "bulk-info"},
+            h("p", {}, "Bulk Query Job ID: " + model.bulkJobId),
+            h("p", {}, "Status: " + (model.bulkJobStatus || "Unknown")),
+            h("button", {
+              disabled: model.bulkJobStatus !== "JobComplete" || model.isWorking,
+              onClick: this.onDownloadBulkResults,
+              className: "highlighted"
+            }, "Download Results")
+          )
+        ) : null,
+        h(ScrollTable, {model: model.tableModel, hidden: model.exportError != null || model.apiType === "bulk"})
       ),
       // Modal pour génération IA
       this.state.showAIModal ? h("div", {className: "ai-modal-overlay", onClick: this.onCloseAIModal},
