@@ -1,0 +1,1463 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Olivier Dufour">
+      
+      
+        <link rel="canonical" href="https://dufoli.github.io/Salesforce-Inspector-Advanced/release-note/">
+      
+      
+        <link rel="prev" href="../how-to/">
+      
+      
+        <link rel="next" href="../troubleshooting/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/icon128.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Release Notes - Salesforce Inspector Advanced</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#release-notes" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Salesforce Inspector Advanced" class="md-header__button md-logo" aria-label="Salesforce Inspector Advanced" data-md-component="logo">
+      
+  <img src="../assets/images/icon128.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Salesforce Inspector Advanced
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Release Notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../how-to/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  How to
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Release Notes
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../welcome/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Welcome
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Salesforce Inspector Advanced" class="md-nav__button md-logo" aria-label="Salesforce Inspector Advanced" data-md-component="logo">
+      
+  <img src="../assets/images/icon128.png" alt="logo">
+
+    </a>
+    Salesforce Inspector Advanced
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How to
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#version-138" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.38
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Version 1.38">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inspect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flow-analyzer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow Analyzer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#org-analyzer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Org Analyzer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Popup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-137" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.37
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-1362" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.36.2
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-1361" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.36.1
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-136" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.36
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-1353" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.35.3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-1352" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.35.2
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-1351" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.35.1
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-135" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.35
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-134" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.34
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-133" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.33
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-132" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.32
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-131" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.31
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-1301" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.30.1
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-130" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.30
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-129" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.29
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-128" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.28
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-127" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.27
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-126" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.26
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Version 1.26">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#editor_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#popup_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Popup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#log-and-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Log and Profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-125" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.25
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-124" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.24
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-123" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version 1.23
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../welcome/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Welcome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="release-notes">Release Notes</h1>
+<h2 id="version-138">Version 1.38</h2>
+<h3 id="inspect">Inspect</h3>
+<ul>
+<li><strong>Field Usage Analysis</strong>: New feature to analyze field usage across your Salesforce org. View the percentage of records that have values populated for each field, helping you identify unused or underutilized fields. Accessible via the "Show field usage" option in the object actions menu. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/268">issue 268</a></li>
+<li><strong>Polymorphic Field Types Display</strong>: Improved display of polymorphic reference fields in the Type column. When a field references multiple object types, only the first 3 types are shown initially with a clickable "...(X more)" link to expand and view all remaining types. This makes the interface cleaner and easier to read when dealing with fields that reference many object types.</li>
+</ul>
+<h3 id="flow-analyzer">Flow Analyzer</h3>
+<p>New comprehensive tool to analyze and optimize Salesforce Flows. Accessible via the "Analyze Flow" button when viewing a Flow in Flow Builder. The analyzer scans flow metadata for potential issues across multiple categories:</p>
+<ul>
+<li><strong>Performance Issues</strong>: </li>
+<li>DML operations in loops (Get/Update/Create/Delete Record)</li>
+<li>Action calls within loops</li>
+<li>
+<p>Get Record elements retrieving all fields instead of specific fields</p>
+</li>
+<li>
+<p><strong>Best Practices</strong>: </p>
+</li>
+<li>Missing flow descriptions</li>
+<li>Unused variables</li>
+<li>Unconnected elements</li>
+<li>Copy API names (should use labels)</li>
+<li>
+<p>Not using Auto Layout</p>
+</li>
+<li>
+<p><strong>Security &amp; Reliability</strong>: </p>
+</li>
+<li>Hardcoded IDs and URLs</li>
+<li>Missing fault paths</li>
+<li>Missing null handlers</li>
+<li>
+<p>Unsafe running context configurations</p>
+</li>
+<li>
+<p><strong>Maintainability</strong>: </p>
+</li>
+<li>High cyclomatic complexity</li>
+<li>Flow naming convention violations</li>
+<li>Old API versions in use</li>
+<li>
+<p>Too many flow versions</p>
+</li>
+<li>
+<p><strong>Logic Issues</strong>: </p>
+</li>
+<li>Recursive after update triggers</li>
+<li>Same record field updates</li>
+</ul>
+<p>Results are displayed with severity levels (error, warning, info) and include actionable recommendations to help maintain secure, performant, and reliable Flow automations. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/251">issue 251</a></p>
+<h3 id="org-analyzer">Org Analyzer</h3>
+<p>Expanded with many new detection rules to help identify potential issues and optimization opportunities:</p>
+<ul>
+<li><strong>Unused Resources</strong>: </li>
+<li>
+<p>Custom fields with no references (flow, Apex, layout) and no data</p>
+</li>
+<li>
+<p><strong>Code Quality</strong>: </p>
+</li>
+<li>Too many validation rules per object</li>
+<li>Too many triggers per object</li>
+<li>SOQL queries in loops</li>
+<li>DML operations in loops</li>
+<li>Hardcoded IDs in code instead of custom labels</li>
+<li>SOQL injection vulnerabilities (missing escape on parameters)</li>
+<li>Apex classes without explicit sharing model</li>
+<li>Apex triggers containing logic, SOQL, or DML instead of delegating to service classes</li>
+<li>Unreferenced Apex classes (excluding REST Apex)</li>
+<li>
+<p>Batchable, Queueable, or Schedulable classes without jobs in the last 365 days</p>
+</li>
+<li>
+<p><strong>Flow Management</strong>: </p>
+</li>
+<li>Flows with too many versions</li>
+<li>
+<p>Flows using old API versions</p>
+</li>
+<li>
+<p><strong>Migration Opportunities</strong>: </p>
+</li>
+<li>Process Builder or Workflow Rules that should be migrated to Flow</li>
+<li>
+<p>Visualforce pages or Lightning Components that should be migrated to LWC</p>
+</li>
+<li>
+<p><strong>Security &amp; Access Management</strong>: </p>
+</li>
+<li>Too many system administrators</li>
+<li>Role Hierarchy with too many levels</li>
+<li>Users without login activity for extended periods or never logged in</li>
+<li>Connected Apps with admin pre-authorized users having too many permissions</li>
+<li>Connected Apps with admin pre-authorized users without proper permissions</li>
+</ul>
+<h3 id="metadata">Metadata</h3>
+<ul>
+<li><strong>Package.xml Generation</strong>: Upload metadata files and automatically generate a <code>package.xml</code> file, streamlining the process of creating deployment packages.</li>
+</ul>
+<h3 id="editor">Editor</h3>
+<ul>
+<li><strong>Suggestion Positioning</strong>: Improved positioning of code suggestions to better align with the cursor and provide a more intuitive editing experience.</li>
+</ul>
+<h3 id="options">Options</h3>
+<ul>
+<li><strong>Favicon Color Picker</strong>: New color picker in the options page to customize the favicon color for your Salesforce environment and extension, making it easier to visually distinguish between different orgs.</li>
+</ul>
+<h3 id="popup">Popup</h3>
+<ul>
+<li><strong>Clone User</strong>: New functionality to clone user records directly from the popup interface, simplifying user management tasks.</li>
+</ul>
+<h2 id="version-137">Version 1.37</h2>
+<ul>
+<li>Security: switch to oauth 2 web service flow with PKCE over external client app  <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/254">issue 254</a> / <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/265">issue 265</a> / <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/255">issue 255</a></li>
+<li>Security : wizard to help on creation of external client app with new <a href="https://dufoli.github.io/Salesforce-Inspector-Advanced/how-to/#use-sf-inspector-with-an-external-client-app">documentation</a></li>
+<li>AI: support agentforce, chatgpt, mystral and claude api to analyse flow and generate SOQL <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/258">issue 258</a> / <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/128">issue 128</a> / <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/213">issue 213</a></li>
+<li>Data import : support hard delete  <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/129">issue 129</a></li>
+<li>Data import : support Bulk API <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/267">issue267</a></li>
+<li>Metadata: automatic download produce zip file and not csv and add metadataStatus json file <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/262">issue 262</a></li>
+<li>Add a report bug button on popup <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/264">issue 264</a></li>
+<li>Data export: fix filter operator behaviour with null</li>
+<li>Data export: fix filter operator behaviour with picklist suggestion</li>
+</ul>
+<h2 id="version-1362">Version 1.36.2</h2>
+<ul>
+<li>data export: fix performance freeze with in keyword for suggestion</li>
+<li>data export: fix performance freeze by limiting colored syntax in query</li>
+<li>connected app: switch to production conecteed app client id</li>
+<li>data export: allow to set value on cell even if empty</li>
+<li>editor :make selected suggestion more visible</li>
+</ul>
+<h2 id="version-1361">Version 1.36.1</h2>
+<ul>
+<li>data export: fix filter null which make sort not possible sometimes</li>
+<li>data export: fix suggestion of values whithout any input</li>
+<li>data export: fix do not suggest field when IN keyword is used with subquery</li>
+<li>data export: fix remove address from auto complete whereas it is removed from suggestion</li>
+</ul>
+<h2 id="version-136">Version 1.36</h2>
+<ul>
+<li>Org Analyzer: Detect vulnerabilities and bad practices in your Salesforce org using customizable rules. Get actionable insights to improve security and maintainability. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/225">issue 225</a></li>
+<li>Data-export: Sort column by clicking on icon on header. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/248">issue 248</a></li>
+<li>Data-export: Advanced filtering on column: Filter non-queryable fields (e.g., "Description not empty") with intuitive operators for precise data extraction.</li>
+<li>Apex runner: Open log when script is execute with success <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/247">issue 247</a></li>
+<li>Performance: Fix freeze on data export when a huge list in "IN" operator is provide</li>
+<li>Editor: Fix missing picklist value suggestion when standard list have no label (example: Location in ApexLog)</li>
+<li>Editor: fix a bug with editor do not align with textarea</li>
+<li>Fix client identification</li>
+<li>Security: check args of page</li>
+<li>Log: Fix missing log analyzed for unit test by parsing remaining log after first code unit</li>
+<li>Fix <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/244">issue 244</a> access_token callback param by @ethpsantos in https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/245</li>
+</ul>
+<h2 id="version-1353">Version 1.35.3</h2>
+<ul>
+<li>History box: revert merge of history and saved query combobox</li>
+<li>Log: fix log View doesn't load consistently from the Apex Execute page. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/243">issue 243</a></li>
+</ul>
+<h2 id="version-1352">Version 1.35.2</h2>
+<ul>
+<li>Data export: Fix delete records button and csv serialize when option is displayed</li>
+<li>popup: Fix first time use of enable log on user</li>
+</ul>
+<h2 id="version-1351">Version 1.35.1</h2>
+<ul>
+<li>Metadata: Fix download metadata <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/240">issue 240</a></li>
+<li>Inspect: Fix name field when no name field found</li>
+</ul>
+<h2 id="version-135">Version 1.35</h2>
+<ul>
+<li>Apex runner: add Duration column on logs table</li>
+<li>Data export: Fix infinite increase of width of column in table <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/239">issue 239</a></li>
+<li>Data export / Apex runner: Autosuggestion box for history, template and saved query in data export and apex runner <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/234">issue 234</a></li>
+<li>Project cleaning: split each component on dedicated file</li>
+<li>Shortcut : Search in validation rule error message <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/235">issue 235</a></li>
+<li>Data export: Add include, exclude keyword suggestions on soql <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/233">issue 233</a></li>
+</ul>
+<h2 id="version-134">Version 1.34</h2>
+<ul>
+<li>Log: Clear old apexlog button, run unit test <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/227">issue 227</a></li>
+<li>Log: Launch unit test, see result and code coverage, highlight in red if less than 75% <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/116">issue 116</a></li>
+<li>Log: Improve performance with calcul only on viewport of log and link on apex line number [issue 57]https://github.com/dufoli/Salesforce-Inspector-Advanced/(57)</li>
+<li>Popup: Fix unable to close pop out window once opened <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/210">issue 210</a></li>
+<li>Log: Scroll vertically on search <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/229">issue 229</a></li>
+<li>SOQL support improvement: Polymorphic fields typeof and type, in suggestion, subquery suggestion <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/231">issue 231</a></li>
+<li>Data Export: Edit a cell on then "apply all" action on data export display delete button on import instead of update <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/232">issue 232</a></li>
+<li>Inspect: Allow Go back from Show all data screen <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/162">issue 162</a></li>
+</ul>
+<h2 id="version-133">Version 1.33</h2>
+<ul>
+<li>Popup &gt; user: enable lwc debug <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/220">issue 220</a></li>
+<li>Popup: data export on report create a SOQL with same column (in Beta) <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/216">issue 216</a></li>
+<li>Data export: use local culture for timezone <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/212">issue 212</a></li>
+<li>Shortcut: include experience cloud site list <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/70">issue 70</a></li>
+<li>Data export: make parameter button more visible, make some column not editable, hide menu on aggregate result <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/214">issue 214</a></li>
+<li>Log: apex class view: display line number and color in green line with logs, click on apex view log go to raw log <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/221">issue 221</a></li>
+<li>Popup: Resize popup bug if mouse is too fast <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/150">issue 150</a></li>
+<li>Option: Auto suggestion box on csv separator, date format, datetime format, decimal format <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/223">issue 223</a></li>
+<li>Popup: Add button to export listview data in popup <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/215">issue 215</a></li>
+</ul>
+<h2 id="version-132">Version 1.32</h2>
+<ul>
+<li>Import: Fixed metadata relationship by setting string type.</li>
+<li>Import: Fixed import of JSON.</li>
+<li>Import: Fixed metadata relation import.</li>
+<li>Editor: Permit naviguation with up and down arrow when no suggestions are shown.</li>
+<li>Editor: Added undo and redo functionality with ctrl+z and ctrl+y.</li>
+<li>Inspect: Fixed filter on object with summary field.</li>
+<li>Data Export: Added support for keywords in suggestions.</li>
+<li>Data Export: Added bulk update with fixed value functionality.</li>
+<li>Data export: Clean query from common mistakes on export.</li>
+<li>Data Export: Fixed batch size number on query with parameters.</li>
+<li>User: Added reset password functionality.</li>
+<li>Log: Linked on click in flame chart or profiler to log line.</li>
+<li>Log: Added Apex view to display related logs to an Apex class line.</li>
+<li>Log: Added Ressource view to list SOQL, SOSL, DML and callout with count</li>
+<li>Security: Identified client Salesforce Inspector Advanced in logs.</li>
+<li>Security: Fixed potential SOQL injection and XSS vulnerabilities.</li>
+<li>Security: Restricted access to resources in the manifest.</li>
+</ul>
+<h2 id="version-131">Version 1.31</h2>
+<blockquote>
+<p>[!IMPORTANT]
+Fix <img alt="🐛" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f41b.svg" title=":bug:" /> long-time connection issue with yellow message to reconnect <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/203">issue 203</a> and <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/197">issue 197</a></p>
+</blockquote>
+<ul>
+<li>Flamechart: migrate to flamechart js with zoom possibility from https://github.com/pyatyispyatil/flame-chart-js (MIT licence) and improve a lot the log-parser to get more info and migrate to use the new flamechart.</li>
+<li>login as incognito <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/209">issue 209</a> and <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/202">issue 202</a></li>
+<li>SOQL: Remove duplicate columns and technical columns completely <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/201">issue 201</a></li>
+<li>Delete button should only forward Id and type to avoid skipping unnecessary columns <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/205">issue 205</a></li>
+<li>Access to Flow Trigger Explorer in shortcut <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/208">issue 208</a></li>
+</ul>
+<h2 id="version-1301">Version 1.30.1</h2>
+<ul>
+<li>api explorer: mesure time, store small response in history, http header and body type support, add template : bulk api, chatter api, report api, platform event channel, platform event channel member. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/194">issue 194</a></li>
+<li>update to 62 api version</li>
+<li>enable on flow debug and experince builder</li>
+<li>fix log parsing infinite loop and more readable duration</li>
+<li>apex runner : fix bug with error remain sometimes and wrong log displayed</li>
+<li>fix auto suggest data export who delete some text <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/192">issue 192</a></li>
+<li>fix a toggle menu null ref</li>
+<li>fix warning missing key on array</li>
+</ul>
+<h2 id="version-130">Version 1.30</h2>
+<ul>
+<li>Share date format option for import and export <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/166">issue 166</a></li>
+<li>Fix token generation issue and display message on popup if failed <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/165">issue 165</a></li>
+<li>Save all button on data export <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/174">issue 174</a></li>
+<li>Retry system for token before hard failing <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/172">issue 172</a></li>
+<li>Fix edit and menu which disappear on scroll by keeping state of cells with scroll or loading data <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/178">issue 178</a></li>
+<li>Get all tokens if other window refresh token <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/180">issue 180</a> and <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/83">issue 83</a></li>
+<li>Support Graphql in data export <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/109">issue 109</a></li>
+<li>Ability to load a range of data as parameter of query <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/169">issue 169</a></li>
+<li>button on flow to know where the flow is used (subflow, flexipage, quick action) <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/157">issue 157</a></li>
+<li>Improved quote management close to editor by @Dufgui <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/61">issue 61</a></li>
+<li>API explorer: add template, history and saved request and display format according data <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/171">issue 171</a></li>
+<li>streaming: format json and filter result and download button <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/114">issue 114</a></li>
+</ul>
+<h2 id="version-129">Version 1.29</h2>
+<ul>
+<li>fix name in saved queries <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/159">issue 159</a></li>
+<li>make shortcut editable <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/161">issue 161</a></li>
+<li>fix inline edit on data export <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/158">issue 158</a></li>
+<li>fix plateform event link on popup objects tab <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/155">issue 155</a></li>
+<li>add gear link to option from each page <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/152">issue 152</a></li>
+<li>export option : skip technical column and date format <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/151">issue 151</a></li>
+<li>fix copy record id <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/143">issue 143</a></li>
+</ul>
+<h2 id="version-128">Version 1.28</h2>
+<ul>
+<li>Fields() do not handle metadata and address field <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/130">issue 130</a></li>
+<li>Explore api: new ux  <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/84">issue 84</a></li>
+<li>Flamgraph on other mesures (SOQL, Heap,...) <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/139">issue 139</a></li>
+<li>Suggestion on data export edit <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/126">issue 126</a></li>
+<li>Custom Favicon for Salesforce environment and extension <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/138">issue 138</a></li>
+<li>Add roll up summary info <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/125">issue 125</a></li>
+<li>Shortcut insid screen instead of popup <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/141">issue 141</a></li>
+<li>Default action <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/140">issue 140</a></li>
+<li>Import guess sobject based on id prefix if no type column <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/pull/135">issue 135</a></li>
+<li>Data export: select child object field remove parent (exemple: RecordType.Dev =&gt; DeveloperName = remove recordType)</li>
+<li>Data export : Fix __r must display all custom relationship</li>
+<li>Data export : field in subquery failed to suggest</li>
+<li>Data export, inspect: select value picklist value if already a value selected will failed to update and need to erase a letter to make it working</li>
+<li>Data export, apex runner: , column width grow exponentially during lateral scroll</li>
+</ul>
+<h2 id="version-127">Version 1.27</h2>
+<blockquote>
+<p>[!IMPORTANT]
+New plateform event Manager
+A Streaming tool to manage plateform event, push topic, generic event, change data capture is available with new features:
+- Subscribe and monitor event
+- Register channel and plateform event
+- Publish an event with payload</p>
+</blockquote>
+<ul>
+<li>Icon menu in popup</li>
+<li>Plateform event Manager <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/15">issue 15</a></li>
+<li>Show diff cells in blue when 2 rows displayed <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/48">issue 48</a></li>
+<li>Review profiler to be more readable <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/105">issue 105</a></li>
+<li>Profiler: add flame chart <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/115">issue 115</a></li>
+<li>Display name, number, subject or title according to what is available <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/37">issue 37</a></li>
+<li>Handle address field properly <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/108">issue 108</a></li>
+</ul>
+<h2 id="version-126">Version 1.26</h2>
+<blockquote>
+<p>[!IMPORTANT]
+A new editor (query and script) is available in apex runner and data export with new features:
+- Inplace suggestions (can be disable in option)
+- Modular syntax highlighting for APEX, SOQL, and SOSL
+- Automatic indent on new lines
+- Indent selected text or lines with tab key
+- Parentheses, curly brace, brackets, or quotes
+  - Wrap selected text
+  - Automatic close completion</p>
+</blockquote>
+<h3 id="editor_1">Editor</h3>
+<ul>
+<li>Migrate apex runner to new editor <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/85">issue 85</a></li>
+<li>Add option to show/hide proposal with ctrl+space shortcut <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/89">issue 89</a></li>
+<li>Highlight keywords <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/62">issue 62</a></li>
+<li>Move suggestion over text area with list as regular IDE do <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/41">issue 41</a></li>
+<li>Improve quote in editor <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/73">issue 73</a></li>
+<li>Missing close/open char (parenthesis, bracket, curly brace), corresponding open/close char must be in red. <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/90">issue 90</a></li>
+</ul>
+<h3 id="popup_1">Popup</h3>
+<ul>
+<li>Escape to close popup <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/71">issue 71</a></li>
+<li>Resize popup window <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/77">issue 77</a></li>
+</ul>
+<h3 id="option">Option</h3>
+<ul>
+<li>Manage custom links in option <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/91">issue 91</a></li>
+<li>Enhance option component (template, history, ...) <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/80">issue 80</a></li>
+</ul>
+<h3 id="table">Table</h3>
+<ul>
+<li>Migrate data-loader to new table react component <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/75">issue 75</a></li>
+</ul>
+<h3 id="flow">Flow</h3>
+<ul>
+<li>Access flow version details from flow builder <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/86">issue 86</a></li>
+<li>Clear old flow versions inside FlowBuilder <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/50">issue 50</a></li>
+</ul>
+<h3 id="log-and-profile">Log and Profile</h3>
+<ul>
+<li>Upload a previous log file <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/103">issue 103</a></li>
+</ul>
+<h3 id="other">Other</h3>
+<ul>
+<li>Navigation bugs: custom settings and knowledge link <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/91">issue 91</a></li>
+</ul>
+<h2 id="version-125">Version 1.25</h2>
+<ul>
+<li>Metadata: download data model by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/11">issue 11</a></li>
+<li>Apex fields and methods suggestion by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/45">issue 45</a></li>
+<li>Log: improove ux and performance by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/43">issue 43</a></li>
+<li>data export: Inline edit by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/47">issue 47</a></li>
+<li>Metadata: UX multi column and search  by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/55">issue 55</a></li>
+<li>Close popup on inspect and data export by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/42">issue 42</a></li>
+<li>save query history with comments, fix horizontal scroll, make apex log more readable, fix stop polling and restart, typo by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/63">issue 63</a></li>
+<li>auto indent on new line by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/58">issue 58</a></li>
+<li>indent/unindent selection with tab/shift tab by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/59">issue 59</a></li>
+<li>Wrap selected text with paretheses, brackets or quotes by @dufoli in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/60">issue 60</a></li>
+<li>make popup button movable by @Dufgui in <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/24">issue 24</a></li>
+<li>support new domain : salesforce-setup.com</li>
+</ul>
+<h2 id="version-124">Version 1.24</h2>
+<ul>
+<li>Export: Support comments in SOQL / SOSL <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/12">issue 22</a></li>
+<li>Export: format query SOQL/ SOSL <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/12">issue 22</a></li>
+<li>Export: keep header on top of result on scrolling <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/20">issue 20</a></li>
+<li>Export: Add download CSV <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/26">issue 26</a></li>
+<li>Inspect: suggest value for picklist <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/28">issue 28</a></li>
+<li>Import: assignment rule for Lead, Case and Account <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/23">issue 23</a></li>
+<li>Popup: increase height of pannel and move it heigher</li>
+<li>Fix misc bugs (conecteed app,...)</li>
+<li>Log: Fix encoding for log dowload <a href="https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/33">issue 33</a></li>
+</ul>
+<h2 id="version-123">Version 1.23</h2>
+<ul>
+<li>Export SOQL: suggest field and related object link in subquery: SELECT Id, (SELECT Id from Contacts) FROM Account</li>
+<li>Export SOQL: suggest field value with IN, LIKE, excludes(), includes()</li>
+<li>Export SOQL: respect order of column</li>
+<li>Export SOQL: Remove total, done, index column for subquery result </li>
+<li>Export SOSL : execution</li>
+<li>Export SOSL : suggest keywords, field and object</li>
+<li>Apex Runner: execute batch, enqueue job or just anonymous code</li>
+<li>Apex Runner: poll log</li>
+<li>Apex Runner: auto suggest className</li>
+<li>Log: profiler</li>
+<li>Log: search with autoscroll</li>
+<li>Log: download</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      &copy; 2024 <a href="https://github.com/dufoli" target="_blank" rel="noopener">Olivier Dufour</a>
+
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/dufoli" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://www.linkedin.com/in/thomasprouvot/" target="_blank" rel="noopener" title="www.linkedin.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M416 32H31.9C14.3 32 0 46.5 0 64.3v383.4C0 465.5 14.3 480 31.9 480H416c17.6 0 32-14.5 32-32.3V64.3c0-17.8-14.4-32.3-32-32.3M135.4 416H69V202.2h66.5V416zM102.2 96a38.5 38.5 0 1 1 0 77 38.5 38.5 0 1 1 0-77m282.1 320h-66.4V312c0-24.8-.5-56.7-34.5-56.7-34.6 0-39.9 27-39.9 54.9V416h-66.4V202.2h63.7v29.2h.9c8.9-16.8 30.6-34.5 62.9-34.5 67.2 0 79.7 44.3 79.7 101.9z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.integrate", "navigation.top", "search.suggest", "search.highlight", "content.tabs.link", "content.code.annotation", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
