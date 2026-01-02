@@ -22,6 +22,32 @@ if (document.querySelector("body.sfdcBody, body.ApexCSIPage, #auraLoadingBox, #s
   });
 }
 
+function waitForElement(selector, callback) {
+  let targetElement = document.querySelector(selector);
+  if (targetElement) {
+    callback(targetElement);
+    return;
+  }
+  const observer = new MutationObserver((mutations, obs) => {
+    const element = document.querySelector(selector);
+    if (element) {
+      callback(element);
+      obs.disconnect();
+    }
+  });
+
+  observer.observe(document, {
+    childList: true,
+    subtree: true
+  });
+}
+
+function onFlowWheel(e) {
+  if (e.target.matches(".canvas, .builder-canvas, .flow-builder-canvas") || e.target.classList.contains("flow-container")) {
+    e.stopPropagation();
+  }
+}
+
 function updateFavIcon(iFrameLocalStorage) {
 
   let fav = iFrameLocalStorage.customFavicon;
@@ -180,7 +206,19 @@ function initButton(sfHost, inInspector) {
         }, allowedOrigin);
         // Set the overflow property to "auto"
         this.checked ? style.textContent = ".canvas {overflow : auto!important ; }" : style.textContent = ".canvas {overflow : hidden!important ; }";
+        waitForElement(".canvas, .builder-canvas, .flow-builder-canvas", (canvas) => {
+          if (overflowCheckbox.checked) {
+            canvas.addEventListener("wheel", onFlowWheel, {capture: true, passive: false});
+          } else {
+            canvas.removeEventListener("wheel", onFlowWheel);
+          }
+        });
       });
+      if (overflowCheckbox.checked) {
+        waitForElement(".canvas, .builder-canvas, .flow-builder-canvas", (canvas) => {
+          canvas.addEventListener("wheel", onFlowWheel, {capture: true, passive: false});
+        });
+      }
     }
   }
 
