@@ -60,6 +60,12 @@ export class QueryHistory {
     this.sort(this.storageKey, history);
     return history;
   }
+  update(position, entry) {
+    let history = this._get();
+    history[position] = entry;
+    localStorage[this.storageKey] = JSON.stringify(history);
+    this.sort(this.storageKey, history);
+  }
 
   add(entry) {
     let history = this._get();
@@ -122,6 +128,7 @@ export class HistoryBox extends React.Component {
     this.onTagInputKeyDown = this.onTagInputKeyDown.bind(this);
     this.onRenameStart = this.onRenameStart.bind(this);
     this.onRenameChange = this.onRenameChange.bind(this);
+    this.onRenameQueryChange = this.onRenameQueryChange.bind(this);
     this.onRenameKeyDown = this.onRenameKeyDown.bind(this);
     this.onRenameBlur = this.onRenameBlur.bind(this);
     this.onToggleExpand = this.onToggleExpand.bind(this);
@@ -134,6 +141,7 @@ export class HistoryBox extends React.Component {
       expandedQueries: new Set(),
       renamingIndex: null,
       renameValue: "",
+      renameQueryValue: "",
       tagInputs: {}
     };
   }
@@ -152,9 +160,10 @@ export class HistoryBox extends React.Component {
     const tagTexts = (suggestion.tags || []).map(tag => tag.toLowerCase());
     // Check if ALL terms are found individually in any of the searchable fields
     // Each term must be found in at least one field (label, query, or tags)
+    //do not match on query if name is present
     return terms.every(term =>
       labelText.indexOf(term) > -1
-      || queryText.indexOf(term) > -1
+      || (!suggestion.name && queryText.indexOf(term) > -1)
       || tagTexts.some(tag => tag.indexOf(term) > -1)
     );
   }
@@ -262,10 +271,27 @@ export class HistoryBox extends React.Component {
   }
   sortSuggestion(suggestions){
     return suggestions.sort((a, b) => {
-      if (a.favorite === b.favorite) {
-        return 0;
+      // First, sort by favorite status
+      if (a.favorite !== b.favorite) {
+        return a.favorite ? -1 : 1;
       }
-      return a.favorite ? -1 : 1;
+      // If both are favorites, sort by name if both have names
+      if (a.favorite && b.favorite) {
+        const aName = a.name || a.label || "";
+        const bName = b.name || b.label || "";
+        // If both have names, sort alphabetically
+        if (aName && bName) {
+          return aName.localeCompare(bName);
+        }
+        // If only one has a name, prioritize the one with a name
+        if (aName && !bName) {
+          return -1;
+        }
+        if (!aName && bName) {
+          return 1;
+        }
+      }
+      return 0;
     });
   }
   onDeleteItem(e, index) {
@@ -349,7 +375,8 @@ export class HistoryBox extends React.Component {
     let suggestion = filteredSuggestions[index];
     this.setState({
       renamingIndex: index,
-      renameValue: suggestion.name || suggestion.label || ""
+      renameValue: suggestion.name || suggestion.label || "",
+      renameQueryValue: suggestion.value || suggestion.query || ""
     });
   }
   onRenameChange(e) {
@@ -357,15 +384,27 @@ export class HistoryBox extends React.Component {
       renameValue: e.target.value
     });
   }
+  onRenameQueryChange(e) {
+    this.setState({
+      renameQueryValue: e.target.value
+    });
+  }
   onRenameKeyDown(e, index) {
     if (e.keyCode === 13) {
       e.preventDefault();
       this.onRenameBlur(e, index);
     } else if (e.keyCode === 27) {
+      let {didUpdate} = this.props;
       this.setState({
         renamingIndex: null,
-        renameValue: ""
+        renameValue: "",
+        renameQueryValue: "",
+        showSuggestions: false,
+        activeSuggestion: 0,
+        filteredSuggestions: [],
+        seachTerms: ""
       });
+      didUpdate();
     }
   }
   onRenameBlur(e, index) {
@@ -375,24 +414,54 @@ export class HistoryBox extends React.Component {
       return;
     }
     let {didUpdate, onUpdate} = this.props;
-    let {filteredSuggestions, renameValue} = this.state;
+    let {filteredSuggestions, renameValue, renameQueryValue} = this.state;
     let suggestion = filteredSuggestions[index];
     const newName = renameValue.trim();
-    if (newName && newName !== (suggestion.name || suggestion.label)) {
-      suggestion.name = newName;
-      suggestion.label = newName;
+    const newQuery = renameQueryValue.trim();
+    let hasChanges = false;
+
+    // Update name if changed
+    const currentName = (suggestion.name || suggestion.label || "").trim();
+    if (newName !== currentName) {
+      if (newName) {
+        suggestion.name = newName;
+        suggestion.label = newName;
+      } else {
+        // Clear name if empty
+        delete suggestion.name;
+        suggestion.label = suggestion.value || suggestion.query || "";
+      }
+      hasChanges = true;
+    }
+
+    // Update query if changed (preserve original if newQuery is empty or unchanged)
+    const currentQuery = (suggestion.value || suggestion.query || "").trim();
+    const finalQuery = newQuery || currentQuery; // Use newQuery if provided, otherwise preserve current
+    if (newQuery && newQuery !== currentQuery) {
+      suggestion.value = newQuery;
+      suggestion.query = newQuery;
+      hasChanges = true;
+    } else {
+      // Ensure query is preserved even if only name changed
+      suggestion.value = finalQuery;
+      suggestion.query = finalQuery;
+    }
+
+    if (hasChanges) {
       if (onUpdate) {
         onUpdate(suggestion);
       }
-      this.setState({
-        filteredSuggestions: [...filteredSuggestions]
-      });
-      didUpdate();
     }
     this.setState({
       renamingIndex: null,
-      renameValue: ""
+      renameValue: "",
+      renameQueryValue: "",
+      showSuggestions: false,
+      activeSuggestion: 0,
+      filteredSuggestions: [],
+      seachTerms: ""
     });
+    didUpdate();
   }
   onToggleExpand(e, index) {
     e.preventDefault();
@@ -420,7 +489,7 @@ export class HistoryBox extends React.Component {
     didUpdate();
   }
   render() {
-    let {activeSuggestion, filteredSuggestions, showSuggestions, expandedQueries, renamingIndex, renameValue, tagInputs} = this.state;
+    let {activeSuggestion, filteredSuggestions, showSuggestions, expandedQueries, renamingIndex, renameValue, renameQueryValue, tagInputs} = this.state;
     return h("div", {className: "slds-form-element slds-nowrap"},
       h("div", {className: "slds-form-element__control slds-wrap"},
         h("div", {className: "slds-combobox_container"},
@@ -454,25 +523,46 @@ export class HistoryBox extends React.Component {
                           // Title/Name section
                           h("div", {className: "slds-grid slds-grid_align-spread slds-m-bottom_xx-small"},
                             h("div", {className: "slds-col", style: {flex: "1", minWidth: 0}},
-                              isRenaming ? h("input", {
-                                type: "text",
-                                className: "slds-input slds-input_small",
-                                value: renameValue,
-                                onChange: (e) => this.onRenameChange(e, index),
-                                onKeyDown: (e) => this.onRenameKeyDown(e, index),
-                                onBlur: (e) => this.onRenameBlur(e, index),
-                                onClick: (e) => e.stopPropagation(),
-                                onMouseDown: (e) => e.stopPropagation(),
-                                style: {width: "100%"},
-                                autoFocus: true
-                              })
+                              isRenaming ? h("div", {style: {display: "flex", flexDirection: "column", gap: "4px"}},
+                                h("input", {
+                                  type: "text",
+                                  className: "slds-input slds-input_small",
+                                  placeholder: "Name",
+                                  value: renameValue,
+                                  onChange: (e) => this.onRenameChange(e),
+                                  onKeyDown: (e) => this.onRenameKeyDown(e, index),
+                                  onBlur: (e) => this.onRenameBlur(e, index),
+                                  onClick: (e) => e.stopPropagation(),
+                                  onMouseDown: (e) => e.stopPropagation(),
+                                  style: {width: "100%"},
+                                  autoFocus: true
+                                }),
+                                h("textarea", {
+                                  className: "slds-textarea slds-input_small",
+                                  placeholder: "Query",
+                                  value: renameQueryValue,
+                                  onChange: (e) => this.onRenameQueryChange(e),
+                                  onKeyDown: (e) => this.onRenameKeyDown(e, index),
+                                  onBlur: (e) => this.onRenameBlur(e, index),
+                                  onClick: (e) => e.stopPropagation(),
+                                  onMouseDown: (e) => e.stopPropagation(),
+                                  style: {
+                                    width: "100%",
+                                    minHeight: "60px",
+                                    fontFamily: "monospace",
+                                    fontSize: "0.75rem",
+                                    resize: "vertical"
+                                  },
+                                  rows: 3
+                                })
+                              )
                               : h("span", {
                                 className: "slds-truncate",
                                 title: displayName,
                                 style: {fontWeight: hasName ? "bold" : "normal"}
                               }, displayName)
                             ),
-                            h("div", {className: "slds-col slds-no-flex"},
+                            h("div", {className: "slds-no-flex"},
                               h("div", {className: "slds-button-group", style: {display: "flex", gap: "2px"}},
                                 hasName && this.props.onUpdate ? h("button", {
                                   className: "slds-button slds-button_icon slds-button_icon-x-small",

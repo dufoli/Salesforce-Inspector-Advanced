@@ -2316,19 +2316,19 @@ class Model {
   //TODO query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling
   getHistory() {
     let historyMap = new Map();
-    this.queryHistory.list.forEach(q => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []}));
-    this.queryTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false, apiType: "query"}));
-    this.savedHistory.list.forEach(q => {
+    this.queryHistory.list.forEach((q, index) => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "history"}));
+    this.queryTemplates.forEach((q, index) => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false, apiType: "query", position: index, type: "template"}));
+    this.savedHistory.list.forEach((q, index) => {
       let delimiter = ":";
       let itm;
       if (q.name){
-        itm = {value: q.query, label: q.name, name: q.name, favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []};
+        itm = {value: q.query, label: q.name, name: q.name, favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "saved"};
       } else if (q.query.includes(delimiter)){
-        itm = {label: q.query.split(delimiter)[0], favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []};
+        itm = {label: q.query.split(delimiter)[0], favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "saved"};
         itm.name = itm.label;
         itm.value = q.query.substring(itm.label.length + 1);
       } else {
-        itm = {value: q.query, label: q.query, favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || []};
+        itm = {value: q.query, label: q.query, favorite: true, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "saved"};
       }
       historyMap.set(itm.value, itm);
     });
@@ -2353,46 +2353,16 @@ class Model {
     }
   }
   updateHistoryItem(history) {
-    if (history.favorite) {
-      // For saved queries (favorites), find and update in savedHistory
-      // Match by query value and useToolingApi (name might be changing, so don't match by name)
-      let itm = this.savedHistory.list.find(item =>
-        item.query == history.value && item.useToolingApi == history.useToolingApi
-      );
-      if (itm) {
-        // Use tags from history if provided, otherwise preserve existing tags
-        const tagsToUse = Array.isArray(history.tags) ? history.tags : (itm.tags || []);
-        // Remove old entry
-        this.savedHistory.remove(itm);
-        // Add updated entry with new name and tags
-        let newSaved = {query: history.value, useToolingApi: history.useToolingApi ?? false, name: history.name, tags: tagsToUse};
-        this.savedHistory.add(newSaved);
-      }
+    // Use position and type from history object to find and update the item
+    if (history.type === "saved") {
+      this.savedHistory.update(history.position, history);
+    } else if (history.type === "template") {
+      this.queryTemplates[history.position] = history.value;
+      localStorage.setItem("queryTemplates", JSON.stringify(this.queryTemplates));
+    } else if (history.type === "history") {
+      this.queryHistory.update(history.position, history);
     } else {
-      // For regular history items, check if they're in savedHistory first
-      let itm = this.savedHistory.list.find(item => (item.useToolingApi == history.useToolingApi && ((item.query == history.value && item.name && item.name == history.label) || (item.query == history.label + ":" + history.value) || (item.query == history.value && item.query == history.label))));
-      if (itm) {
-        this.savedHistory.remove(itm);
-      } else {
-        let templateIndex = this.queryTemplates.indexOf(history.value);
-        if (templateIndex > -1) {
-          this.queryTemplates.splice(templateIndex, 1);
-          localStorage.setItem("queryTemplates", JSON.stringify(this.queryTemplates));
-        }
-      }
-      // Find existing history item to preserve tags
-      let existingHistory = this.queryHistory.list.find(item => item.query == history.value && item.useToolingApi == history.useToolingApi);
-      let newHistory = {query: history.value, useToolingApi: history.useToolingApi};
-      if (itm && itm.name) {
-        newHistory.name = itm.name;
-      }
-      // Preserve tags from history object or existing history item
-      if (Array.isArray(history.tags) && history.tags.length > 0) {
-        newHistory.tags = history.tags;
-      } else if (existingHistory && existingHistory.tags) {
-        newHistory.tags = existingHistory.tags;
-      }
-      this.queryHistory.add(newHistory);
+      console.error("Invalid history type:", history.type);
     }
   }
 }
