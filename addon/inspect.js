@@ -2,7 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {getObjectSetupLinks, getFieldSetupLinks} from "./setup-links.js";
-import {copyToClipboard} from "./data-load.js";
+import {copyToClipboard, tableToHtml} from "./data-load.js";
 
 class Model {
   constructor(sfHost) {
@@ -1537,7 +1537,7 @@ class RowTable extends React.Component {
     this.tableSettingsOpen = false;
     this.props.model.didUpdate();
   }
-  serializeToCSV(separator) {
+  serializeToArray() {
     let {rowList} = this.props;
     let selectedColumns = Array.from(rowList.selectedColumnMap.values());
     let isFieldRows = rowList.listName === "fields";
@@ -1570,8 +1570,17 @@ class RowTable extends React.Component {
       rows.push(rowData);
     }
 
-    // Serialize to CSV format
-    return [header.join(separator), ...rows.map(row => row.map(text => "\"" + ("" + text).split("\"").join("\"\"") + "\"").join(separator))].join("\r\n");
+    return rows;
+  }
+  arrayToCSV(table, separator) {
+    if (!table || table.length === 0) {
+      return "";
+    }
+    return table.map(row => row.map(text => "\"" + ("" + text).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
+  }
+  serializeToCSV(separator) {
+    let table = this.serializeToArray();
+    return this.arrayToCSV(table, separator);
   }
   onDownloadCSV(e) {
     e.preventDefault();
@@ -1611,8 +1620,13 @@ class RowTable extends React.Component {
       return;
     }
 
-    let csv = this.serializeToCSV("\t");
-    copyToClipboard(csv);
+    let table = this.serializeToArray();
+    let csv = this.arrayToCSV(table, "\t");
+    let html = null;
+    if (table.length <= 1001) { // header + 1000 rows
+      html = tableToHtml(table);
+    }
+    copyToClipboard(csv, html);
     this.tableSettingsOpen = false;
     this.props.model.didUpdate();
   }
@@ -1898,30 +1912,30 @@ class FieldTypeCell extends React.Component {
     let {row, col} = this.props;
     const MAX_INITIAL_TYPES = 3;
     let referenceTypes = row.referenceTypes();
-    
+
     if (referenceTypes && referenceTypes.length > 0) {
       const isPolymorphic = referenceTypes.length > MAX_INITIAL_TYPES;
-      const typesToShow = this.state.showAllTypes 
-        ? referenceTypes 
+      const typesToShow = this.state.showAllTypes
+        ? referenceTypes
         : referenceTypes.slice(0, MAX_INITIAL_TYPES);
       const remainingCount = referenceTypes.length - MAX_INITIAL_TYPES;
-      
+
       return h("td", {className: col.className + " quick-select"},
         typesToShow.map(data =>
           h("span", {key: data}, h("a", {href: row.showReferenceUrl(data)}, data), " ")
         ),
         isPolymorphic && !this.state.showAllTypes && remainingCount > 0
           ? h("span", {key: "more"},
-              h("a", {
-                href: "about:blank",
-                onClick: this.onShowMoreClick,
-                style: {cursor: "pointer", textDecoration: "underline", color: "#0066cc"}
-              }, "...(" + remainingCount + " more)")
-            )
+            h("a", {
+              href: "about:blank",
+              onClick: this.onShowMoreClick,
+              style: {cursor: "pointer", textDecoration: "underline", color: "#0066cc"}
+            }, "...(" + remainingCount + " more)")
+          )
           : null
       );
     }
-    
+
     return h("td", {className: col.className + " quick-select"},
       h(TypedValue, {value: row.sortKey(col.name)})
     );

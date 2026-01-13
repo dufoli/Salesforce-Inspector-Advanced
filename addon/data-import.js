@@ -2,7 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {csvParse} from "./csv-parse.js";
-import {DescribeInfo, copyToClipboard} from "./data-load.js";
+import {DescribeInfo, copyToClipboard, tableToHtml} from "./data-load.js";
 import {ScrollTable, TableModel} from "./record-table.js";
 class Model {
 
@@ -464,7 +464,13 @@ class Model {
   copyResult(separator) {
     let header = this.importData.importTable.header.map(c => c.columnValue);
     let data = this.importData.taggedRows.filter(row => this.showStatus[row.status]).map(row => row.cells);
-    copyToClipboard(csvSerialize([header, ...data], separator));
+    let table = [header, ...data];
+    let csv = csvSerialize(table, separator);
+    let html = null;
+    if (data.length <= 1000) {
+      html = tableToHtml(table);
+    }
+    copyToClipboard(csv, html);
   }
 
   importCounts() {

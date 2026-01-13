@@ -1,7 +1,7 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
-import {Enumerable, DescribeInfo, copyToClipboard, s} from "./data-load.js";
+import {Enumerable, DescribeInfo, copyToClipboard, s, tableToHtml, recordTableToArray} from "./data-load.js";
 import {csvParse} from "./csv-parse.js";
 import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
@@ -288,11 +288,23 @@ class Model {
           && this.exportedData.records.length < 20001 && !this.exportStatus.includes("Exporting") && this.exportedData?.table?.at(0)?.find(header => header.toLowerCase() === "id");
   }
   copyAsExcel() {
-    copyToClipboard(this.exportedData.csvSerialize("\t"));
+    let csv = this.exportedData.csvSerialize("\t");
+    let html = null;
+    if (this.exportedData.countOfVisibleRecords <= 1000) {
+      let tableArray = recordTableToArray(this.exportedData);
+      html = tableArray ? tableToHtml(tableArray) : null;
+    }
+    copyToClipboard(csv, html);
   }
   copyAsCsv() {
     let separator = getSeparator();
-    copyToClipboard(this.exportedData.csvSerialize(separator));
+    let csv = this.exportedData.csvSerialize(separator);
+    let html = null;
+    if (this.exportedData.countOfVisibleRecords <= 1000) {
+      let tableArray = recordTableToArray(this.exportedData);
+      html = tableArray ? tableToHtml(tableArray) : null;
+    }
+    copyToClipboard(csv, html);
   }
   downloadCsv() {
     let separator = getSeparator();

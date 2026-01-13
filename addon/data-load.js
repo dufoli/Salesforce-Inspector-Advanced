@@ -141,12 +141,83 @@ export function s(num, suffix = "s") {
   return num == 1 ? "" : suffix;
 }
 
+// Convert a 2D table array to HTML table string
+// @param table: Array of rows, where first row is header: [[header1, header2, ...], [row1col1, row1col2, ...], ...]
+// @param maxRows: Maximum number of rows (excluding header) to include in HTML. Returns null if exceeded.
+export function tableToHtml(table) {
+  if (!table || table.length === 0) {
+    return null;
+  }
+  const header = table[0];
+  const rows = table.slice(1);
+
+  // Escape HTML entities
+  function escapeHtml(text) {
+    if (text == null) {
+      return "";
+    }
+    const str = String(text);
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  let html = "<table><thead><tr>";
+  for (let cell of header) {
+    html += "<th>" + escapeHtml(cell) + "</th>";
+  }
+  html += "</tr></thead><tbody>";
+
+  for (let row of rows) {
+    html += "<tr>";
+    for (let cell of row) {
+      html += "<td>" + escapeHtml(cell) + "</td>";
+    }
+    html += "</tr>";
+  }
+
+  html += "</tbody></table>";
+  return html;
+}
+
+// Convert a RecordTable instance to a simple 2D array of strings
+// @param recordTable: RecordTable instance with getVisibleTable() and cellToString() methods
+export function recordTableToArray(recordTable) {
+  if (!recordTable || !recordTable.getVisibleTable) {
+    return null;
+  }
+  const visibleTable = recordTable.getVisibleTable();
+  if (!visibleTable || visibleTable.length === 0) {
+    return null;
+  }
+  return visibleTable.map(row => row.map(cell => recordTable.cellToString ? recordTable.cellToString(cell) : String(cell == null ? "" : cell)));
+}
+
 // Copy text to the clipboard, without rendering it, since rendering is slow.
-export function copyToClipboard(value) {
+export async function copyToClipboard(value, html = null) {
   if (parent && parent.isUnitTest) { // for unit tests
     parent.testClipboardValue = value;
     return;
   }
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      const clipboardItems = {};
+      clipboardItems["text/plain"] = new Blob([value], {type: "text/plain"});
+      if (html) {
+        clipboardItems["text/html"] = new Blob([html], {type: "text/html"});
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem(clipboardItems)
+      ]);
+      return;
+    } catch (e) {
+      console.warn("Clipboard API failed, fallback to execCommand", e);
+    }
+  }
+
   // Use execCommand to trigger an oncopy event and use an event handler to copy the text to the clipboard.
   // The oncopy event only works on editable elements, e.g. an input field.
   let temp = document.createElement("input");
@@ -154,6 +225,9 @@ export function copyToClipboard(value) {
   temp.value = "temp";
   temp.addEventListener("copy", e => {
     e.clipboardData.setData("text/plain", value);
+    if (html) {
+      e.clipboardData.setData("text/html", html);
+    }
     e.preventDefault();
   });
   document.body.appendChild(temp);
