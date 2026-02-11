@@ -41,9 +41,9 @@ html {
 body {
   font-family: "Salesforce Sans", Arial, sans-serif;
   font-size: .8125rem;
-  overflow: hidden;
+  overflow-y: auto;
   margin: 0;
-  height: 100%;
+  min-height: 100%;
   display: flex;
   background-color: #B0C4DF !important;
   background-image: url(images/lightning_blue_background.png) !important;
@@ -198,4 +198,5 @@ body {
 .color-picker-input::-webkit-color-swatch {
   border: none;
   border-radius: 0.25rem;
+
 }
