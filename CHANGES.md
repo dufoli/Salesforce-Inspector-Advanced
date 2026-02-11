@@ -85,6 +85,7 @@ Expanded with many new detection rules to help identify potential issues and opt
 
 ### Options
 - **Favicon Color Picker**: New color picker in the options page to customize the favicon color for your Salesforce environment and extension, making it easier to visually distinguish between different orgs.
+- **CSS Scroll** – Fix Options page layout to allow vertical scrolling when content exceeds viewport height.
 
 ### Popup
 - **Clone User**: New functionality to clone user records directly from the popup interface, simplifying user management tasks.
@@ -354,3 +355,4 @@ Expanded with many new detection rules to help identify potential issues and opt
 - Log: profiler
 - Log: search with autoscroll
 - Log: download
+
