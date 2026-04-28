@@ -1257,9 +1257,9 @@ class ScrollTableCell extends React.Component {
       downloadLink.click();
     });
   }
-  copyToClipboard(e){
+  async copyToClipboard(e){
     e.preventDefault();
-    navigator.clipboard.writeText(this.cell.recordId);
+    await navigator.clipboard.writeText(this.cell.recordId);
     this.model.toggleMenu(this.row.id, this.cell.id);
   }
   onClick(e) {
