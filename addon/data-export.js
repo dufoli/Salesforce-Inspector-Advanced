@@ -2907,7 +2907,6 @@ class App extends React.Component {
   if (!sfHost && args.has("state")) {
     sfHost = decodeURIComponent(args.get("state"));
   }
-  initButton(sfHost, true);
   sfConn.getSession(sfHost).then(() => {
     let root = document.getElementById("root");
     let model = new Model({sfHost, args});
@@ -2919,6 +2918,7 @@ class App extends React.Component {
     if (parent && parent.isUnitTest) { // for unit tests
       parent.insextTestLoaded({model, sfConn});
     }
+    initButton(sfHost, true);
   });
 
 }
