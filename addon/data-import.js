@@ -43,6 +43,7 @@ class Model {
     this.batchConcurrency = localStorage.getItem("defaultThreadSize") ? localStorage.getItem("defaultThreadSize") : "6";
     this.confirmPopup = null;
     this.activeBatches = 0;
+    this.bulkJobProgress = new Map();
     this.isProcessingQueue = false;
     this.assignmentRule = false;
     this.importState = null;
@@ -477,6 +478,30 @@ class Model {
     return this.importData.counts;
   }
 
+  resetBulkJobProgress() {
+    this.bulkJobProgress.clear();
+  }
+
+  applyBulkJobProgressToCounts() {
+    if (this.apiType != "Bulk" || !this.importData?.counts || this.bulkJobProgress.size == 0) {
+      return;
+    }
+
+    let processedRecords = 0;
+    let failedRecords = 0;
+    for (let jobProgress of this.bulkJobProgress.values()) {
+      let totalRecords = Math.max(0, jobProgress.rowCount || 0);
+      let jobProcessedRecords = Math.min(totalRecords, Math.max(0, jobProgress.numberRecordsProcessed || 0));
+      let jobFailedRecords = Math.min(jobProcessedRecords, Math.max(0, jobProgress.numberRecordsFailed || 0));
+      processedRecords += jobProcessedRecords;
+      failedRecords += jobFailedRecords;
+    }
+
+    this.importData.counts.Processing = Math.max(0, this.importData.counts.Processing - processedRecords);
+    this.importData.counts.Succeeded += processedRecords - failedRecords;
+    this.importData.counts.Failed += failedRecords;
+  }
+
   // Must be called whenever any of its inputs changes.
   updateImportTableResult() {
     if (this.importData.taggedRows == null) {
@@ -503,6 +528,7 @@ class Model {
 
   confirmPopupYes() {
     this.confirmPopup = null;
+    this.resetBulkJobProgress();
 
     let {header, data} = this.importData.importTable;
 
@@ -646,6 +672,7 @@ class Model {
     }
     // Note: caller will call this.executeBatch() if needed
     this.importData = {importTable, counts, taggedRows};
+    this.applyBulkJobProgressToCounts();
     this.updateImportTableResult();
   }
 
@@ -908,17 +935,17 @@ class Model {
     }
     let headerBulk = header.filter(h => !h.startsWith("_")).join(",");
     let chunk = headerBulk + "\n";
-    let rowCount = 1;
+    let chunkRows = [];
     for (let row of data) {
       if (this.apiType == "Bulk") {
-        rowCount++;
-        if (chunk.length > 100000000 || rowCount > 10000) { //100 MB
-          batchRows.push(chunk);
+        if (chunk.length > 100000000) { //100 MB
+          batchRows.push({csv: chunk, rows: chunkRows});
           chunk = headerBulk + "\n";
-          rowCount = 1;
+          chunkRows = [];
         }
         chunk += row.filter((r, i) => !header[i].startsWith("_")).join(",") + "\n";
         row[statusColumnIndex] = "Processing";
+        chunkRows.push(row);
         continue;
       }
       if (batchRows.length == batchSize) {
@@ -1039,7 +1066,7 @@ class Model {
       }
     }
     if (chunk != headerBulk + "\n") {
-      batchRows.push(chunk);
+      batchRows.push({csv: chunk, rows: chunkRows});
     }
     if (batchRows.length == 0) {
       if (this.activeBatches == 0) {
@@ -1047,7 +1074,7 @@ class Model {
       }
       return;
     }
-    this.activeBatches++;
+    this.activeBatches += batchRows.length;
     this.updateResult(this.importData.importTable);
 
     // When receiving invalid input, Salesforce will respond with HTTP status 500.
@@ -1068,208 +1095,238 @@ class Model {
       soapheaders.headers = {"AssignmentRuleHeader": {"useDefaultRule": this.assignmentRule}};
     }
     if (this.apiType == "Bulk") {
-      //batchRows
-      let bulkJobCreationBody = {
-        "operation": this.importAction == "create" ? "insert" : this.importAction, // insert, delete, hardDelete, update, upsert
-        "object": this.importType,
-        "contentType": "CSV",
-        "lineEnding": "LF", //LF, CRLF
-        "columnDelimiter": "COMMA", //BACKQUOTE, CARET, COMMA, PIPE, SEMICOLON, TAB
-      };
-      this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest", {method: "POST", withoutCache: true, body: bulkJobCreationBody}).then(async jobResponse => {
-        console.log(jobResponse);
-        if (jobResponse.exceptionCode) {
-          let errorText = jobResponse.exceptionMessage;
-          for (let row of data) {
-            row[statusColumnIndex] = "Failed";
-            row[resultIdColumnIndex] = "";
-            row[actionColumnIndex] = "";
-            row[errorColumnIndex] = errorText;
+      for (let batch of batchRows) {
+        let bulkJobId = null;
+        let bulkJobCreationBody = {
+          "operation": this.importAction == "create" ? "insert" : this.importAction, // insert, delete, hardDelete, update, upsert
+          "object": this.importType,
+          "contentType": "CSV",
+          "lineEnding": "LF", //LF, CRLF
+          "columnDelimiter": "COMMA", //BACKQUOTE, CARET, COMMA, PIPE, SEMICOLON, TAB
+        };
+        this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest", {method: "POST", withoutCache: true, body: bulkJobCreationBody}).then(async jobResponse => {
+          console.log(jobResponse);
+          if (jobResponse.exceptionCode) {
+            let errorText = jobResponse.exceptionMessage;
+            for (let row of batch.rows) {
+              row[statusColumnIndex] = "Failed";
+              row[resultIdColumnIndex] = "";
+              row[actionColumnIndex] = "";
+              row[errorColumnIndex] = errorText;
+            }
+            return;
           }
-          return;
-        }
-        if (!jobResponse.id) {
-          throw new Error("bulk job creation failed");
-        }
-        for (let chunk of batchRows) {
+          if (!jobResponse.id) {
+            throw new Error("bulk job creation failed");
+          }
+          bulkJobId = jobResponse.id;
+          this.bulkJobProgress.set(bulkJobId, {
+            rowCount: batch.rows.length,
+            numberRecordsProcessed: 0,
+            numberRecordsFailed: 0
+          });
           try {
-            await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/batches", {method: "PUT", withoutCache: true, bodyType: "csv", body: chunk});
+            await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/batches", {method: "PUT", withoutCache: true, bodyType: "csv", body: batch.csv});
           } catch (error) {
             console.error("Unexpected exception", error);
             return;
           }
-        }
 
-        let uploadCompleteResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id, {method: "PATCH", withoutCache: true, body: {"state": "UploadComplete"}});
-        console.log(uploadCompleteResponse);
-        let state = "UploadComplete";
-        let timeout = ms => new Promise(resolve => setTimeout(resolve, ms));
-        while (state != "JobComplete") {
-          //TODO avoid infinite loop here
-          await timeout(5000);
-          if (state == "Failed" || state == "Aborted" || state == null) {
-            throw new Error("Bulk operation failed");
+          let uploadCompleteResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id, {method: "PATCH", withoutCache: true, body: {"state": "UploadComplete"}});
+          console.log(uploadCompleteResponse);
+          let state = "UploadComplete";
+          let timeout = ms => new Promise(resolve => setTimeout(resolve, ms));
+          while (state != "JobComplete") {
+            //TODO avoid infinite loop here
+            await timeout(5000);
+            if (state == "Failed" || state == "Aborted" || state == null) {
+              throw new Error("Bulk operation failed");
+            }
+            try {
+              let jobStateResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id, {method: "GET", withoutCache: true});
+              console.log(jobStateResponse);
+              state = jobStateResponse?.state;
+              this.bulkJobProgress.set(jobResponse.id, {
+                rowCount: batch.rows.length,
+                numberRecordsProcessed: jobStateResponse.numberRecordsProcessed || 0,
+                numberRecordsFailed: jobStateResponse.numberRecordsFailed || 0
+              });
+              this.updateResult(this.importData.importTable);
+            } catch (error) {
+              console.error("Unexpected exception", error);
+              return;
+            }
           }
-          try {
-            let jobStateResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id, {method: "GET", withoutCache: true});
-            console.log(jobStateResponse);
-            state = jobStateResponse?.state;
-          } catch (error) {
-            console.error("Unexpected exception", error);
-            return;
-          }
-        }
-        if (state == "JobComplete") {
-          this.activeBatches = 0;
-          let jobSuccessfulResultsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/successfulResults", {method: "GET", withoutCache: true, responseType: "text"});
-          console.log(jobSuccessfulResultsResponse);
-          //parse response to get successful results body is a csv with columns "sf__Id","sf__Created",Id
-          let successTable;
-          try {
-            successTable = csvParse(jobSuccessfulResultsResponse, ",");
-          } catch (e) {
-            console.error("Error parsing successful results CSV", e);
-            // Fallback to marking all as failed if we can't parse
-            for (let row of data) {
+          if (state == "JobComplete") {
+            let jobSuccessfulResultsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/successfulResults", {method: "GET", withoutCache: true, responseType: "text"});
+            console.log(jobSuccessfulResultsResponse);
+            //parse response to get successful results body is a csv with columns "sf__Id","sf__Created",Id
+            let successTable;
+            try {
+              successTable = csvParse(jobSuccessfulResultsResponse, ",");
+            } catch (e) {
+              console.error("Error parsing successful results CSV", e);
+              // Fallback to marking all as failed if we can't parse
+              for (let row of batch.rows) {
+                if (row[statusColumnIndex] == "Processing") {
+                  row[statusColumnIndex] = "Failed";
+                  row[errorColumnIndex] = "Error parsing successful results: " + e.message;
+                }
+              }
+              this.updateResult(this.importData.importTable);
+              return;
+            }
+            if (successTable.length < 2) {
+              // No successful results
+              successTable = [];
+            }
+            const successHeaders = successTable[0].map(h => h.trim());
+            const successRows = successTable.slice(1);
+            const successfulResults = successRows.map(row =>
+              successHeaders.reduce((acc, header, index) => {
+                acc[header] = row[index] || "";
+                return acc;
+              }, {})
+            );
+            console.log(successfulResults);
+
+            // Build ordered list of rows that were sent in this batch (for position-based matching)
+            // and a Map from input data rows keyed by their ID for O(1) lookups (for ID-based matching)
+            const rowsInBatch = [];
+            const dataRowMap = new Map();
+            for (let i = 0; i < batch.rows.length; i++) {
+              const row = batch.rows[i];
               if (row[statusColumnIndex] == "Processing") {
-                row[statusColumnIndex] = "Failed";
-                row[errorColumnIndex] = "Error parsing successful results: " + e.message;
+                rowsInBatch.push({row, index: i});
+                // Also index by ID if available (for update/delete/upsert operations)
+                if (inputIdColumnIndex >= 0) {
+                  const rowId = row[inputIdColumnIndex];
+                  if (rowId) {
+                    // Handle multiple rows with same ID by storing as array
+                    if (!dataRowMap.has(rowId)) {
+                      dataRowMap.set(rowId, []);
+                    }
+                    dataRowMap.get(rowId).push(row);
+                  }
+                }
+              }
+            }
+
+            // Process successful results using the map for performance
+            // Bulk API preserves row order, so results correspond to rowsInBatch by position
+            for (let resultIndex = 0; resultIndex < successfulResults.length; resultIndex++) {
+              const result = successfulResults[resultIndex];
+              const resultId = result.Id || result.id || result.sf__Id || "";
+              let matchedRows = [];
+
+              // Try to match by ID first (for update/delete/upsert operations)
+              if (inputIdColumnIndex >= 0 && resultId && dataRowMap.has(resultId)) {
+                matchedRows = dataRowMap.get(resultId).filter(r => r[statusColumnIndex] == "Processing");
+              }
+
+              // If ID matching didn't work, match by position (for create operations or when ID matching fails)
+              if (matchedRows.length == 0 && resultIndex < rowsInBatch.length) {
+                const batchRow = rowsInBatch[resultIndex];
+                if (batchRow && batchRow.row[statusColumnIndex] == "Processing") {
+                  matchedRows = [batchRow.row];
+                }
+              }
+
+              // Update matched rows
+              for (let row of matchedRows) {
+                if (row[statusColumnIndex] == "Processing") {
+                  row[statusColumnIndex] = "Succeeded";
+                  if (resultIdColumnIndex >= 0) {
+                    // Use sf__Id if available (for creates), otherwise use the matched ID
+                    row[resultIdColumnIndex] = result.sf__Id || resultId || "";
+                  }
+                }
+              }
+            }
+
+            this.updateResult(this.importData.importTable);
+            let jobFailedResultsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/failedResults", {method: "GET", withoutCache: true, responseType: "text"});
+            console.log(jobFailedResultsResponse);
+            //parse response to get failed results body is a csv with columns sf__Error, sf__Id, Id
+            let failedTable;
+            try {
+              failedTable = csvParse(jobFailedResultsResponse, ",");
+            } catch (e) {
+              console.error("Error parsing failed results CSV", e);
+              // Continue processing - some rows may already be marked as succeeded
+              failedTable = [];
+            }
+            if (failedTable.length < 2) {
+              // No failed results
+              failedTable = [];
+            }
+            let failedResults;
+            if (failedTable && failedTable.length) {
+              const failedHeaders = failedTable[0].map(h => h.trim());
+              const failedRows = failedTable.slice(1);
+              failedResults = failedRows.map(row =>
+                failedHeaders.reduce((acc, header, index) => {
+                  acc[header] = row[index] || "";
+                  return acc;
+                }, {})
+              );
+              console.log(failedResults);
+            } else {
+              failedResults = [];
+            }
+
+            // Process failed results using the map for performance
+            // Bulk API preserves row order, so results correspond to rowsInBatch by position
+            for (let resultIndex = 0; resultIndex < failedResults.length; resultIndex++) {
+              const result = failedResults[resultIndex];
+              const resultId = result.Id || result.id || result.sf__Id || "";
+              let matchedRows = [];
+
+              // Try to match by ID first (for update/delete/upsert operations)
+              if (inputIdColumnIndex >= 0 && resultId && dataRowMap.has(resultId)) {
+                matchedRows = dataRowMap.get(resultId).filter(r => r[statusColumnIndex] == "Processing");
+              }
+
+              // If ID matching didn't work, match by position (for create operations or when ID matching fails)
+              if (matchedRows.length == 0 && resultIndex < rowsInBatch.length) {
+                const batchRow = rowsInBatch[resultIndex];
+                if (batchRow && batchRow.row[statusColumnIndex] == "Processing") {
+                  matchedRows = [batchRow.row];
+                }
+              }
+
+              // Update matched rows
+              for (let row of matchedRows) {
+                if (row[statusColumnIndex] == "Processing") {
+                  row[statusColumnIndex] = "Failed";
+                  if (resultIdColumnIndex >= 0) {
+                    row[resultIdColumnIndex] = result.sf__Id || resultId || "";
+                  }
+                  if (errorColumnIndex >= 0) {
+                    row[errorColumnIndex] = result.sf__Error || result.sf__error || "";
+                  }
+                }
               }
             }
             this.updateResult(this.importData.importTable);
-            return;
           }
-          if (successTable.length < 2) {
-            // No successful results
-            successTable = [];
-          }
-          const successHeaders = successTable[0].map(h => h.trim());
-          const successRows = successTable.slice(1);
-          const successfulResults = successRows.map(row =>
-            successHeaders.reduce((acc, header, index) => {
-              acc[header] = row[index] || "";
-              return acc;
-            }, {})
-          );
-          console.log(successfulResults);
-
-          // Build ordered list of rows that were sent in this batch (for position-based matching)
-          // and a Map from input data rows keyed by their ID for O(1) lookups (for ID-based matching)
-          const rowsInBatch = [];
-          const dataRowMap = new Map();
-          for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            // Rows marked as Processing are the ones sent in this batch
+        })).catch(err => {
+          for (let row of batch.rows) {
             if (row[statusColumnIndex] == "Processing") {
-              rowsInBatch.push({row, index: i});
-              // Also index by ID if available (for update/delete/upsert operations)
-              if (inputIdColumnIndex >= 0) {
-                const rowId = row[inputIdColumnIndex];
-                if (rowId) {
-                  // Handle multiple rows with same ID by storing as array
-                  if (!dataRowMap.has(rowId)) {
-                    dataRowMap.set(rowId, []);
-                  }
-                  dataRowMap.get(rowId).push(row);
-                }
-              }
-            }
-          }
-
-          // Process successful results using the map for performance
-          // Bulk API preserves row order, so results correspond to rowsInBatch by position
-          for (let resultIndex = 0; resultIndex < successfulResults.length; resultIndex++) {
-            const result = successfulResults[resultIndex];
-            const resultId = result.Id || result.id || result.sf__Id || "";
-            let matchedRows = [];
-
-            // Try to match by ID first (for update/delete/upsert operations)
-            if (inputIdColumnIndex >= 0 && resultId && dataRowMap.has(resultId)) {
-              matchedRows = dataRowMap.get(resultId).filter(r => r[statusColumnIndex] == "Processing");
-            }
-
-            // If ID matching didn't work, match by position (for create operations or when ID matching fails)
-            if (matchedRows.length == 0 && resultIndex < rowsInBatch.length) {
-              const batchRow = rowsInBatch[resultIndex];
-              if (batchRow && batchRow.row[statusColumnIndex] == "Processing") {
-                matchedRows = [batchRow.row];
-              }
-            }
-
-            // Update matched rows
-            for (let row of matchedRows) {
-              if (row[statusColumnIndex] == "Processing") {
-                row[statusColumnIndex] = "Succeeded";
-                if (resultIdColumnIndex >= 0) {
-                  // Use sf__Id if available (for creates), otherwise use the matched ID
-                  row[resultIdColumnIndex] = result.sf__Id || resultId || "";
-                }
-              }
-            }
-          }
-
-          this.updateResult(this.importData.importTable);
-          let jobFailedResultsResponse = await sfConn.rest("/services/data/v" + apiVersion + "/jobs/ingest/" + jobResponse.id + "/failedResults", {method: "GET", withoutCache: true, responseType: "text"});
-          console.log(jobFailedResultsResponse);
-          //parse response to get failed results body is a csv with columns sf__Error, sf__Id, Id
-          let failedTable;
-          try {
-            failedTable = csvParse(jobFailedResultsResponse, ",");
-          } catch (e) {
-            console.error("Error parsing failed results CSV", e);
-            // Continue processing - some rows may already be marked as succeeded
-            failedTable = [];
-          }
-          if (failedTable.length < 2) {
-            // No failed results
-            failedTable = [];
-          }
-          const failedHeaders = failedTable[0].map(h => h.trim());
-          const failedRows = failedTable.slice(1);
-          const failedResults = failedRows.map(row =>
-            failedHeaders.reduce((acc, header, index) => {
-              acc[header] = row[index] || "";
-              return acc;
-            }, {})
-          );
-          console.log(failedResults);
-
-          // Process failed results using the map for performance
-          // Bulk API preserves row order, so results correspond to rowsInBatch by position
-          for (let resultIndex = 0; resultIndex < failedResults.length; resultIndex++) {
-            const result = failedResults[resultIndex];
-            const resultId = result.Id || result.id || result.sf__Id || "";
-            let matchedRows = [];
-
-            // Try to match by ID first (for update/delete/upsert operations)
-            if (inputIdColumnIndex >= 0 && resultId && dataRowMap.has(resultId)) {
-              matchedRows = dataRowMap.get(resultId).filter(r => r[statusColumnIndex] == "Processing");
-            }
-
-            // If ID matching didn't work, match by position (for create operations or when ID matching fails)
-            if (matchedRows.length == 0 && resultIndex < rowsInBatch.length) {
-              const batchRow = rowsInBatch[resultIndex];
-              if (batchRow && batchRow.row[statusColumnIndex] == "Processing") {
-                matchedRows = [batchRow.row];
-              }
-            }
-
-            // Update matched rows
-            for (let row of matchedRows) {
-              if (row[statusColumnIndex] == "Processing") {
-                row[statusColumnIndex] = "Failed";
-                if (resultIdColumnIndex >= 0) {
-                  row[resultIdColumnIndex] = result.sf__Id || resultId || "";
-                }
-                if (errorColumnIndex >= 0) {
-                  row[errorColumnIndex] = result.sf__Error || result.sf__error || "";
-                }
-              }
+              row[statusColumnIndex] = "Failed";
+              row[errorColumnIndex] = err;
             }
           }
           this.updateResult(this.importData.importTable);
-        }
-      }));
+          return;
+        }).finally(() => {
+          if (bulkJobId) {
+            this.bulkJobProgress.delete(bulkJobId);
+          }
+          this.activeBatches = Math.max(0, this.activeBatches - 1);
+          this.updateResult(this.importData.importTable);
+        });
+      }
     } else {
       let wsdl = sfConn.wsdl(apiVersion, this.apiType);
       this.spinFor(sfConn.soap(wsdl, importAction, importArgs, soapheaders).then(res => {

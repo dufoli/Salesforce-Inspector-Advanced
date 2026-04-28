@@ -1,5 +1,10 @@
 # Release Notes
 
+## Version 1.39
+
+- fix bulk api on import.
+
+
 ## Version 1.38
 
 ### Inspect
