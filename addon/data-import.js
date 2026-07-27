@@ -1074,7 +1074,7 @@ class Model {
       }
       return;
     }
-    this.activeBatches += batchRows.length;
+    this.activeBatches++;
     this.updateResult(this.importData.importTable);
 
     // When receiving invalid input, Salesforce will respond with HTTP status 500.
