@@ -93,7 +93,7 @@ class Model {
     if (this.importAction) {
       this.importActionName = this.allActions.filter(a => a.value == this.importAction).map(a => a.label).shift();
     }
-    this.tableModel = new TableModel(sfHost, this.didUpdate.bind(this));
+    this.tableModel = new TableModel(sfHost, this.didUpdate.bind(this), {localEditOnly: true});
     this.resultTableCallback = (d) => this.tableModel.dataChange(d);
   }
 

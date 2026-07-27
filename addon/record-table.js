@@ -624,6 +624,28 @@ export class TableModel {
           record[this.data.table[0][cellIdx]] = cell.dataEditValue;
         }
       });
+      if (this.options.localEditOnly) {
+        // Do not PATCH the records, just keep the edited values in the local grid (and in the underlying data, e.g. for import).
+        let row = this.rows.find(r => r.idx == rowIdx);
+        if (row) {
+          row.cells.filter(c => c.dataEditValue !== null).forEach(c => {
+            c.label = c.dataEditValue;
+            this.writeEditedValueToData(rowIdx, c.idx, c.dataEditValue);
+            c.dataEditValue = null;
+            c.isEditing = false;
+          });
+        }
+        cellMap.forEach((cell, cellIdx) => {
+          cell.label = cell.dataEditValue;
+          this.writeEditedValueToData(rowIdx, cellIdx, cell.dataEditValue);
+          cell.dataEditValue = null;
+          cell.isEditing = false;
+        });
+        if (cnt == 0) {
+          this.didUpdate();
+        }
+        return;
+      }
       let recordUrl;
       let firstCell = this.data.table[rowIdx][0];
       if (typeof firstCell == "object" && firstCell != null && firstCell.attributes && firstCell.attributes.url) {
@@ -633,11 +655,13 @@ export class TableModel {
         let row = this.rows.find(r => r.idx == rowIdx);
         row.cells.filter(c => c.dataEditValue !== null).forEach(c => {
           c.label = c.dataEditValue;
+          this.writeEditedValueToData(rowIdx, c.idx, c.dataEditValue);
           c.dataEditValue = null;
           c.isEditing = false;
         });
-        cellMap.forEach(cell => {
+        cellMap.forEach((cell, cellIdx) => {
           cell.label = cell.dataEditValue;
+          this.writeEditedValueToData(rowIdx, cellIdx, cell.dataEditValue);
           cell.dataEditValue = null;
           cell.isEditing = false;
         });
@@ -679,6 +703,11 @@ export class TableModel {
     window.open("data-import.html?" + args, "_blank");
   }
   doSave(rowId) {
+    if (this.options.localEditOnly) {
+      // Do not PATCH the record, just keep the edited values in the local grid.
+      this.endEdit(rowId);
+      return;
+    }
     let row = this.rows[rowId];
     let record = {};
     row.cells.filter(c => c.dataEditValue !== undefined).forEach(c => {
@@ -713,6 +742,13 @@ export class TableModel {
       this.didUpdate();
     });
   }
+  // Write the edited value back into the underlying data (not just the rendered cell), so it
+  // survives re-rendering (e.g. scrolling) and is picked up by callers reading the raw table (e.g. import).
+  writeEditedValueToData(rowIdx, cellIdx, value) {
+    if (this.data && this.data.table && this.data.table[rowIdx]) {
+      this.data.table[rowIdx][cellIdx] = value;
+    }
+  }
   endEdit(rowId) {
     let row = this.rows[rowId];
     if (!row) {
@@ -720,12 +756,14 @@ export class TableModel {
     }
     row.cells.filter(c => c.dataEditValue !== undefined).forEach(c => {
       c.label = c.dataEditValue;
+      this.writeEditedValueToData(row.idx, c.idx, c.dataEditValue);
       c.dataEditValue = undefined;
       c.isEditing = false;
     });
-    this.editedRows.get(row.idx).forEach((cell) => {
+    this.editedRows.get(row.idx).forEach((cell, cellIdx) => {
       if (cell.dataEditValue != null) {
         cell.label = cell.dataEditValue;
+        this.writeEditedValueToData(row.idx, cellIdx, cell.dataEditValue);
         cell.dataEditValue = null;
         cell.isEditing = false;
       }
@@ -783,8 +821,8 @@ export class TableModel {
         || this.header[cellId].name.toLowerCase() == "lastmodifieddate")) {
         continue;
       }
-      // do not allow edit if no id column
-      if (!this.header.some(c => c?.name != null && c?.name?.toLowerCase() == "id")) {
+      // do not allow edit if no id column, unless editing is local only (e.g. import preview, where there is nothing to PATCH)
+      if (!this.options.localEditOnly && !this.header.some(c => c?.name != null && c?.name?.toLowerCase() == "id")) {
         continue;
       }
       //do not allow edit of object column
@@ -829,8 +867,8 @@ export class TableModel {
     if (this.header[cellId] && this.header[cellId].name && this.header[cellId].name.toLowerCase() == "Id") {
       return;
     }
-    // do not allow edit if no id column
-    if (!this.data.table[0].some(c => c == "Id")) {
+    // do not allow edit if no id column, unless editing is local only (e.g. import preview, where there is nothing to PATCH)
+    if (!this.options.localEditOnly && !this.data.table[0].some(c => c == "Id")) {
       return;
     }
     //do not allow edit of object column
