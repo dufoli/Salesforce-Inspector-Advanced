@@ -1125,11 +1125,10 @@ export class TableModel {
     }
   }
   isRecordId(recordId) {
-    // We assume a string is a Salesforce ID if it is 18 characters,
-    // contains only alphanumeric characters,
-    // the record part (after the 3 character object key prefix and 2 character instance id) starts with at least four zeroes,
+    // We assume a string is a Salesforce ID if it is 15 or 18 characters,
+    // contains only alphanumeric characters, with at least one alpha
     // and the 3 character object key prefix is not all zeroes.
-    return /^[a-z0-9]{5}0000[a-z0-9]{9}$/i.exec(recordId) && !recordId.startsWith("000");
+    return /^[a-z0-9]{15,18}$/i.exec(recordId) && !recordId.startsWith("000") && !/^[0-9]*$/.exec(recordId);
   }
   isEventLogFile(text) {
     // test the text to identify if this is a path to an eventLogFile
