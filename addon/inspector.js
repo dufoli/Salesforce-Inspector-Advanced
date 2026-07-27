@@ -416,7 +416,8 @@ function getMyDomain(host) {
   if (host) {
     const myDomain = host
       .replace(/\.lightning\.force\./, ".my.salesforce.") //avoid HTTP redirect (that would cause Authorization header to be dropped)
-      .replace(/\.mcas\.ms$/, ""); //remove trailing .mcas.ms if the client uses Microsoft Defender for Cloud Apps
+      .replace(/\.mcas\.ms$/, "") //remove trailing .mcas.ms if the client uses Microsoft Defender for Cloud Apps
+      .replace(/\.lightning\.([^.]+)\.force\.com$/, ".my.$1.salesforce.com"); //new url format
     return myDomain;
   }
   return host;
