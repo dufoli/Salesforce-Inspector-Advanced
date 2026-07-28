@@ -2,6 +2,11 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {QueryHistory} from "./history-box.js";
+
+function isSafeApiUrl(url) {
+  return typeof url == "string" && url.startsWith("/") && !url.startsWith("//");
+}
+
 class Model {
   constructor(sfHost, args) {
     this.sfHost = sfHost;
@@ -35,10 +40,15 @@ class Model {
 
     if (args.has("apiUrls")) {
       let apiUrls = args.getAll("apiUrls");
-      this.title = apiUrls.length + " API requests, e.g. " + apiUrls[0];
       this.apiUrl = apiUrls[0];
-      let apiPromise = Promise.all(apiUrls.map(url => sfConn.rest(url, {withoutCache: true})));
-      this.performRequest(apiPromise);
+      if (!apiUrls.every(isSafeApiUrl)) {
+        this.title = "Rejected untrusted apiUrls parameter";
+        this.performRequest(Promise.reject(new Error("apiUrls must be paths relative to the current org, e.g. \"/services/data/...\"")));
+      } else {
+        this.title = apiUrls.length + " API requests, e.g. " + apiUrls[0];
+        let apiPromise = Promise.all(apiUrls.map(url => sfConn.rest(url, {withoutCache: true})));
+        this.performRequest(apiPromise);
+      }
     } else if (args.has("checkDeployStatus")) {
       let wsdl = sfConn.wsdl(apiVersion, "Metadata");
       this.title = "checkDeployStatus: " + args.get("checkDeployStatus");
@@ -47,10 +57,15 @@ class Model {
       this.performRequest(apiPromise);
     } else {
       let apiUrl = args.get("apiUrl") || "/services/data/";
-      this.title = apiUrl;
       this.apiUrl = apiUrl;
-      let apiPromise = sfConn.rest(apiUrl, {withoutCache: true});
-      this.performRequest(apiPromise);
+      if (!isSafeApiUrl(apiUrl)) {
+        this.title = "Rejected untrusted apiUrl parameter";
+        this.performRequest(Promise.reject(new Error("apiUrl must be a path relative to the current org, e.g. \"/services/data/...\"")));
+      } else {
+        this.title = apiUrl;
+        let apiPromise = sfConn.rest(apiUrl, {withoutCache: true});
+        this.performRequest(apiPromise);
+      }
     }
     let requestTemplatesRawValue = localStorage.getItem("requestTemplates");
     if (requestTemplatesRawValue && requestTemplatesRawValue != "[]") {
@@ -188,7 +203,12 @@ class Model {
     // Recursively explore the JSON structure, discovering tables and their rows and columns.
     let apiSubUrls = [];
     let groupUrls = {};
-    let bodyParsed = JSON.stringify(result, null, "    ");
+    let bodyParsed;
+    if (typeof result == "string") {
+      bodyParsed = result;
+    } else {
+      bodyParsed = JSON.stringify(result, null, "    ");
+    }
     if (status == "Success") {
       let historyItem = {request: this.payload, requestType: this.requestType, httpMethod: this.httpMethod, bodyType: this.bodyType, apiUrl: this.apiUrl, soapType: this.soapType};
       if (bodyParsed.length < 10000) {
@@ -502,6 +522,11 @@ class Model {
   }
   execute() {
     let head = {};
+    if (this.requestType == "REST" && !isSafeApiUrl(this.apiUrl)) {
+      this.title = "Rejected untrusted apiUrl";
+      this.performRequest(Promise.reject(new Error("apiUrl must be a path relative to the current org, e.g. \"/services/data/...\"")));
+      return;
+    }
     this.headers.forEach(header => {
       if (header.key == "" && header.value == "") {
         return;
@@ -664,7 +689,10 @@ class App extends React.Component {
   }
   onSelectTextView(e) {
     let {model} = this.props;
-    model.selectedTextView = JSON.parse(e.target.value);
+    let value = e.target.value;
+    if (typeof value == "string" && (value.startsWith("[") || value.startsWith("{"))) {
+      model.selectedTextView = JSON.parse(value);
+    }
     model.didUpdate();
   }
   onAddToHistory(e) {
