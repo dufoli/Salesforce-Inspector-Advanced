@@ -106,7 +106,7 @@ if (chrome.commands) {
 if (chrome.action) {
   chrome.action.onClicked.addListener(() => {
     chrome.tabs.create({
-      url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/data-export.html?host=${sfHost}`
+      url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/options.html?host=${sfHost}`
     });
 });
 }
