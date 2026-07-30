@@ -3,6 +3,7 @@
 ## Version 1.39
 
 - fix bulk api on import.
+- fix extension icon click to link to options page
 
 ### Popup
 
