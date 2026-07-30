@@ -43,7 +43,6 @@ export class RecordTable {
     this.records = [];
     this.table = [];
     this.rowVisibilities = [];
-    this.colVisibilities = [true];
     this.countOfVisibleRecords = null;
     this.isTooling = false;
     this.totalSize = -1;
@@ -53,6 +52,7 @@ export class RecordTable {
     this.ColumnSortIndex = new Map();
     this.sortCfg = {};
     this.skipTechnicalColumns = localStorage.getItem("skipTechnicalColumns") !== "false";
+    this.colVisibilities = [!this.skipTechnicalColumns];
     this.dateFormat = localStorage.getItem("dateFormat");
     this.datetimeFormat = localStorage.getItem("datetimeFormat");
     this.decimalFormat = localStorage.getItem("decimalFormat");
