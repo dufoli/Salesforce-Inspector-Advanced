@@ -844,6 +844,9 @@ class Model {
 
     // Start after the opening parenthesis
     let pos = inMatch.index + inMatch[0].length;
+    if (inMatch[1].toLowerCase() == "in" && text.substring(pos).match(/^select\b/i)) {
+      return null;
+    }
     let parenDepth = 1;
     let inString = false;
 
