@@ -1379,7 +1379,7 @@ class AllDataBoxUsers extends React.PureComponent {
 
     return (
       h("div", {ref: "usersBox", className: "users-box"},
-        h(AllDataSearch, {ref: "allDataSearch", getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 400, placeholderText: "Username, email, alias or name of user", resultRender: this.resultRender}),
+        h(AllDataSearch, {ref: "allDataSearch", sfHost, getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 400, placeholderText: "Username, email, alias or name of user", resultRender: this.resultRender}),
         h("div", {className: "all-data-box-inner" + (!selectedUser ? " empty" : "")},
           selectedUser
             ? h(UserDetails, {user: selectedUser, sfHost, contextOrgId, currentUserId: contextUserId, linkTarget, contextPath})
@@ -1890,7 +1890,7 @@ class AllDataBoxShortcut extends React.PureComponent {
 
     return (
       h("div", {ref: "shortcutsBox", className: "users-box"},
-        h(AllDataSearch, {ref: "allDataSearch", getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 200, placeholderText: "Quick find links, shortcuts", resultRender: this.resultRender}),
+        h(AllDataSearch, {ref: "allDataSearch", sfHost, getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 200, placeholderText: "Quick find links, shortcuts", resultRender: this.resultRender}),
         h("div", {className: "all-data-box-inner" + (!selectedUser ? " empty" : "")},
           selectedUser
             ? h(UserDetails, {user: selectedUser, sfHost, contextOrgId, currentUserId: contextUserId, linkTarget, contextPath})
@@ -2196,6 +2196,11 @@ class UserDetails extends React.PureComponent {
       return;
     }
 
+    const email = prompt("Enter email for the new user:", username);
+    if (!email) {
+      return;
+    }
+
     const firstname = prompt("Enter first name:", "");
     if (!firstname) {
       return;
@@ -2229,7 +2234,10 @@ class UserDetails extends React.PureComponent {
         groups: groupQuery
       });
 
-      const results = await sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery});
+      const [results, userDescribe] = await Promise.all([
+        sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery}),
+        sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User/describe")
+      ]);
 
       // Check for errors in composite response
       const userDataResponse = results.compositeResponse.find(r => r.referenceId === "userData");
@@ -2242,10 +2250,13 @@ class UserDetails extends React.PureComponent {
         throw new Error("Source user not found");
       }
 
-      // Prepare new user object with copied properties
+      const userFields = new Map(userDescribe.fields.map(field => [field.name, field]));
+
+      // Prepare new user object with copied properties.
+      // Fields that are only updateable must be set after the User record is created.
       const newUser = {
         Username: username,
-        Email: username, // Email same as username
+        Email: email,
         FirstName: firstname,
         LastName: lastname,
         Alias: (firstname.substring(0, 1) + lastname.substring(0, 7)).toUpperCase(),
@@ -2258,6 +2269,7 @@ class UserDetails extends React.PureComponent {
         FederationIdentifier: username,
         IsActive: true,
       };
+      const updatedUser = {};
       Object.keys(sourceUser)
         .filter(userField => userField !== "Id"
           && userField !== "Attributes"
@@ -2311,14 +2323,22 @@ class UserDetails extends React.PureComponent {
           && userField !== "LastReferencedDate"
           && sourceUser[userField] != null)
         .forEach(userField => {
-          newUser[userField] = sourceUser[userField];
+          const userFieldMetadata = userFields.get(userField);
+          if (userFieldMetadata?.createable) {
+            newUser[userField] = sourceUser[userField];
+          } else if (userFieldMetadata?.updateable) {
+            updatedUser[userField] = sourceUser[userField];
+          }
         });
       // Create the new user
       const createUserResponse = await sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User", {method: "POST", body: newUser});
       const newUserId = createUserResponse.id;
-
       if (!newUserId) {
         throw new Error("Failed to create new user");
+      }
+
+      if (Object.keys(updatedUser).length > 0) {
+        await sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User/" + newUserId, {method: "PATCH", body: updatedUser});
       }
 
       // Prepare assignments for composite request

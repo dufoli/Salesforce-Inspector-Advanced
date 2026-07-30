@@ -76,9 +76,25 @@ export async function dataExportTest(test) {
   setQuery("select Id, shipp", "", " from Account");
   assertEquals("select Id, shipp from Account", queryInput.value);
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
-  assertEquals(["ShippingCity", "ShippingCountry", "ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState", "ShippingStreet"], getValues(vm.autocompleteResults.results));
+  const shippingSuggestionValues = getValues(vm.autocompleteResults.results);
+  const hasShippingCountryCode = shippingSuggestionValues.includes("ShippingCountryCode");
+  const hasShippingStateCode = shippingSuggestionValues.includes("ShippingStateCode");
+  const expectedShippingSuggestionValues = ["ShippingCity", "ShippingCountry"];
+  if (hasShippingCountryCode) {
+    expectedShippingSuggestionValues.push("ShippingCountryCode");
+  }
+  expectedShippingSuggestionValues.push("ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState");
+  if (hasShippingStateCode) {
+    expectedShippingSuggestionValues.push("ShippingStateCode");
+  }
+  expectedShippingSuggestionValues.push("ShippingStreet");
+  assertEquals(expectedShippingSuggestionValues, shippingSuggestionValues);
+  const {sobjectDescribe: accountDescribe} = vm.describeInfo.describeSobject(vm.queryTooling, "Account");
+  const expectedShippingFieldOrder = accountDescribe.fields
+    .filter(field => field.type != "address" && (field.name.toLowerCase().includes("shipp") || field.label.toLowerCase().includes("shipp")))
+    .map(field => field.name);
   vm.editorAutocompleteHandler({ctrlSpace: true});
-  assertEquals("select Id, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ShippingLatitude, ShippingLongitude, ShippingGeocodeAccuracy from Account", queryInput.value);
+  assertEquals("select Id, " + expectedShippingFieldOrder.join(", ") + " from Account", queryInput.value);
 
   // Autocomplete relationship field in SELECT
   setQuery("select Id, OWNE", "", " from Account");
@@ -124,11 +140,18 @@ export async function dataExportTest(test) {
   assertEquals("select Id from Account where Sic ", queryInput.value);
 
   // Autocomplete picklist value
-  setQuery("select Id from Account where Type = cust", "", "");
+  const typeField = accountDescribe.fields.find(field => field.name == "Type");
+  assert(typeField, "Expected Account describe to include the Type field");
+  const typePicklistValue = typeField.picklistValues.find(picklistValue => picklistValue.active !== false);
+  assert(typePicklistValue, "Expected Account.Type to have an active picklist value");
+  const typeSearchTerm = typePicklistValue.value.match(/[a-zA-Z0-9]+/);
+  assert(typeSearchTerm, "Expected Account.Type picklist value to contain a searchable character");
+  setQuery("select Id from Account where Type = " + typeSearchTerm[0], "", "");
   assertEquals("Account.Type values:", vm.autocompleteResults.title);
-  assertEquals(["'Customer - Channel'", "'Customer - Direct'"], getValues(vm.autocompleteResults.results));
-  vm.autocompleteClick(vm.autocompleteResults.results[1], 1);
-  assertEquals("select Id from Account where Type = 'Customer - Direct' ", queryInput.value);
+  const typePicklistResult = vm.autocompleteResults.results.find(result => result.value == "'" + typePicklistValue.value + "'");
+  assert(typePicklistResult, "Expected Account.Type autocomplete to include a described picklist value");
+  vm.autocompleteClick(typePicklistResult, vm.autocompleteResults.results.indexOf(typePicklistResult));
+  assertEquals("select Id from Account where Type = '" + typePicklistValue.value + "' ", queryInput.value);
 
   // Autocomplete boolean value
   setQuery("select Id from Account where IsDeleted != ", "", "");
@@ -147,7 +170,7 @@ export async function dataExportTest(test) {
   // Autocomplete object
   setQuery("select Id from OpportunityLi", "", "");
   assertEquals("Objects suggestions:", vm.autocompleteResults.title);
-  assertEquals(["OpportunityLineItem"], getValues(vm.autocompleteResults.results));
+  assert(getValues(vm.autocompleteResults.results).includes("OpportunityLineItem"), "Expected OpportunityLineItem autocomplete suggestion");
 
   // Autocomplete unknown object
   setQuery("select Id from UnknownObj", "", "");
@@ -544,12 +567,12 @@ export async function dataExportTest(test) {
 
   // Query history
   assertEquals([
-    {query: "select Name from ApexClass", useToolingApi: true},
-    {query: "select Id from Inspector_Test__c", useToolingApi: false},
-    {query: "select count() from Inspector_Test__c", useToolingApi: false},
-    {query: "select Id from Inspector_Test__c where name = 'no such name'", useToolingApi: false},
-    {query: "select Name, Lookup__r.Name from Inspector_Test__c order by Name", useToolingApi: false},
-    {query: "select Name, Checkbox__c, Number__c from Inspector_Test__c order by Name", useToolingApi: false}
+    {query: "select Name from ApexClass", useToolingApi: true, apiType: "query", tags: ["ApexClass"]},
+    {query: "select Id from Inspector_Test__c", useToolingApi: false, apiType: "query", tags: ["Inspector_Test__c"]},
+    {query: "select count() from Inspector_Test__c", useToolingApi: false, apiType: "query", tags: ["Inspector_Test__c"]},
+    {query: "select Id from Inspector_Test__c where name = 'no such name'", useToolingApi: false, apiType: "query", tags: ["Inspector_Test__c"]},
+    {query: "select Name, Lookup__r.Name from Inspector_Test__c order by Name", useToolingApi: false, apiType: "query", tags: ["Inspector_Test__c"]},
+    {query: "select Name, Checkbox__c, Number__c from Inspector_Test__c order by Name", useToolingApi: false, apiType: "query", tags: ["Inspector_Test__c"]}
   ], vm.queryHistory.list);
   vm.selectedHistoryEntry = vm.queryHistory.list[2];
   vm.selectHistoryEntry();
@@ -677,9 +700,9 @@ export async function dataExportTest(test) {
   setQuery("find {test} returning Account(Id, shipp", "", ")");
   assertEquals("find {test} returning Account(Id, shipp)", queryInput.value);
   assertEquals("Account fields suggestions:", vm.autocompleteResults.title);
-  assertEquals(["ShippingCity", "ShippingCountry", "ShippingGeocodeAccuracy", "ShippingLatitude", "ShippingLongitude", "ShippingPostalCode", "ShippingState", "ShippingStreet"], getValues(vm.autocompleteResults.results));
+  assertEquals(expectedShippingSuggestionValues, getValues(vm.autocompleteResults.results));
   vm.editorAutocompleteHandler({ctrlSpace: true});
-  assertEquals("find {test} returning Account(Id, ShippingStreet, ShippingCity, ShippingState, ShippingPostalCode, ShippingCountry, ShippingLatitude, ShippingLongitude, ShippingGeocodeAccuracy)", queryInput.value);
+  assertEquals("find {test} returning Account(Id, " + expectedShippingFieldOrder.join(", ") + ")", queryInput.value);
 
   // Autocomplete relationship field in SELECT
   setQuery("find {test} returning Account(Id, OWNE", "", ")");

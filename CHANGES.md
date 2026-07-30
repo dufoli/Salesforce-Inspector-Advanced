@@ -4,6 +4,22 @@
 
 - fix bulk api on import.
 
+### Popup
+
+- Fix User cloning when formula or other non-updateable fields are present by using User describe metadata to select fields for create and update requests. [issue 290](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/290)
+- Allow a cloned User's email address to differ from its username.
+- Fix opening recently viewed records from the Users and Shortcuts search tabs. [issue 297](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/297)
+
+### Data Export
+
+- Fix autocomplete inside `IN (SELECT ...)` subqueries. [issue 296](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/296)
+
+### Tests
+
+- Grant the test permission set explicit read access to the tested objects and permission-set-controlled fields, including the Account Shipping address compound field.
+- Derive browser-test expectations for optional State/Country picklist fields, Account Type values, and feature-specific objects from the org describe response.
+- Update query-history assertions for the stored API type and automatic object tags.
+
 
 ## Version 1.38
 

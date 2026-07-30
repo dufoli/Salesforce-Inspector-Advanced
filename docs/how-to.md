@@ -11,6 +11,10 @@ Then you can check result on log and go to log analyzer to analyze it.
 
 ![image](screenshots/viewLog.png)
 
+## Clone a User
+
+From the extension's Users tab, select an active user and click **Clone**. Enter a unique username, then enter the user's email address. The email prompt defaults to the username but can be changed independently. Complete the first-name and last-name prompts to create the user with the source user's writable fields and assignments.
+
 ## log analyzer
 
 The analyzer have 2 tabs. 
