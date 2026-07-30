@@ -1775,7 +1775,7 @@ class Model {
           newQuery += remaining.substring(0, commentMatch.index + 2);
           remaining = remaining.substring(commentMatch.index + 2);
           endIndex = remaining.indexOf("\n");
-          if (endIndex > 0) {
+          if (endIndex > -1) {
             newQuery += remaining.substring(0, endIndex + 1);
             remaining = remaining.substring(endIndex + 1);
           } else {
@@ -1789,7 +1789,7 @@ class Model {
           newQuery += remaining.substring(0, commentMatch.index + 2);
           remaining = remaining.substring(commentMatch.index + 2);
           endIndex = remaining.indexOf("*/");
-          if (endIndex > 0) {
+          if (endIndex > -1) {
             newQuery += remaining.substring(0, endIndex + 2);
             remaining = remaining.substring(endIndex + 2);
           } else {
@@ -1808,7 +1808,7 @@ class Model {
           } else {
             endIndex = -1;
           }
-          if (endIndex > 0) {
+          if (endIndex > -1) {
             finalQuery += remaining.substring(0, endIndex + 1);
             newQuery += remaining.substring(0, endIndex + 1);
             remaining = remaining.substring(endIndex + 1);
