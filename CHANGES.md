@@ -2,18 +2,19 @@
 
 ## Version 1.39
 
-- fix bulk api on import.
-- fix extension icon click to link to options page
-
-### Popup
-
-- Fix User cloning when formula or other non-updateable fields are present by using User describe metadata to select fields for create and update requests. [issue 290](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/290)
-- Allow a cloned User's email address to differ from its username.
-- Fix opening recently viewed records from the Users and Shortcuts search tabs. [issue 297](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/297)
-
-### Data Export
-
-- Fix autocomplete inside `IN (SELECT ...)` subqueries. [issue 296](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/296)
+- data export: history and saved query: edit name, tag support, sort, edit saved query [issue 272](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/272)
+- options: allow to scroll on option page [issue 288](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/288) 
+- data export: fix Empty comment followed by a query causes MALFORMED_QUERY [issue 284](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/284)
+- data import: fix bulk api on import.
+- data export: support bulk api [issue 276](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/276)
+- data export: fix column sorting [issue 283](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/283)
+- data export: Fix autocomplete inside `IN (SELECT ...)` subqueries. [issue 296](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/296) by @benkean
+- popup: Fix User cloning when formula or other non-updateable fields are present by using User describe metadata to select fields for create and update requests. [issue 290](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/290) by @benkean
+- popup: Allow a cloned User's email address to differ from its username. by @benkean
+- popup: Fix opening recently viewed records from the Users and Shortcuts search tabs. [issue 297](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/297) by @benkean
+- interface: fix extension icon click to link to options page [issue 300](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/300)
+- data export: Hide additional Object columns by default [issue 292](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/292)
+- dependency : switch from table to hierarchy [issue 277](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/277)
 
 ### Tests
 
