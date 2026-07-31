@@ -41,10 +41,24 @@ class Model {
     this.exportError = null;
     this.exportedData = null;
     function compare(a, b) {
-      return ((a.query == b.query && (!b.name || a.name == b.name)) || a.query == b.name + ":" + b.query) && a.useToolingApi == b.useToolingApi && (a.apiType || (a.useToolingApi ? "tooling" : "query")) == (b.apiType || (b.useToolingApi ? "tooling" : "query"));
+      if (b.name) {
+        return (a.name == b.name || a.query.startsWith(b.name + ":"));
+      }
+      if (a.name) {
+        return false;
+      }
+      return (
+        (a.query == b.query  
+          && a.useToolingApi == b.useToolingApi 
+          && (a.apiType || (a.useToolingApi ? "tooling" : "query")) == (b.apiType || (b.useToolingApi ? "tooling" : "query"))
+        )
+      );
     }
     function sort(a, b) {
-      return ((a.name ? a.name + a.query : a.query) > (b.name ? b.name + b.query : b.query)) ? 1 : (((b.name ? b.name + b.query : b.query) > (a.name ? a.name + a.query : a.query)) ? -1 : 0);
+      if (!!a.name !== !!b.name) {
+        return a.name ? 1 : -1;
+      }
+      return (a.query > b.query) ? 1 : ((b.query > a.query) ? -1 : 0);
     }
     this.queryHistory = new QueryHistory("insextQueryHistory", 100, compare, sort);
     this.selectedHistoryEntry = null;
@@ -2332,7 +2346,6 @@ class Model {
   getHistory() {
     let historyMap = new Map();
     this.queryHistory.list.forEach((q, index) => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "history"}));
-    this.queryTemplates.forEach((q, index) => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false, apiType: "query", position: index, type: "template"}));
     this.savedHistory.list.forEach((q, index) => {
       let delimiter = ":";
       let itm;
@@ -2347,6 +2360,7 @@ class Model {
       }
       historyMap.set(itm.value, itm);
     });
+    this.queryTemplates.forEach((q, index) => historyMap.set(q, {value: q, label: q, favorite: true, useToolingApi: false, apiType: "query", position: index, type: "template"}));
     return Array.from(historyMap.values());
   }
   deleteHistoryItem(history) {
