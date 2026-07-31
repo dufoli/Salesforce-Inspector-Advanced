@@ -218,7 +218,7 @@ export class RecordTable {
     if (record.attributes && record.attributes.type) {
       let sobjectName = record.attributes.type;
       //TODO maybe we will need to wait that cache is already filled on describe
-      sobjectDescribe = vm.describeInfo.describeSobject(vm.queryTooling, sobjectName).sobjectDescribe;
+      sobjectDescribe = await vm.describeInfo.describeSobjectPromise(vm.queryTooling, sobjectName);
     }
     for (let field of fields) {
       let fieldName = "";
@@ -370,7 +370,7 @@ export class RecordTable {
     //this.columnType.get(field) == "decimal" || this.columnType.get(field) == "currency"
     let colType = this.columnType.get(this.header[sortCfg.column]);
     let modeText = true;
-    if (colType == "decimal" || colType == "currency") {
+    if (colType == "percent" || colType == "double" || colType == "int" || colType == "decimal" || colType == "currency") {
       modeText = false;
     }
 
