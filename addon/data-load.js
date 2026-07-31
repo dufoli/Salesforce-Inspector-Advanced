@@ -62,7 +62,7 @@ export function DescribeInfo(spinFor, didUpdate) {
     let apiDescribes = sobjectAllDescribes[useToolingApi ? "tool" : "data"];
     if (apiDescribes.global.globalStatus == "pending") {
       apiDescribes.global.globalStatus = "loading";
-      spinFor(sfConn.rest(useToolingApi ? "/services/data/v" + apiVersion + "/tooling/sobjects/" : "/services/data/v" + apiVersion + "/sobjects/").then(res => {
+      apiDescribes.global.promise = sfConn.rest(useToolingApi ? "/services/data/v" + apiVersion + "/tooling/sobjects/" : "/services/data/v" + apiVersion + "/sobjects/").then(res => {
         apiDescribes.global.globalStatus = "ready";
         apiDescribes.global.globalDescribe = res;
         apiDescribes.sobjects = new Map();
@@ -73,7 +73,8 @@ export function DescribeInfo(spinFor, didUpdate) {
       }, () => {
         apiDescribes.global.globalStatus = "loadfailed";
         didUpdate();
-      }));
+      });
+      spinFor(apiDescribes.global.promise);
     }
     return apiDescribes;
   }
@@ -110,7 +111,7 @@ export function DescribeInfo(spinFor, didUpdate) {
       }
       if (sobjectInfo.sobject.sobjectStatus == "pending") {
         sobjectInfo.sobject.sobjectStatus = "loading";
-        spinFor(sfConn.rest(sobjectInfo.global.urls.describe).then(res => {
+        sobjectInfo.sobject.promise = sfConn.rest(sobjectInfo.global.urls.describe).then(res => {
           sobjectInfo.sobject.sobjectStatus = "ready";
           sobjectInfo.sobject.sobjectDescribe = res;
           didUpdate();
@@ -123,11 +124,48 @@ export function DescribeInfo(spinFor, didUpdate) {
           if (onUpdate){
             onUpdate(null);
           }
-        }));
+        });
+        spinFor(sobjectInfo.sobject.promise);
       } else if (onUpdate){
         onUpdate(sobjectInfo.sobject.sobjectDescribe);
       }
       return sobjectInfo.sobject;
+    },
+    // Same as describeSobject, but returns a Promise that resolves with the DescribeSObjectResult once it becomes available (or rejects if the object/describe fails to load).
+    // onUpdate is called with the DescribeSObjectResult when the promise resolves.
+    describeSobjectPromise(useToolingApi, sobjectName, onUpdate) {
+      return new Promise((resolve, reject) => {
+        let attempt = () => {
+          let apiDescribes = getGlobal(useToolingApi);
+          if (apiDescribes.global.globalStatus == "loadfailed") {
+            reject(new Error("Failed to load global describe"));
+            return;
+          }
+          if (!apiDescribes.sobjects) {
+            apiDescribes.global.promise.then(attempt);
+            return;
+          }
+          let sobjectInfo = apiDescribes.sobjects.get(sobjectName.toLowerCase());
+          if (!sobjectInfo) {
+            reject(new Error("Object not found: " + sobjectName));
+            return;
+          }
+          if (sobjectInfo.sobject.sobjectStatus == "pending" || sobjectInfo.sobject.sobjectStatus == "loading") {
+            this.describeSobject(useToolingApi, sobjectName);
+            sobjectInfo.sobject.promise.then(attempt);
+            return;
+          }
+          if (sobjectInfo.sobject.sobjectStatus == "loadfailed") {
+            reject(new Error("Failed to describe sobject: " + sobjectName));
+            return;
+          }
+          if (onUpdate) {
+            onUpdate(sobjectInfo.sobject.sobjectDescribe);
+          }
+          resolve(sobjectInfo.sobject.sobjectDescribe);
+        };
+        attempt();
+      });
     },
     reloadAll() {
       sobjectAllDescribes = initialState();

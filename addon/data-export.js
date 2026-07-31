@@ -48,8 +48,8 @@ class Model {
         return false;
       }
       return (
-        (a.query == b.query  
-          && a.useToolingApi == b.useToolingApi 
+        (a.query == b.query
+          && a.useToolingApi == b.useToolingApi
           && (a.apiType || (a.useToolingApi ? "tooling" : "query")) == (b.apiType || (b.useToolingApi ? "tooling" : "query"))
         )
       );
