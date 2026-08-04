@@ -2,12 +2,13 @@
 
 ## Version 1.39
 
-- data export: history and saved query: edit name, tag support, sort, edit saved query [issue 272](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/272)
-- options: allow to scroll on option page [issue 288](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/288) 
+- data export: Query history and saved queries revamped: rename, tags, sorting, direct editing of saved queries [issue 272](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/272)
+- options: content now scrolls properly when it exceeds viewport height [issue 288](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/288) 
 - data export: fix Empty comment followed by a query causes MALFORMED_QUERY [issue 284](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/284)
 - data import: fix bulk api on import.
+- data import: if import failed, you can edit failed before retry
 - data export: support bulk api [issue 276](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/276)
-- data export: fix column sorting [issue 283](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/283)
+- data export: fix column sorting (number) [issue 283](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/283)
 - data export: Fix autocomplete inside `IN (SELECT ...)` subqueries. [issue 296](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/296) by @benkean
 - popup: Fix User cloning when formula or other non-updateable fields are present by using User describe metadata to select fields for create and update requests. [issue 290](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/290) by @benkean
 - popup: Allow a cloned User's email address to differ from its username. by @benkean

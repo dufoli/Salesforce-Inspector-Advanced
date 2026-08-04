@@ -814,8 +814,15 @@ class Model {
     let contextValueField = contextValueFields[0];
     let queryMethod = useToolingApi ? "tooling/query" : this.queryAll ? "queryAll" : "query";
     let acQuery = "select " + contextValueField.field.name + " from " + contextValueField.sobjectDescribe.name;
+    let filters = [];
+    if (contextValueField.sobjectDescribe.name === "RecordType" && sobjectName) {
+      filters.push("SobjectType = '" + sobjectName + "'");
+    }
     if (searchTerm) {
-      acQuery += " where " + contextValueField.field.name + " like '%" + searchTerm.replace(/([%_\\'])/g, "\\$1") + "%'";
+      filters.push(contextValueField.field.name + " like '%" + searchTerm.replace(/([%_\\'])/g, "\\$1") + "%'");
+    }
+    if (filters.length > 0) {
+      acQuery += " where " + filters.join(" and ");
     }
     acQuery += " group by " + contextValueField.field.name + " limit 100";
     this.spinFor(sfConn.rest("/services/data/v" + apiVersion + "/" + queryMethod + "/?q=" + encodeURIComponent(acQuery), {progressHandler: this.autocompleteProgress})
