@@ -3,6 +3,46 @@ import {sfConn, apiVersion} from "./inspector.js";
 import {RecordTable} from "./record-table.js";
 /* global initButton */
 
+// Fallback list used when the org has no existing Translations metadata to discover languages from.
+// https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_customobjecttranslation.htm
+const defaultTranslationLanguages = [
+  {code: "ar", label: "Arabic"},
+  {code: "bg", label: "Bulgarian"},
+  {code: "ca", label: "Catalan"},
+  {code: "zh_CN", label: "Chinese (Simplified)"},
+  {code: "zh_TW", label: "Chinese (Traditional)"},
+  {code: "hr", label: "Croatian"},
+  {code: "cs", label: "Czech"},
+  {code: "da", label: "Danish"},
+  {code: "nl_NL", label: "Dutch"},
+  {code: "en_US", label: "English (US)"},
+  {code: "en_GB", label: "English (UK)"},
+  {code: "fi", label: "Finnish"},
+  {code: "fr", label: "French"},
+  {code: "de", label: "German"},
+  {code: "el", label: "Greek"},
+  {code: "iw", label: "Hebrew"},
+  {code: "hu", label: "Hungarian"},
+  {code: "in", label: "Indonesian"},
+  {code: "it", label: "Italian"},
+  {code: "ja", label: "Japanese"},
+  {code: "ko", label: "Korean"},
+  {code: "no", label: "Norwegian"},
+  {code: "pl", label: "Polish"},
+  {code: "pt_BR", label: "Portuguese (Brazil)"},
+  {code: "pt_PT", label: "Portuguese (Portugal)"},
+  {code: "ro", label: "Romanian"},
+  {code: "ru", label: "Russian"},
+  {code: "sk", label: "Slovak"},
+  {code: "sl", label: "Slovenian"},
+  {code: "es", label: "Spanish"},
+  {code: "es_MX", label: "Spanish (Mexico)"},
+  {code: "sv", label: "Swedish"},
+  {code: "th", label: "Thai"},
+  {code: "tr", label: "Turkish"},
+  {code: "uk", label: "Ukrainian"},
+  {code: "vi", label: "Vietnamese"}
+];
 
 class Model {
   constructor(sfHost) {
@@ -26,6 +66,18 @@ class Model {
     this.filteredMetadataObjects = null;
     this.selectAll = null;
     this.downloadAuto = false;
+    // Translation download state
+    this.translationLanguages = null;
+    this.existingTranslationLanguageCodes = null;
+    this.selectedTranslationLanguage = "";
+    this.objectsForTranslation = null;
+    this.filteredObjectsForTranslation = null;
+    this.objectSearchValue = "";
+    this.showTranslationOptions = false;
+    this.translationProgress = "ready";
+    this.translationLogMessages = [];
+    this.translationDownloadLink = null;
+    this.translationStatusLink = null;
     // Deploy state
     this.deployProgress = "ready";
     this.deployLogMessages = [];
@@ -70,6 +122,9 @@ class Model {
     }
     if (this.deployProgress == "working") {
       return "(Deploying) Upload Metadata";
+    }
+    if (this.translationProgress == "working") {
+      return "(Loading) Download Translations";
     }
     return "Download Metadata";
   }
@@ -341,6 +396,141 @@ class Model {
       msg = "(Error: " + err.message + ")";
     }
     this.logMessages.push({level: "error", text: msg});
+    this.didUpdate();
+  }
+
+  async loadTranslationOptions() {
+    if (this.objectsForTranslation) {
+      return;
+    }
+    try {
+      let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+      let [languagesRes, sobjectsRes] = await Promise.all([
+        sfConn.soap(metadataApi, "listMetadata", {queries: [{type: "Translations"}]}),
+        sfConn.rest("/services/data/v" + apiVersion + "/sobjects/", {})
+      ]);
+      let existingLanguageCodes = sfConn.asArray(languagesRes).map(l => l.fullName).filter(Boolean);
+      this.existingTranslationLanguageCodes = existingLanguageCodes;
+      let languageCodes = existingLanguageCodes.length > 0 ? existingLanguageCodes : defaultTranslationLanguages.map(l => l.code);
+      this.translationLanguages = languageCodes
+        .map(code => ({code, label: (defaultTranslationLanguages.find(l => l.code == code) || {label: code}).label}))
+        .sort((a, b) => a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
+      if (!this.selectedTranslationLanguage && this.translationLanguages.length > 0) {
+        this.selectedTranslationLanguage = this.translationLanguages[0].code;
+      }
+      this.objectsForTranslation = sobjectsRes.sobjects
+        .map(sobject => ({name: sobject.name, label: sobject.label, selected: false}))
+        .sort((a, b) => a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
+      this.filteredObjectsForTranslation = this.objectsForTranslation;
+    } catch (e) {
+      this.logTranslationError(e);
+    }
+    this.didUpdate();
+  }
+
+  filterObjectsForTranslation(searchKeyword) {
+    this.objectSearchValue = searchKeyword;
+    this.filteredObjectsForTranslation = this.objectsForTranslation
+      .filter(sobject => sobject.name.toLowerCase().includes(searchKeyword)
+      || sobject.label.toLowerCase().includes(searchKeyword));
+  }
+
+  startDownloadingTranslations() {
+    let logWait = this.logWaitTranslation.bind(this);
+    (async () => {
+      try {
+        if (!this.selectedTranslationLanguage) {
+          throw new Error("Please select a language");
+        }
+        let selectedObjects = (this.objectsForTranslation || []).filter(sobject => sobject.selected);
+        if (selectedObjects.length === 0) {
+          throw new Error("Please select at least one object");
+        }
+        this.translationProgress = "working";
+        this.translationDownloadLink = null;
+        this.translationStatusLink = null;
+        this.translationLogMessages = [];
+        this.didUpdate();
+
+        let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+        let types = [
+          {name: "CustomObjectTranslation", members: selectedObjects.map(sobject => sobject.name + "-" + this.selectedTranslationLanguage)}
+        ];
+        if ((this.existingTranslationLanguageCodes || []).includes(this.selectedTranslationLanguage)) {
+          types.push({name: "Translations", members: [this.selectedTranslationLanguage]});
+        } else {
+          this.translationLogMessages.push({level: "info", text: "(Skipping global Translations: \"" + this.selectedTranslationLanguage + "\" is not an active Translation Workbench language in this org)"});
+          this.didUpdate();
+        }
+        let result = await logWait(
+          "Retrieve",
+          sfConn.soap(metadataApi, "retrieve", {retrieveRequest: {apiVersion, unpackaged: {types, version: apiVersion}}})
+        );
+        this.translationLogMessages.push({level: "info", text: "(Id: " + result.id + ")"});
+        this.didUpdate();
+        let res;
+        for (let interval = 2000; ;) {
+          await logWait(
+            "(Waiting)",
+            timeout(interval)
+          );
+          res = await logWait(
+            "CheckRetrieveStatus",
+            sfConn.soap(metadataApi, "checkRetrieveStatus", {id: result.id})
+          );
+          if (res.done !== "false") {
+            break;
+          }
+        }
+        if (res.success != "true") {
+          let err = new Error("Retrieve failed");
+          err.result = res;
+          throw err;
+        }
+        let statusJson = JSON.stringify({
+          fileProperties: sfConn.asArray(res.fileProperties)
+            .filter(fp => fp.id != "000000000000000AAA" || fp.fullName != "")
+            .sort((fp1, fp2) => fp1.fileName < fp2.fileName ? -1 : fp1.fileName > fp2.fileName ? 1 : 0),
+          messages: res.messages
+        }, null, "    ");
+        this.translationLogMessages.push({level: "info", text: "(Finished)"});
+        let zipBin = Uint8Array.from(atob(res.zipFile), c => c.charCodeAt(0));
+        this.translationDownloadLink = URL.createObjectURL(new Blob([zipBin], {type: "application/zip"}));
+        this.translationStatusLink = URL.createObjectURL(new Blob([statusJson], {type: "application/json"}));
+        this.translationProgress = "done";
+        this.didUpdate();
+      } catch (e) {
+        this.logTranslationError(e);
+      }
+    })();
+  }
+
+  logWaitTranslation(msg, promise) {
+    let message = {level: "working", text: msg};
+    this.translationLogMessages.push(message);
+    this.didUpdate();
+    promise.then(res => {
+      message.level = "info";
+      this.didUpdate();
+      return res;
+    }, err => {
+      message.level = "error";
+      this.didUpdate();
+      throw err;
+    });
+    return promise;
+  }
+
+  logTranslationError(err) {
+    this.translationProgress = "error";
+    console.error(err);
+    let msg;
+    if (err.message == "Retrieve failed") {
+      msg = "(Error: Retrieve failed: " + JSON.stringify(err.result) + ")";
+    } else {
+      msg = "(Error: " + err.message + ")";
+    }
+    this.translationLogMessages.push({level: "error", text: msg});
     this.didUpdate();
   }
 
@@ -672,6 +862,11 @@ class App extends React.Component {
     this.onDragOverZip = this.onDragOverZip.bind(this);
     this.onDragLeaveZip = this.onDragLeaveZip.bind(this);
     this.onDropZip = this.onDropZip.bind(this);
+    this.onToggleTranslationOptions = this.onToggleTranslationOptions.bind(this);
+    this.onTranslationLanguageChange = this.onTranslationLanguageChange.bind(this);
+    this.onTranslationSearchInput = this.onTranslationSearchInput.bind(this);
+    this.onSelectAllTranslationObjectsChange = this.onSelectAllTranslationObjectsChange.bind(this);
+    this.onStartTranslationClick = this.onStartTranslationClick.bind(this);
   }
   onSelectAllChange(e) {
     let {model} = this.props;
@@ -809,6 +1004,36 @@ class App extends React.Component {
       }
     }
   }
+  onToggleTranslationOptions() {
+    let {model} = this.props;
+    model.showTranslationOptions = !model.showTranslationOptions;
+    if (model.showTranslationOptions) {
+      model.loadTranslationOptions();
+    }
+    model.didUpdate();
+  }
+  onTranslationLanguageChange(e) {
+    let {model} = this.props;
+    model.selectedTranslationLanguage = e.target.value;
+    model.didUpdate();
+  }
+  onTranslationSearchInput(e) {
+    let {model} = this.props;
+    model.filterObjectsForTranslation(e.target.value.toLowerCase());
+    model.didUpdate();
+  }
+  onSelectAllTranslationObjectsChange(e) {
+    let {model} = this.props;
+    let checked = e.target.checked;
+    for (let sobject of model.filteredObjectsForTranslation) {
+      sobject.selected = checked;
+    }
+    model.didUpdate();
+  }
+  onStartTranslationClick() {
+    let {model} = this.props;
+    model.startDownloadingTranslations();
+  }
   componentDidMount() {
     let {model} = this.props;
     let selectAll = this.refs.selectref;
@@ -818,6 +1043,8 @@ class App extends React.Component {
     let {model} = this.props;
     document.title = model.title();
     let selectAllChecked = model.filteredMetadataObjects && model.filteredMetadataObjects.every(metadataObject => metadataObject.selected);
+    let selectAllTranslationChecked = model.filteredObjectsForTranslation && model.filteredObjectsForTranslation.length > 0 && model.filteredObjectsForTranslation.every(sobject => sobject.selected);
+    let anyWorking = model.progress == "working" || model.deployProgress == "working" || model.translationProgress == "working";
     return (
       h("div", {},
         h("div", {className: "object-bar"},
@@ -827,11 +1054,12 @@ class App extends React.Component {
             ),
             " Salesforce Home"
           ),
-          h("span", {className: "progress progress-" + (model.progress == "working" ? model.progress : model.deployProgress)},
+          h("span", {className: "progress progress-" + (model.progress == "working" ? model.progress : model.deployProgress == "working" ? model.deployProgress : model.translationProgress)},
             model.progress == "working" ? "Downloading..."
             : model.deployProgress == "working" ? "Deploying..."
-            : model.progress == "done" || model.deployProgress == "done" ? "Finished"
-            : model.progress == "error" || model.deployProgress == "error" ? "Error!"
+            : model.translationProgress == "working" ? "Downloading Translations..."
+            : model.progress == "done" || model.deployProgress == "done" || model.translationProgress == "done" ? "Finished"
+            : model.progress == "error" || model.deployProgress == "error" || model.translationProgress == "error" ? "Error!"
             : "Ready"
           )
         ),
@@ -978,6 +1206,68 @@ class App extends React.Component {
               model.deployLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
             )
           ),
+          h("h1", {}, "Download Translations"),
+          h("div", {},
+            h("button", {
+              onClick: this.onToggleTranslationOptions,
+              disabled: anyWorking,
+              className: "slds-button slds-button_neutral slds-m-top_small slds-m-bottom_small"
+            }, model.showTranslationOptions ? "Hide Translation Options" : "Show Translation Options"),
+            model.showTranslationOptions ? h("div", {className: "package-xml-tools"},
+              h("div", {className: "slds-form-element"},
+                h("label", {className: "slds-form-element__label"}, "Language:"),
+                h("div", {className: "slds-form-element__control"},
+                  h("select", {
+                    value: model.selectedTranslationLanguage,
+                    onChange: this.onTranslationLanguageChange,
+                    disabled: (!model.translationLanguages || anyWorking),
+                    className: "slds-select"
+                  },
+                  (model.translationLanguages || []).map(lang => h("option", {key: lang.code, value: lang.code}, lang.label))
+                  )
+                )
+              ),
+              model.translationDownloadLink ? h("div", {className: "slds-m-top_small slds-m-bottom_small"},
+                h("a", {href: model.translationDownloadLink, download: "translations.zip", className: "button slds-m-right_x-small"}, "Save downloaded translations"),
+                model.translationStatusLink ? h("a", {href: model.translationStatusLink, download: "translationStatus.json", className: "button"}, "Save status info") : null
+              ) : null,
+              h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-top_small slds-m-bottom_small slds-wrap"},
+                h("label", {htmlFor: "translationSearchText", className: "slds-form-element__label"}, "Search:"),
+                h("input", {
+                  id: "translationSearchText",
+                  name: "translationSearchText",
+                  placeholder: "Filter objects",
+                  type: "search",
+                  value: model.objectSearchValue,
+                  onInput: this.onTranslationSearchInput,
+                  disabled: anyWorking,
+                  className: "slds-input"
+                }),
+                h("label", {className: "slds-checkbox"},
+                  h("input", {
+                    type: "checkbox",
+                    checked: selectAllTranslationChecked,
+                    onChange: this.onSelectAllTranslationObjectsChange,
+                    disabled: anyWorking,
+                    className: "slds-checkbox__input"
+                  }),
+                  h("span", {className: "slds-checkbox__label"}, "Select all")
+                )
+              ),
+              h("p", {className: "slds-text-body_regular slds-m-bottom_small slds-text-color_weak"}, "Select a language and the objects to include, then click the button below."),
+              h("button", {
+                onClick: this.onStartTranslationClick,
+                disabled: (anyWorking || !model.objectsForTranslation),
+                className: "slds-button slds-button_brand slds-m-bottom_small"
+              }, "Download translations"),
+              model.objectsForTranslation ? h("div", {className: "slds-grid slds-wrap"},
+                model.filteredObjectsForTranslation.map(sobject => h(TranslationObjectSelector, {key: sobject.name, sobject, model}))
+              ) : null,
+              h("div", {},
+                model.translationLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
+              )
+            ) : null
+          ),
           h("h1", {}, "Download Metadata"),
           h("div", {hidden: !model.metadataObjects},
             h("div", {className: "package-xml-tools"},
@@ -1076,6 +1366,25 @@ class ObjectSelector extends React.Component {
     return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: metadataObject.xmlName},
       h("input", {type: "checkbox", checked: metadataObject.selected, onChange: this.onChange}),
       metadataObject.directoryName
+    ));
+  }
+}
+
+class TranslationObjectSelector extends React.Component {
+  constructor(props) {
+    super(props);
+    this.onChange = this.onChange.bind(this);
+  }
+  onChange(e) {
+    let {sobject, model} = this.props;
+    sobject.selected = e.target.checked;
+    model.didUpdate();
+  }
+  render() {
+    let {sobject} = this.props;
+    return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: sobject.name},
+      h("input", {type: "checkbox", checked: sobject.selected, onChange: this.onChange}),
+      sobject.label
     ));
   }
 }

@@ -1,5 +1,9 @@
 # Release Notes
 
+## Version 1.40
+
+- metadata retrieve: add Download Translations (CustomObjectTranslation + global Translations for custom labels/tabs/etc.) for a selected language, similar to Workbench's translation download.
+
 ## Version 1.39
 
 - data export: Query history and saved queries revamped: rename, tags, sorting, direct editing of saved queries [issue 272](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/272)
