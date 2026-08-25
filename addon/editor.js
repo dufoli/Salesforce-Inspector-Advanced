@@ -1,6 +1,21 @@
 /* global React */
 let h = React.createElement;
 
+// Quotes are ambiguous (the open and close character are identical), so unlike brackets we
+// cannot tell from the typed key alone whether it should open a new string or close the current
+// one. We approximate it by counting unescaped occurrences of that quote character since the
+// start of the line: an odd count means the caret is inside an unterminated string of that type.
+function isInsideUnclosedQuote(text, pos, quoteChar) {
+  let lineStart = text.lastIndexOf("\n", pos - 1) + 1;
+  let count = 0;
+  for (let i = lineStart; i < pos; i++) {
+    if (text[i] === quoteChar && text[i - 1] !== "\\") {
+      count++;
+    }
+  }
+  return count % 2 === 1;
+}
+
 export class Editor extends React.Component {
   constructor(props) {
     super(props);
@@ -207,7 +222,6 @@ export class Editor extends React.Component {
       case "{":
       case "'":
       case "\"": {
-        e.preventDefault();
         const openToCloseChar = new Map([
           ["[", "]"],
           ["(", ")"],
@@ -216,10 +230,21 @@ export class Editor extends React.Component {
           ["\"", "\""],
         ]);
         const closeChar = openToCloseChar.get(e.key);
-        // if quote (or any other start char) before and quote (or any other corresponding end char) right after it do not add quote (or the corresponding end char) but just move cursor after the it
-        if ((e.key === "'" || e.key === "\"") && selectionStart > 0 && selectionEnd < model.editor.value.length && selectionStart === selectionEnd && model.editor.value.substring(selectionStart - 1, selectionStart) == e.key && model.editor.value.substring(selectionEnd, selectionEnd + 1) == closeChar) {
+        const isQuote = e.key === "'" || e.key === "\"";
+        const noSelection = selectionStart === selectionEnd;
+        const isClosingAnUnclosedQuote = isQuote && noSelection && isInsideUnclosedQuote(value, selectionStart, e.key);
+        // Typing a close character right before an existing matching one just moves the caret
+        // past it, instead of inserting a duplicate. For quotes this only applies when we are
+        // actually closing an unterminated string, since an opening quote can validly precede
+        // another opening quote (e.g. two adjacent empty strings).
+        if (noSelection && value.substring(selectionEnd, selectionEnd + 1) === closeChar && (!isQuote || isClosingAnUnclosedQuote)) {
+          e.preventDefault();
           model.editor.setRangeText("", selectionEnd + 1, selectionEnd + 1, "end");
+        } else if (isClosingAnUnclosedQuote) {
+          // We are inside an unterminated string of this quote type: this key closes it, so just
+          // insert the single character rather than auto-pairing a new open/close pair.
         } else {
+          e.preventDefault();
           model.editor.setRangeText(e.key, selectionStart, selectionStart, "end");
           // add of close quote after open quote happend only if nxt character is space, break line, close parenthesis, close bracket... maybe just if next charactere is not a-z or 0-9
           // look for char at + 1 because start char is already inserted
@@ -227,7 +252,7 @@ export class Editor extends React.Component {
             model.editor.setRangeText(closeChar, selectionEnd + 1, selectionEnd + 1, "preserve");
           } else if (
             // If parenthesis, brace or bracket
-            (e.key !== "'" && e.key !== "\"")
+            !isQuote
             // Or one side is a whitespace or a carriage return
             || (selectionEnd + 1 < model.editor.value.length && /[\n|\s]/.test(model.editor.value.substring(selectionEnd + 1, selectionEnd + 2)))
             || (selectionEnd > 0 && /[\n|\s]/.test(model.editor.value.substring(selectionEnd - 1, selectionEnd)))
@@ -243,15 +268,9 @@ export class Editor extends React.Component {
       case "]":
       case ")":
       case "}": {
-        // if quote (or any other start char) before and quote (or any other corresponding end char) right after it do not add quote (or the corresponding end char) but just move cursor after the it
-        const closeToOpenChar = new Map([
-          ["]", "["],
-          [")", "("],
-          ["}", "{"],
-        ]);
-        const openChar = closeToOpenChar.get(e.key);
-        // if start char before and corresponding end char right after it do not add the corresponding end char but just move cursor after the it
-        if (selectionStart === selectionEnd && model.editor.value.substring(selectionStart - 1, selectionStart) == openChar && model.editor.value.substring(selectionEnd, selectionEnd + 1) == e.key) {
+        // Typing a close bracket right before an existing matching one just moves the caret past
+        // it, instead of inserting a duplicate, regardless of what precedes the caret.
+        if (selectionStart === selectionEnd && value.substring(selectionEnd, selectionEnd + 1) === e.key) {
           e.preventDefault();
           model.editor.setRangeText("", selectionEnd + 1, selectionEnd + 1, "end");
         }
