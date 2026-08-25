@@ -65,13 +65,19 @@ export class RecordTable {
     this.setStatus = setStatus;
     this.vm = vm;
   }
-  convertDate(field, format) {
+  convertDate(field, format, isDateOnly) {
     if (!field) {
       return "";
     }
     let dt = new Date(field);
     let pad = (n, d) => ("000" + n).slice(-d);
-    if (!this.convertToLocalTime) {
+    // A "Date" field (as opposed to "Datetime") has no time-of-day or timezone component.
+    // Salesforce represents it as a UTC-midnight string, so it must be read back with UTC
+    // getters, not local getters, or the calendar date can shift by a day depending on the
+    // user's timezone.
+    if (isDateOnly) {
+      dt = new Date(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+    } else if (!this.convertToLocalTime) {
       let tzOffset = dt.getTimezoneOffset();// returns the difference in minutes.
       dt.setMinutes(dt.getMinutes() + tzOffset);
     }
@@ -332,7 +338,7 @@ export class RecordTable {
       }
       //TODO move conversion to rendering (dataChange)
       if (this.columnType.get(field) == "date" && this.dateFormat) {
-        row[c] = this.convertDate(record[field], this.dateFormat);
+        row[c] = this.convertDate(record[field], this.dateFormat, true);
       } else if (this.columnType.get(field) == "datetime" && this.datetimeFormat) {
         row[c] = this.convertDate(record[field], this.datetimeFormat);
       } else if (this.columnType.get(field) == "datetime" && this.convertToLocalTime) {
