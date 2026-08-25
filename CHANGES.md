@@ -3,10 +3,12 @@
 ## Version 1.40
 
 - metadata retrieve: add Download Translations (CustomObjectTranslation + global Translations for custom labels/tabs/etc.) for a selected language, similar to Workbench's translation download.
+- data export: fix Date field values shifted by one day when a custom Date Format is set, caused by applying timezone conversion to date-only fields.
 
 ## Version 1.39
 
 - data export: Query history and saved queries revamped: rename, tags, sorting, direct editing of saved queries [issue 272](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/272)
+- data export: copy to clipboard for excel provide html for jira, word and many others.
 - options: content now scrolls properly when it exceeds viewport height [issue 288](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/288) 
 - data export: fix Empty comment followed by a query causes MALFORMED_QUERY [issue 284](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/284)
 - data import: fix bulk api on import.
