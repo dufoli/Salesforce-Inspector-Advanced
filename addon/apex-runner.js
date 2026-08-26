@@ -1158,7 +1158,10 @@ class Model {
   }
   getHistory() {
     let historyMap = new Map();
-    this.scriptHistory.list.forEach(q => historyMap.set(q.script, {value: q.script, label: q.script.substring(0, 300), favorite: false, tags: q.tags || []}));
+    this.scriptHistory.list.forEach(q => {
+      const script = q.script ?? q.value;
+      historyMap.set(script, {value: script, label: script.substring(0, 300), favorite: false, tags: q.tags || []});
+    });
     this.scriptTemplates.forEach(q => historyMap.set(q, {value: q, label: q, favorite: true}));
     this.savedHistory.list.forEach(q => {
       let delimiter = ":";
