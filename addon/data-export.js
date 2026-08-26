@@ -2352,7 +2352,10 @@ class Model {
   //TODO query: this.editor.value, name: this.queryName, useToolingApi: this.queryTooling
   getHistory() {
     let historyMap = new Map();
-    this.queryHistory.list.forEach((q, index) => historyMap.set(q.query, {value: q.query, label: q.query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "history"}));
+    this.queryHistory.list.forEach((q, index) => {
+      const query = q.query ?? q.value;
+      historyMap.set(query, {value: query, label: query.substring(0, 300), favorite: false, useToolingApi: q.useToolingApi, apiType: q.apiType || (q.useToolingApi ? "tooling" : "query"), tags: q.tags || [], position: index, type: "history"});
+    });
     this.savedHistory.list.forEach((q, index) => {
       let delimiter = ":";
       let itm;
