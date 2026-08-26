@@ -1266,6 +1266,10 @@ class AllDataBoxUsers extends React.PureComponent {
       selectedUser: null,
       selectedUserId: null,
     };
+    this.userFilterOptions = [
+      {key: "includeInactive", label: "Include inactive users", defaultChecked: true},
+      {key: "includePortal", label: "Include portal users", defaultChecked: true}
+    ];
     this.getMatches = this.getMatches.bind(this);
     this.onDataSelect = this.onDataSelect.bind(this);
   }
@@ -1282,16 +1286,24 @@ class AllDataBoxUsers extends React.PureComponent {
     }
   }
 
-  async getMatches(userQuery) {
+  async getMatches(userQuery, activeFilters = {}) {
     let {setIsLoading} = this.props;
     if (!userQuery) {
       return [];
     }
+    let {includeInactive = true, includePortal = true} = activeFilters;
 
     //TODO: Better search query. SOSL?
     const fullQuerySelect = "select Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive, ProfileId, Profile.Name";
     const minimalQuerySelect = "select Id, Name, Email, Username, UserRole.Name, Alias, LocaleSidKey, LanguageLocaleKey, IsActive";
-    const queryFrom = "from User where (username like '%" + userQuery.replace(/([%_\\'])/g, "\\$1") + "%' or name like '%" + userQuery.replace(/([%_\\'])/g, "\\$1") + "%') order by IsActive DESC, LastLoginDate limit 100";
+    let whereClauses = ["(username like '%" + userQuery.replace(/([%_\\'])/g, "\\$1") + "%' or name like '%" + userQuery.replace(/([%_\\'])/g, "\\$1") + "%')"];
+    if (!includeInactive) {
+      whereClauses.push("IsActive = true");
+    }
+    if (!includePortal) {
+      whereClauses.push("UserType = 'Standard'");
+    }
+    const queryFrom = "from User where " + whereClauses.join(" and ") + " order by IsActive DESC, LastLoginDate limit 100";
     const compositeQuery = toCompositeRequest({fullData: fullQuerySelect + " " + queryFrom, minimalData: minimalQuerySelect + " " + queryFrom});
 
     try {
@@ -1379,7 +1391,7 @@ class AllDataBoxUsers extends React.PureComponent {
 
     return (
       h("div", {ref: "usersBox", className: "users-box"},
-        h(AllDataSearch, {ref: "allDataSearch", sfHost, getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 400, placeholderText: "Username, email, alias or name of user", resultRender: this.resultRender}),
+        h(AllDataSearch, {ref: "allDataSearch", sfHost, getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 400, placeholderText: "Username, email, alias or name of user", resultRender: this.resultRender, filterOptions: this.userFilterOptions, filterStorageKey: "allDataSearchFilters_users"}),
         h("div", {className: "all-data-box-inner" + (!selectedUser ? " empty" : "")},
           selectedUser
             ? h(UserDetails, {user: selectedUser, sfHost, contextOrgId, currentUserId: contextUserId, linkTarget, contextPath})
@@ -1400,6 +1412,10 @@ class AllDataBoxSObject extends React.PureComponent {
       flowDescriptionError: null,
       showFlowAnalysisModal: false
     };
+    this.sobjectFilterOptions = [
+      {key: "objectSchema", label: "Object schema", defaultChecked: true},
+      {key: "records", label: "Records", defaultChecked: true}
+    ];
     this.getFlowId = this.props.getFlowId.bind(this);
     this.onDataSelect = this.onDataSelect.bind(this);
     this.getMatches = this.getMatches.bind(this);
@@ -1610,36 +1626,41 @@ class AllDataBoxSObject extends React.PureComponent {
     return {recordId, sobject};
   }
 
-  getMatches(query) {
+  getMatches(query, activeFilters = {}) {
     let {sobjectsList, contextRecordId} = this.props;
+    let {objectSchema = true, records = true} = activeFilters;
 
     if (!sobjectsList) {
       return [];
     }
     let queryKeyPrefix = query.substring(0, 3);
-    let res = sobjectsList
-      .filter(sobject => sobject.name.toLowerCase().includes(query.toLowerCase()) || sobject.label.toLowerCase().includes(query.toLowerCase()) || sobject.keyPrefix == queryKeyPrefix)
-      .map(sobject => ({
-        recordId: null,
-        sobject,
-        // TO-DO: merge with the sortRank function in data-export
-        relevance:
-          (sobject.keyPrefix == queryKeyPrefix ? 2
-          : sobject.name.toLowerCase() == query.toLowerCase() ? 3
-          : sobject.label.toLowerCase() == query.toLowerCase() ? 4
-          : sobject.name.toLowerCase().startsWith(query.toLowerCase()) ? 5
-          : sobject.label.toLowerCase().startsWith(query.toLowerCase()) ? 6
-          : sobject.name.toLowerCase().includes("__" + query.toLowerCase()) ? 7
-          : sobject.name.toLowerCase().includes("_" + query.toLowerCase()) ? 8
-          : sobject.label.toLowerCase().includes(" " + query.toLowerCase()) ? 9
-          : 10) + (sobject.availableApis.length == 0 ? 20 : 0)
-      }));
-    query = query || contextRecordId || "";
-    queryKeyPrefix = query.substring(0, 3);
-    if (query.match(/^([a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})$/)) {
-      let objectsForId = sobjectsList.filter(sobject => sobject.keyPrefix == queryKeyPrefix);
-      for (let sobject of objectsForId) {
-        res.unshift({recordId: query, sobject, relevance: 1});
+    let res = objectSchema
+      ? sobjectsList
+        .filter(sobject => sobject.name.toLowerCase().includes(query.toLowerCase()) || sobject.label.toLowerCase().includes(query.toLowerCase()) || sobject.keyPrefix == queryKeyPrefix)
+        .map(sobject => ({
+          recordId: null,
+          sobject,
+          // TO-DO: merge with the sortRank function in data-export
+          relevance:
+            (sobject.keyPrefix == queryKeyPrefix ? 2
+            : sobject.name.toLowerCase() == query.toLowerCase() ? 3
+            : sobject.label.toLowerCase() == query.toLowerCase() ? 4
+            : sobject.name.toLowerCase().startsWith(query.toLowerCase()) ? 5
+            : sobject.label.toLowerCase().startsWith(query.toLowerCase()) ? 6
+            : sobject.name.toLowerCase().includes("__" + query.toLowerCase()) ? 7
+            : sobject.name.toLowerCase().includes("_" + query.toLowerCase()) ? 8
+            : sobject.label.toLowerCase().includes(" " + query.toLowerCase()) ? 9
+            : 10) + (sobject.availableApis.length == 0 ? 20 : 0)
+        }))
+      : [];
+    if (records) {
+      query = query || contextRecordId || "";
+      queryKeyPrefix = query.substring(0, 3);
+      if (query.match(/^([a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})$/)) {
+        let objectsForId = sobjectsList.filter(sobject => sobject.keyPrefix == queryKeyPrefix);
+        for (let sobject of objectsForId) {
+          res.unshift({recordId: query, sobject, relevance: 1});
+        }
       }
     }
     res.sort((a, b) => a.relevance - b.relevance || a.sobject.name.localeCompare(b.sobject.name));
@@ -1714,7 +1735,7 @@ class AllDataBoxSObject extends React.PureComponent {
     let {selectedValue, recordIdDetails} = this.state;
     return (
       h("div", {},
-        h(AllDataSearch, {ref: "allDataSearch", sfHost, onDataSelect: this.onDataSelect, sobjectsList, getMatches: this.getMatches, inputSearchDelay: 0, placeholderText: "Record id, id prefix or object name", title: "Click to show recent items", resultRender: this.resultRender}),
+        h(AllDataSearch, {ref: "allDataSearch", sfHost, onDataSelect: this.onDataSelect, sobjectsList, getMatches: this.getMatches, inputSearchDelay: 0, placeholderText: "Record id, id prefix or object name", title: "Click to show recent items", resultRender: this.resultRender, filterOptions: this.sobjectFilterOptions, filterStorageKey: "allDataSearchFilters_sobject"}),
         selectedValue
           ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject, onDescribeFlow: this.describeFlow, onAnalyzeFlow: this.openAnalyzeFlow.bind(this), isOnFlowPage: this.isOnFlowPage(contextUrl)})
           : h("div", {className: "all-data-box-inner empty"}, "No record to display"),
@@ -1745,6 +1766,13 @@ class AllDataBoxShortcut extends React.PureComponent {
       selectedUser: null,
       selectedUserId: null,
     };
+    this.shortcutFilterOptions = [
+      {key: "flows", label: "Flows", defaultChecked: true},
+      {key: "profiles", label: "Profiles", defaultChecked: true},
+      {key: "permissionSets", label: "Permission Sets", defaultChecked: true},
+      {key: "communities", label: "Communities", defaultChecked: true},
+      {key: "apexClasses", label: "Apex classes", defaultChecked: true}
+    ];
     this.getMatches = this.getMatches.bind(this);
     this.onDataSelect = this.onDataSelect.bind(this);
   }
@@ -1753,11 +1781,12 @@ class AllDataBoxShortcut extends React.PureComponent {
     this.refs.allDataSearch.refs.showAllDataInp.focus();
   }
 
-  async getMatches(shortcutSearch) {
+  async getMatches(shortcutSearch, activeFilters = {}) {
     let {setIsLoading} = this.props;
     if (!shortcutSearch) {
       return [];
     }
+    let {flows = true, profiles = true, permissionSets = true, communities = true, apexClasses = true} = activeFilters;
     try {
       setIsLoading(true);
 
@@ -1778,16 +1807,29 @@ class AllDataBoxShortcut extends React.PureComponent {
 
       //search for metadata if user did not disabled it
       if (metadataShortcutSearch == "true"){
-        const flowSelect = "SELECT LatestVersionId, ApiName, Label, ProcessType FROM FlowDefinitionView WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const profileSelect = "SELECT Id, Name, UserLicense.Name FROM Profile WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const permSetSelect = "SELECT Id, Name, Label, Type, LicenseId, License.Name, PermissionSetGroupId FROM PermissionSet WHERE Label LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const networkSelect = "SELECT Id, Name, Status, UrlPathPrefix FROM Network WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const apexSelect = "SELECT Id, Name, NamespacePrefix, Status FROM ApexClass WHERE Name LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const validationRuleSelect = "SELECT Id, Active, EntityDefinitionId, EntityDefinition.DeveloperName, ErrorMessage, ValidationName FROM ValidationRule WHERE ErrorMessage LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
-        const compositeQuery = toCompositeRequest({flowSelect, profileSelect, permSetSelect, networkSelect, apexSelect});
+        const escapedSearch = shortcutSearch.replace(/([%_\\'])/g, "\\$1");
+        let queries = {};
+        if (flows) {
+          queries.flowSelect = "SELECT LatestVersionId, ApiName, Label, ProcessType FROM FlowDefinitionView WHERE Label LIKE '%" + escapedSearch + "%' LIMIT 30";
+        }
+        if (profiles) {
+          queries.profileSelect = "SELECT Id, Name, UserLicense.Name FROM Profile WHERE Name LIKE '%" + escapedSearch + "%' LIMIT 30";
+        }
+        if (permissionSets) {
+          queries.permSetSelect = "SELECT Id, Name, Label, Type, LicenseId, License.Name, PermissionSetGroupId FROM PermissionSet WHERE Label LIKE '%" + escapedSearch + "%' LIMIT 30";
+        }
+        if (communities) {
+          queries.networkSelect = "SELECT Id, Name, Status, UrlPathPrefix FROM Network WHERE Name LIKE '%" + escapedSearch + "%' LIMIT 30";
+        }
+        if (apexClasses) {
+          queries.apexSelect = "SELECT Id, Name, NamespacePrefix, Status FROM ApexClass WHERE Name LIKE '%" + escapedSearch + "%' LIMIT 30";
+        }
+        const validationRuleSelect = "SELECT Id, Active, EntityDefinitionId, EntityDefinition.DeveloperName, ErrorMessage, ValidationName FROM ValidationRule WHERE ErrorMessage LIKE '%" + escapedSearch + "%' LIMIT 30";
 
         const [searchResult, vrResult] = await Promise.all([
-          sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery}),
+          Object.keys(queries).length > 0
+            ? sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: toCompositeRequest(queries)})
+            : Promise.resolve({compositeResponse: []}),
           sfConn.rest("/services/data/v" + apiVersion + "/tooling/query?q=" + encodeURIComponent(validationRuleSelect), {method: "GET"})
         ]);
         let results = searchResult.compositeResponse.filter((elm) => elm.httpStatusCode == 200 && elm.body.records.length > 0);
@@ -1890,7 +1932,7 @@ class AllDataBoxShortcut extends React.PureComponent {
 
     return (
       h("div", {ref: "shortcutsBox", className: "users-box"},
-        h(AllDataSearch, {ref: "allDataSearch", sfHost, getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 200, placeholderText: "Quick find links, shortcuts", resultRender: this.resultRender}),
+        h(AllDataSearch, {ref: "allDataSearch", sfHost, getMatches: this.getMatches, onDataSelect: this.onDataSelect, inputSearchDelay: 200, placeholderText: "Quick find links, shortcuts", resultRender: this.resultRender, filterOptions: this.shortcutFilterOptions, filterStorageKey: "allDataSearchFilters_shortcuts"}),
         h("div", {className: "all-data-box-inner" + (!selectedUser ? " empty" : "")},
           selectedUser
             ? h(UserDetails, {user: selectedUser, sfHost, contextOrgId, currentUserId: contextUserId, linkTarget, contextPath})
@@ -2847,18 +2889,46 @@ class AllDataSearch extends React.PureComponent {
       queryString: "",
       matchingResults: [],
       recentItems: [],
-      queryDelayTimer: null
+      queryDelayTimer: null,
+      filterMenuOpen: false,
+      activeFilters: AllDataSearch.loadFilters(props.filterOptions, props.filterStorageKey)
     };
     this.onAllDataInput = this.onAllDataInput.bind(this);
     this.onAllDataFocus = this.onAllDataFocus.bind(this);
     this.onAllDataBlur = this.onAllDataBlur.bind(this);
     this.onAllDataKeyDown = this.onAllDataKeyDown.bind(this);
-    this.onAllDataArrowClick = this.onAllDataArrowClick.bind(this);
+    this.onAllDataFilterClick = this.onAllDataFilterClick.bind(this);
+    this.onFilterCheckboxChange = this.onFilterCheckboxChange.bind(this);
+    this.onFilterPopupKeyDown = this.onFilterPopupKeyDown.bind(this);
+    this.onOutsideMouseDown = this.onOutsideMouseDown.bind(this);
     this.updateAllDataInput = this.updateAllDataInput.bind(this);
+  }
+  static loadFilters(filterOptions, filterStorageKey) {
+    let defaults = {};
+    (filterOptions || []).forEach(opt => { defaults[opt.key] = opt.defaultChecked !== false; });
+    if (!filterStorageKey) {
+      return defaults;
+    }
+    try {
+      let stored = localStorage.getItem(filterStorageKey);
+      if (stored) {
+        return Object.assign(defaults, JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error("Unable to parse persisted filters for " + filterStorageKey, e);
+    }
+    return defaults;
   }
   componentDidMount() {
     let {queryString} = this.state;
     this.getMatchesDelayed(queryString);
+    window.addEventListener("mousedown", this.onOutsideMouseDown);
+  }
+  componentWillUnmount() {
+    window.removeEventListener("mousedown", this.onOutsideMouseDown);
+    if (this.state.queryDelayTimer) {
+      clearTimeout(this.state.queryDelayTimer);
+    }
   }
   onAllDataInput(e) {
     let val = e.target.value;
@@ -2881,27 +2951,67 @@ class AllDataSearch extends React.PureComponent {
     this.setState({queryString: ""});
     this.getMatchesDelayed("");
   }
-  onAllDataArrowClick() {
-    this.refs.showAllDataInp.focus();
+  onAllDataFilterClick() {
+    this.setState(prevState => ({filterMenuOpen: !prevState.filterMenuOpen}));
   }
-  getMatchesDelayed(userQuery) {
-    let {queryDelayTimer} = this.state;
-    let {inputSearchDelay} = this.props;
+  onFilterPopupKeyDown(e) {
+    if (e.key == "Escape") {
+      e.stopPropagation();
+      this.setState({filterMenuOpen: false});
+    }
+  }
+  onOutsideMouseDown(e) {
+    if (!this.state.filterMenuOpen) {
+      return;
+    }
+    let icon = this.refs.filterIcon;
+    let popup = this.refs.filterPopup;
+    if ((icon && icon.contains(e.target)) || (popup && popup.contains(e.target))) {
+      return;
+    }
+    this.setState({filterMenuOpen: false});
+  }
+  onFilterCheckboxChange(key, e) {
+    let checked = e.target.checked;
+    let {filterStorageKey} = this.props;
+    this.setState(prevState => {
+      let activeFilters = Object.assign({}, prevState.activeFilters, {[key]: checked});
+      if (filterStorageKey) {
+        try {
+          localStorage.setItem(filterStorageKey, JSON.stringify(activeFilters));
+        } catch (err) {
+          console.error("Unable to persist filters for " + filterStorageKey, err);
+        }
+      }
+      return {activeFilters};
+    }, () => {
+      // A checkbox toggle is a deliberate action, not typing noise: re-run immediately, bypassing the debounce.
+      this.getMatchesDelayed(this.state.queryString, true);
+    });
+  }
+  getMatchesDelayed(userQuery, immediate = false) {
+    let {queryDelayTimer, activeFilters} = this.state;
+    let {inputSearchDelay, getMatches} = this.props;
 
     if (queryDelayTimer) {
       clearTimeout(queryDelayTimer);
     }
-    queryDelayTimer = setTimeout(async () => {
-      let {getMatches} = this.props;
-      const matchingResults = await getMatches(userQuery);
+    let runQuery = async () => {
+      const matchingResults = await getMatches(userQuery, activeFilters);
       await this.setState({matchingResults});
-    }, inputSearchDelay);
-
-    this.setState({queryDelayTimer});
+    };
+    if (immediate) {
+      this.setState({queryDelayTimer: null});
+      runQuery();
+    } else {
+      queryDelayTimer = setTimeout(runQuery, inputSearchDelay);
+      this.setState({queryDelayTimer});
+    }
   }
   render() {
-    let {queryString, matchingResults, recentItems} = this.state;
-    let {placeholderText, resultRender, sfHost} = this.props;
+    let {queryString, matchingResults, recentItems, filterMenuOpen, activeFilters} = this.state;
+    let {placeholderText, resultRender, sfHost, filterOptions} = this.props;
+    let hasFilters = filterOptions && filterOptions.length > 0;
     return (
       h("div", {className: "input-with-dropdown"},
         h("input", {
@@ -2922,9 +3032,35 @@ class AllDataSearch extends React.PureComponent {
           queryString,
           sfHost
         }),
-        h("svg", {viewBox: "0 0 24 24", onClick: this.onAllDataArrowClick},
-          h("path", {d: "M3.8 6.5h16.4c.4 0 .8.6.4 1l-8 9.8c-.3.3-.9.3-1.2 0l-8-9.8c-.4-.4-.1-1 .4-1z"})
-        )
+        hasFilters
+          ? h("svg", {
+            className: "slds-icon slds-icon_x-small slds-icon-text-default filter-icon",
+            viewBox: "0 0 24 24",
+            ref: "filterIcon",
+            onClick: this.onAllDataFilterClick,
+            "aria-haspopup": "true",
+            "aria-expanded": filterMenuOpen
+          },
+          h("use", {xlinkHref: "symbols.svg#filterList"})
+          )
+          : null,
+        hasFilters && filterMenuOpen
+          ? h("div", {className: "filter-popup", ref: "filterPopup", role: "menu", onKeyDown: this.onFilterPopupKeyDown},
+            h("div", {className: "filter-popup-inner"},
+              filterOptions.map(opt =>
+                h("label", {className: "filter-item", key: opt.key},
+                  h("input", {
+                    type: "checkbox",
+                    className: "slds-checkbox",
+                    checked: !!activeFilters[opt.key],
+                    onChange: (e) => this.onFilterCheckboxChange(opt.key, e)
+                  }),
+                  opt.label
+                )
+              )
+            )
+          )
+          : null
       )
     );
   }
