@@ -8,7 +8,8 @@
   },
   "minimum_chrome_version": "88",
   "permissions": [
-    "cookies"
+    "cookies",
+    "storage"
   ],
   "action": {
     "default_title": "Export data"

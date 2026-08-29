@@ -2,6 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {DescribeInfo} from "./data-load.js";
+import {clearAllCache} from "./cache.js";
 
 function cleanInputValue(value) {
   return (value == undefined || value == null) ? "" : value;
@@ -102,7 +103,9 @@ class OptionsTabSelector extends React.Component {
           {option: APIVersionOption, props: {key: 1}},
           {option: APIKeyOption, props: {key: 2}},
           {option: RestHeaderOption, props: {key: 3}},
-          {option: AIProviderOption, props: {key: 4}}
+          {option: Option, props: {key: 4, type: "number", title: "Cache TTL (hours)", key: "cacheTTLHours", placeholder: "24 by default", default: 24}},
+          {option: ClearCacheOption, props: {key: 5}},
+          {option: AIProviderOption, props: {key: 6}}
         ]
       },
       {
@@ -300,6 +303,38 @@ class RestHeaderOption extends React.Component {
         h("div", {className: "slds-form-element__control slds-col slds-size_6-of-12"},
           h("input", {type: "text", id: "restHeaderInput", className: "slds-input", placeholder: "Rest Header", value: cleanInputValue(this.state.restHeader), onChange: this.onChangeRestHeader}),
         )
+      )
+    );
+  }
+}
+
+class ClearCacheOption extends React.Component {
+
+  constructor(props) {
+    super(props);
+    this.onClearCache = this.onClearCache.bind(this);
+    this.state = {clearing: false, cleared: false};
+  }
+
+  async onClearCache() {
+    this.setState({clearing: true, cleared: false});
+    await clearAllCache();
+    this.setState({clearing: false, cleared: true});
+  }
+
+  render() {
+    return h("div", {className: "slds-grid slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
+      h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+        h("span", {}, "Cache (describe, dependencies)")
+      ),
+      h("div", {className: "slds-col slds-size_8-of-12 slds-form-element slds-grid slds-grid_align-end slds-grid_vertical-align-center slds-gutters_small"},
+        this.state.cleared ? h("span", {className: "slds-text-color_success slds-m-right_small"}, "Cache cleared") : null,
+        h("button", {
+          className: "slds-button slds-button_destructive",
+          onClick: this.onClearCache,
+          disabled: this.state.clearing,
+          title: "Clear cache"
+        }, this.state.clearing ? "Clearing..." : "Clear cache")
       )
     );
   }

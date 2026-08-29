@@ -3,6 +3,7 @@ import {sfConn, apiVersion, sessionError} from "./inspector.js";
 import {getAllFieldSetupLinks} from "./setup-links.js";
 import {setupLinks} from "./links.js";
 import {AIAssistant} from "./ai-assistant.js";
+import {getCache, setCache} from "./cache.js";
 
 let h = React.createElement;
 
@@ -135,6 +136,17 @@ function initLinks({sfHost}){
       setupLinks.push(link);
     });
   }
+}
+
+async function getUserDescribe() {
+  const cacheKey = "userDescribe_" + sfConn.instanceHostname + "_" + apiVersion;
+  const cached = await getCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const userDescribe = await sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User/describe");
+  await setCache(cacheKey, userDescribe);
+  return userDescribe;
 }
 
 function toCompositeRequest(queries) {
@@ -2278,7 +2290,7 @@ class UserDetails extends React.PureComponent {
 
       const [results, userDescribe] = await Promise.all([
         sfConn.rest("/services/data/v" + apiVersion + "/composite", {method: "POST", body: compositeQuery}),
-        sfConn.rest("/services/data/v" + apiVersion + "/sobjects/User/describe")
+        getUserDescribe()
       ]);
 
       // Check for errors in composite response

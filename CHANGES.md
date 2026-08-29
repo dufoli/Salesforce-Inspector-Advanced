@@ -6,6 +6,8 @@
 - metadata retrieve: add Download Translations (CustomObjectTranslation + global Translations for custom labels/tabs/etc.) for a selected language, similar to Workbench's translation download.
 - data export: fix Date field values shifted by one day when a custom Date Format is set, caused by applying timezone conversion to date-only fields.
 - editor: fix auto-close of parentheses, brackets and quotes duplicating characters instead of typing over an existing matching one or on closing character.
+- dependency viewer: fix hidden suggestion for flow
+- cache: add a cache for flow dependencies
 
 ## Version 1.39
 

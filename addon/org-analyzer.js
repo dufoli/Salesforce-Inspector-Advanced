@@ -1623,7 +1623,7 @@ class App extends React.Component {
           h("div", {},
             h("span", {}, "Select the rules you want to run: "),
             h("label", {},
-              h("input", {type: "checkbox", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange}),
+              h("input", {type: "checkbox", className: "checkbox-control", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange}),
               "Select all"
             ),
             h("br", {}),
@@ -1645,7 +1645,7 @@ class App extends React.Component {
                 h("use", {xlinkHref: "symbols.svg#download"})
               )
             ),
-            h("select", {value: model.priorityFilter, onChange: this.onSelectPriorityFilter, className: "priority-filter"},
+            h("select", {value: model.priorityFilter, onChange: this.onSelectPriorityFilter, className: "priority-filter select-control"},
               h("option", {value: null, defaultValue: true}, "All priorities"),
               h("option", {key: "1", value: 1}, "1"),
               h("option", {key: "2", value: 2}, "2"),
@@ -1697,7 +1697,7 @@ class RuleSelector extends React.Component {
   render() {
     let {rule} = this.props;
     return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: rule.name},
-      h("input", {type: "checkbox", checked: rule.selected, onChange: this.onChange}),
+      h("input", {type: "checkbox", className: "checkbox-control", checked: rule.selected, onChange: this.onChange}),
       rule.name
     ));
   }
