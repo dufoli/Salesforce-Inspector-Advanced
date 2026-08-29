@@ -444,6 +444,7 @@ class App extends React.PureComponent {
       if (containerToShow) { containerToShow.classList.remove("hide"); }
       const containerToMask = document.getElementById("mainTabs");
       if (containerToMask) { containerToMask.classList.add("mask"); }
+      parent.postMessage({showInvalidTokenBanner: true}, "*");
 
       return;
     }
@@ -712,6 +713,7 @@ class App extends React.PureComponent {
     if (containerToShow) { containerToShow.classList.add("hide"); }
     const containerToMask = document.getElementById("mainTabs");
     if (containerToMask) { containerToMask.classList.remove("mask"); }
+    parent.postMessage({showInvalidTokenBanner: false}, "*");
 
     localStorage.removeItem("showExternalClientAppBanner");
   }
@@ -743,8 +745,8 @@ class App extends React.PureComponent {
             h("div", {className: "slds-page-header__col-title"},
               h("div", {className: "slds-media"},
                 h("div", {className: "slds-media__figure popup-media__figure"},
-                  h("span", {className: "popup-icon_container", title: "Salesforce Inspector Advanced"},
-                    h("svg", {className: "slds-icon popup-header__icon", viewBox: "0 0 24 24"},
+                  h("span", {className: "popup-icon_container", title: "Close Salesforce Inspector Advanced"},
+                    h("svg", {className: "slds-icon popup-header__icon", viewBox: "0 0 24 24", onClick: closePopup},
                       h("path", {
                         d: `
                         M11 9c-.5 0-1-.5-1-1s.5-1 1-1 1 .5 1 1-.5 1-1 1z

@@ -386,7 +386,10 @@ function initButton(sfHost, inInspector) {
       }
       if (e.data.insextClosePopup) {
         closePopup();
-      }"field-api-name";
+      }
+      if (e.data.showInvalidTokenBanner !== undefined) {
+        iFrameLocalStorage.showInvalidTokenBanner = e.data.showInvalidTokenBanner;
+      }
       if (e.data.insextShowStdPageDetails) {
         showStdPageDetails(e.data.insextData, e.data.insextAllFieldSetupLinks);
       }
@@ -545,8 +548,10 @@ function initButton(sfHost, inInspector) {
       openPopup();
     }
     function outsidePopupClick(e) {
-      // Close the popup when clicking outside it
-      if (!rootEl.contains(e.target) && !shouldShowBannerForPathname(location.pathname)) {
+      // Close the popup when clicking outside it, unless the invalid token banner
+      // is actually being shown on a pathname where it should stay visible
+      let keepOpenForBanner = iFrameLocalStorage.showInvalidTokenBanner && shouldShowBannerForPathname(location.pathname);
+      if (!rootEl.contains(e.target) && !keepOpenForBanner) {
         closePopup();
       }
     }
