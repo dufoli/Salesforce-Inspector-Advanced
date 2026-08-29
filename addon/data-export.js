@@ -2773,18 +2773,18 @@ class App extends React.Component {
           h(HistoryBox, {title: "History", didUpdate: model.didUpdate.bind(model), suggestions: historyList.filter(h => !h.favorite), onSelect: this.onSelectQuery, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
           h(HistoryBox, {title: "Favorite", didUpdate: model.didUpdate.bind(model), suggestions: historyList.filter(h => h.favorite), onSelect: this.onSelectQuery, onUpdate: this.onUpdateHistoryItem, onDelete: this.onDeleteHistoryItem}),
           h("div", {className: "button-group"},
-            h("input", {placeholder: "Query Label", type: "save", value: model.queryName, onInput: this.onSetQueryName}),
+            h("input", {placeholder: "Query Label", type: "save", className: "text-control save-control", value: model.queryName, onInput: this.onSetQueryName}),
             h("button", {onClick: this.onAddToHistory, title: "Add query to saved history"}, "Save Query")
           ),
           h("div", {className: "query-options"},
             h("label", {},
-              h("input", {type: "checkbox", checked: model.queryAll, onChange: this.onQueryAllChange, disabled: model.apiType === "tooling"}),
+              h("input", {type: "checkbox", className: "checkbox-control", checked: model.queryAll, onChange: this.onQueryAllChange, disabled: model.apiType === "tooling"}),
               " ",
               h("span", {}, "Add deleted records?")
             ),
             h("label", {title: "Query API: Query (standard), Tooling (metadata), Bulk (large datasets - download only)"},
               h("span", {}, "API Type: "),
-              h("select", {value: model.apiType, onChange: this.onApiTypeChange},
+              h("select", {className: "select-control", value: model.apiType, onChange: this.onApiTypeChange},
                 h("option", {value: "query"}, "Query"),
                 h("option", {value: "tooling"}, "Tooling"),
                 h("option", {value: "bulk"}, "Bulk")
@@ -2849,12 +2849,12 @@ class App extends React.Component {
           ),
           h("div", {className: "result-filter-box flex-right", title: model.resultsFilterField ? resultFilterValue : ""},
             model.searchHasFocus && model.exportedData.header.length ? h("div", {},
-              h("select", {title: "Fields", value: model.resultsFilterField, onChange: this.onSearchSelectField, onBlur: this.onSearchBlur},
+              h("select", {className: "select-control", title: "Fields", value: model.resultsFilterField, onChange: this.onSearchSelectField, onBlur: this.onSearchBlur},
                 this.getSearchFields().map(f =>
                   h("option", {key: f.value, value: f.value}, f.label)
                 )
               ),
-              h("select", {onChange: this.onSearchSelectOperator, hidden: !model.resultsFilterField, value: model.resultsFilterOperator, onBlur: this.onSearchBlur},
+              h("select", {className: "select-control", onChange: this.onSearchSelectOperator, hidden: !model.resultsFilterField, value: model.resultsFilterOperator, onBlur: this.onSearchBlur},
                 h("option", {value: "contains"}, "Contains"),
                 h("option", {value: "="}, "Equal"),
                 h("option", {value: "!="}, "Not equal"),
@@ -2864,7 +2864,7 @@ class App extends React.Component {
                 // h("option", {value: "<"}, "<")
               )
             ) : null,
-            h("input", {placeholder: "Filter Results", type: "search", value: resultFilterValue, onInput: this.onResultsFilterInput, onFocus: this.onSearchFocus, onBlur: this.onSearchBlur})
+            h("input", {placeholder: "Filter Results", type: "search", className: "text-control search-control", value: resultFilterValue, onInput: this.onResultsFilterInput, onFocus: this.onSearchFocus, onBlur: this.onSearchBlur})
           ),
           h("span", {className: "result-status flex-right"},
             h("span", {}, model.exportStatus),

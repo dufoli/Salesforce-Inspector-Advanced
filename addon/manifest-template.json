@@ -14,7 +14,8 @@
     }
   },
   "permissions": [
-    "cookies"
+    "cookies",
+    "storage"
   ],
   "action": {
     "default_title": "Export data"

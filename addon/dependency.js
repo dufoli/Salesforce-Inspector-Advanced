@@ -2,6 +2,14 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {DescribeInfo} from "./data-load.js";
+import {getCacheRaw, setCache} from "./cache.js";
+
+function getFieldValue(record, path) {
+  if (path instanceof Array) {
+    return path.map(p => getFieldValue(record, p)).filter(v => v != null).join(" - ");
+  }
+  return path.split(".").reduce((value, key) => (value == null ? undefined : value[key]), record);
+}
 
 class Model {
   constructor({sfHost, args}) {
@@ -17,6 +25,7 @@ class Model {
     this.expandedTypes = new Set(); // Track which accordion sections are expanded
     this.expandedItems = new Set(); // Track which dependency items are expanded
     this.childDependencies = new Map(); // Map of parent item key to child dependencies
+    this.flowScanProgress = null; // {done, total} while scanning flowsToRescan for subflow references
     this.metadataTypes = [
       //StandardEntity or User
       {object: "ApexClass", label: "Apex Class", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "Name"], icon: "apex", display: true},
@@ -29,7 +38,7 @@ class Model {
       {object: "EmailTemplate", label: "Email Template", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "Name"], icon: "email", display: true},
       {object: "ExternalString", label: "Custom Label", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "Name"], icon: "snippet", display: true},
       {object: "FlexiPage", label: "lightning Page", idField: "Id", nameField: "DeveloperName", labelField: ["NamespacePrefix", "DeveloperName"], icon: "page", display: true},
-      {object: "Flow", label: "Flow/Process builder", idField: "Id", nameField: "Definition.DeveloperName", labelField: ["ProcessType", "Definition.DeveloperName", "VersionNumber"], icon: "flow", display: true}, //FlowDefinition
+      {object: "Flow", label: "Flow/Process builder", idField: "Id", nameField: "Definition.DeveloperName", labelField: ["Definition.DeveloperName", "ProcessType", "VersionNumber"], filter: "Status = 'Active'", icon: "flow", display: true}, //FlowDefinition
       {object: "Layout", label: "Layout", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "EntityDefinition.QualifiedApiName", "Name"], icon: "layout", display: true},
       {object: "LightningComponentBundle", label: "Lightning Web Component", idField: "Id", nameField: "DeveloperName", labelField: ["NamespacePrefix", "DeveloperName"], icon: "thunder", display: true},
       {object: "QuickActionDefinition", label: "Quick Action", idField: "Id", nameField: "DeveloperName", labelField: ["NamespacePrefix", "EntityDefinition.QualifiedApiName", "DeveloperName"], extraField: ["EntityDefinitionId"], icon: "magicwand", display: true},
@@ -41,7 +50,7 @@ class Model {
       // Additional types with display: false
       {object: "CustomMetadata", label: "Custom Metadata", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "DeveloperName"], icon: "database", display: false},
       {object: "Dashboard", label: "Dashboard", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "DeveloperName"], icon: "chart", display: false},
-      {object: "FlowDefinition", label: "Flow Definition", idField: "Id", nameField: "Definition.DeveloperName", labelField: ["ProcessType", "Definition.DeveloperName", "VersionNumber"], icon: "flow", display: false},
+      {object: "FlowDefinition", label: "Flow Definition", idField: "Id", nameField: "Definition.DeveloperName", labelField: ["ProcessType", "Definition.DeveloperName", "VersionNumber"], filter: "Status = 'Active'", icon: "flow", display: false},
       {object: "PermissionSet", label: "Permission Set", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "Name"], icon: "shield", display: false},
       {object: "Profile", label: "Profile", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "Name"], icon: "user_role", display: false},
       {object: "Report", label: "Report", idField: "Id", nameField: "Name", labelField: ["NamespacePrefix", "DeveloperName"], icon: "chart", display: false},
@@ -78,17 +87,26 @@ class Model {
       this.componentNameSuggestionsLoading = true;
       this.didUpdate();
 
-      let query = `SELECT ${typeMap.nameField} FROM ${typeMap.object}`;
+      const labelFields = typeMap.labelField instanceof Array ? typeMap.labelField : [typeMap.labelField];
+      const selectFields = Array.from(new Set([typeMap.nameField, ...labelFields]));
+      let query = `SELECT ${selectFields.join(",")} FROM ${typeMap.object}`;
+      const conditions = [];
+      if (typeMap.filter) {
+        conditions.push(typeMap.filter);
+      }
       if (searchTerm) {
         const escapedTerm = searchTerm.replace(/'/g, "\\'");
-        query += ` WHERE ${typeMap.nameField} LIKE '%${escapedTerm}%'`;
+        conditions.push(`${typeMap.nameField} LIKE '%${escapedTerm}%'`);
+      }
+      if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(" AND ")}`;
       }
       query += ` ORDER BY ${typeMap.nameField} LIMIT 100`;
 
       const result = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
       this.componentNameSuggestions = (result.records || []).map(rec => ({
-        value: rec[typeMap.nameField],
-        label: rec[typeMap.nameField]
+        value: getFieldValue(rec, typeMap.nameField),
+        label: getFieldValue(rec, typeMap.labelField) || getFieldValue(rec, typeMap.nameField)
       }));
       this.componentNameSuggestionsLoading = false;
       this.didUpdate();
@@ -108,7 +126,11 @@ class Model {
     }
 
     const escapedName = name.replace(/'/g, "\\'");
-    const query = `SELECT Id FROM ${typeMap.object} WHERE ${typeMap.nameField} = '${escapedName}' LIMIT 1`;
+    const conditions = [`${typeMap.nameField} = '${escapedName}'`];
+    if (typeMap.filter) {
+      conditions.push(typeMap.filter);
+    }
+    const query = `SELECT Id FROM ${typeMap.object} WHERE ${conditions.join(" AND ")} LIMIT 1`;
 
     try {
       const result = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
@@ -120,6 +142,89 @@ class Model {
       console.error("Error querying component ID:", err);
       return null;
     }
+  }
+
+  // Precomputes "flow X calls subflow Y" dependency records for every active flow, so that
+  // finding who calls a given flow is a simple filter by id instead of a per-search scan.
+  // Metadata.subflows only gives the called flow's name, not its id, hence the name->id map
+  // (built from a cheap full listing query, always refreshed). Fetching each flow's Metadata
+  // to look for subflow calls is the expensive part (one Tooling API query per flow), so that
+  // part stays incremental: only flows created/modified since the last sync are re-scanned.
+  async getFlowSubflowRecords() {
+    const cacheKey = "flowSubflowRecords_" + sfConn.instanceHostname;
+    const cached = await getCacheRaw(cacheKey);
+    let lastSyncDate = cached ? cached.lastSyncDate : null;
+    const recordsByCallerId = new Map(cached ? cached.flowRecords.reduce((acc, rec) => {
+      if (!acc.has(rec.MetadataComponentId)) {
+        acc.set(rec.MetadataComponentId, []);
+      }
+      acc.get(rec.MetadataComponentId).push(rec);
+      return acc;
+    }, new Map()) : []);
+
+    // Cheap (no Metadata field), always fetched in full so the name->id map stays complete and correct.
+    const listQuery = "SELECT Id,Definition.DeveloperName,LastModifiedDate FROM Flow WHERE Status = 'Active'";
+    const resFlows = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(listQuery), {method: "GET"});
+
+    const flowNameToId = new Map(resFlows.records.map(f => [f.Definition.DeveloperName, f.Id]));
+    const activeIds = new Set(resFlows.records.map(f => f.Id));
+    let maxLastModified = lastSyncDate;
+    const flowsToRescan = [];
+    for (const flow of resFlows.records) {
+      if (!maxLastModified || flow.LastModifiedDate > maxLastModified) {
+        maxLastModified = flow.LastModifiedDate;
+      }
+      if (!lastSyncDate || flow.LastModifiedDate > lastSyncDate) {
+        flowsToRescan.push(flow);
+      }
+    }
+    // Flows that are no longer active can no longer call anything.
+    for (const callerId of Array.from(recordsByCallerId.keys())) {
+      if (!activeIds.has(callerId)) {
+        recordsByCallerId.delete(callerId);
+      }
+    }
+
+    if (flowsToRescan.length > 0) {
+      this.flowScanProgress = {done: 0, total: flowsToRescan.length};
+      this.didUpdate();
+    }
+    for (const flow of flowsToRescan) {
+      const flowRes = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT Id,Definition.DeveloperName,Metadata FROM Flow WHERE Id='" + flow.Id + "'"), {method: "GET"});
+      flowRes.records.forEach(flowDetail => {
+        const subflows = (flowDetail.Metadata && flowDetail.Metadata.subflows) || [];
+        const records = subflows.map(sf => {
+          const refId = flowNameToId.get(sf.flowName);
+          if (!refId) {
+            return null; // referenced flow is not currently active/known - nothing to filter on
+          }
+          return {
+            attributes: {
+              type: "MetadataComponentDependency",
+              url: "/services/data/v" + apiVersion + "/tooling/sobjects/MetadataComponentDependency/000000000000000AAA"
+            },
+            MetadataComponentId: flowDetail.Id,
+            MetadataComponentName: flowDetail.Definition.DeveloperName,
+            MetadataComponentType: "Flow",
+            RefMetadataComponentId: refId,
+            RefMetadataComponentName: sf.flowName,
+            RefMetadataComponentType: "Flow"
+          };
+        }).filter(Boolean);
+        if (records.length > 0) {
+          recordsByCallerId.set(flowDetail.Id, records);
+        } else {
+          recordsByCallerId.delete(flowDetail.Id);
+        }
+      });
+      this.flowScanProgress.done++;
+      this.didUpdate();
+    }
+    this.flowScanProgress = null;
+
+    const flowRecords = Array.from(recordsByCallerId.values()).flat();
+    await setCache(cacheKey, {lastSyncDate: maxLastModified, flowRecords});
+    return flowRecords;
   }
 
   async fetchDependenciesInternal(type, name, dependencyType = "child", parentKey = null) {
@@ -169,11 +274,12 @@ class Model {
       const res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
       const records = res.records || [];
 
+      // Group dependencies by type
+      if (!parentId) {
+        this.dependenciesByType = {};
+      }
+
       if (records.length > 0) {
-        // Group dependencies by type
-        if (!parentId) {
-          this.dependenciesByType = {};
-        }
         const processedDeps = [];
         records.forEach(rec => {
           // For parent dependencies: rec.MetadataComponentId/Name/Type are the components that reference our component
@@ -209,33 +315,27 @@ class Model {
 
       // Special handling for Flow types - Flow do not worked well with MetadataComponentDependency
       if ((type === "Flow" || type === "FlowDefinition") && !parentId) {
-        const resFlowId = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Id+FROM+Flow+WHERE+Status+='Active'", {method: "GET"});
-        for (const flowRec of resFlowId.records) {
-          const flowRes = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Id,Definition.DeveloperName,Metadata+FROM+Flow+WHERE+Id+='" + flowRec.Id + "'", {method: "GET"});
-          flowRes.records.forEach(flow => {
-            if (flow.Metadata && flow.Metadata.subflows && flow.Metadata.subflows.some(f => f.flowName == name)) {
-              const flowRecord = {
-                "attributes": {
-                  "type": "MetadataComponentDependency",
-                  "url": "/services/data/v" + apiVersion + "/tooling/sobjects/MetadataComponentDependency/000000000000000AAA"
-                },
-                "MetadataComponentId": flow.Id,
-                "MetadataComponentName": flow.Definition.DeveloperName,
-                "MetadataComponentType": "Flow",
-                "RefMetadataComponentName": name,
-                "RefMetadataComponentType": type,
-                "RefMetadataComponentId": componentId
-              };
-              const depType = "Flow";
-              if (!this.dependenciesByType[depType]) {
-                this.dependenciesByType[depType] = [];
-              }
-              this.dependenciesByType[depType].push(flowRecord);
-            }
-          });
-          // Enrich flow dependencies
-          const flowDeps = this.dependenciesByType["Flow"] || [];
-          await this.enrichDependencies(flowDeps.slice(-1)); // Enrich the last added flow record
+        const flowSubflowRecords = await this.getFlowSubflowRecords();
+        // parent: flows that call this flow (RefMetadataComponentId is the callee, kept as-is)
+        // child: flows that this flow calls (MetadataComponentId is the caller, swapped so Metadata* shows the callee)
+        const matchingRecords = dependencyType === "parent"
+          ? flowSubflowRecords.filter(rec => rec.RefMetadataComponentId === componentId)
+          : flowSubflowRecords.filter(rec => rec.MetadataComponentId === componentId).map(rec => ({
+            ...rec,
+            MetadataComponentId: rec.RefMetadataComponentId,
+            MetadataComponentName: rec.RefMetadataComponentName,
+            MetadataComponentType: rec.RefMetadataComponentType,
+            RefMetadataComponentId: rec.MetadataComponentId,
+            RefMetadataComponentName: rec.MetadataComponentName,
+            RefMetadataComponentType: rec.MetadataComponentType
+          }));
+        if (matchingRecords.length > 0) {
+          const depType = "Flow";
+          if (!this.dependenciesByType[depType]) {
+            this.dependenciesByType[depType] = [];
+          }
+          this.dependenciesByType[depType].push(...matchingRecords);
+          await this.enrichDependencies(matchingRecords);
         }
         this.didUpdate();
       }
@@ -760,7 +860,7 @@ class ComponentNameAutocomplete extends React.Component {
     this.onBlur = this.onBlur.bind(this);
   }
 
-  componentDidUpdate(prevProps) {
+  componentDidUpdate() {
   }
 
   onFocus() {
@@ -1060,6 +1160,9 @@ class App extends React.Component {
         h("h1", {}, "Dependencies"),
         h("span", {}, " / " + model.userInfo),
         h("div", {className: "flex-right"},
+          model.flowScanProgress && h("span", {className: "slds-text-body_small slds-m-right_x-small", title: "Scanning flows for subflow dependencies"},
+            Math.round((model.flowScanProgress.done / model.flowScanProgress.total) * 100) + "% (" + model.flowScanProgress.done + "/" + model.flowScanProgress.total + " flows)"
+          ),
           h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
             h("span", {className: "slds-assistive-text"}),
             h("div", {className: "slds-spinner__dot-a"}),
