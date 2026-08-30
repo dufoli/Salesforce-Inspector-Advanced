@@ -179,6 +179,7 @@ class App extends React.PureComponent {
       apexRunnerHref: "apex-runner.html?" + hostArg,
       streamingHref: "streaming.html?" + hostArg,
       limitsHref: "limits.html?" + hostArg,
+      formulaHelperHref: "formula-helper.html?" + hostArg,
       dependencyHref: "dependency.html?" + hostArg,
       latestNotesViewed: localStorage.getItem("latestReleaseNotesVersionViewed") === this.props.addonVersion,
       buttonTooltip: ""
@@ -382,6 +383,7 @@ class App extends React.PureComponent {
       apexRunnerHref: "apex-runner.html?" + limitsArg,
       streamingHref: "streaming.html?" + limitsArg,
       limitsHref: "limits.html?" + limitsArg,
+      formulaHelperHref: "formula-helper.html?" + limitsArg,
       dependencyHref: "dependency.html?" + limitsArg
     });
   }
@@ -541,6 +543,7 @@ class App extends React.PureComponent {
       "e": ["click", "dataExportBtn"],
       "i": ["click", "dataImportBtn"],
       "l": ["click", "limitsBtn"],
+      "y": ["click", "formulaHelperBtn"],
       "d": ["click", "metaRetrieveBtn"],
       "x": ["click", "apiExploreBtn"],
       "h": ["click", "homeBtn"],
@@ -725,7 +728,7 @@ class App extends React.PureComponent {
       inInspector,
       addonVersion
     } = this.props;
-    let {isInSetup, contextUrl, apiVersionInput, exportHref, importHref, apexRunnerHref, streamingHref, limitsHref, dependencyHref, isFieldsPresent, latestNotesViewed, buttonTooltip} = this.state;
+    let {isInSetup, contextUrl, apiVersionInput, exportHref, importHref, apexRunnerHref, streamingHref, limitsHref, formulaHelperHref, dependencyHref, isFieldsPresent, latestNotesViewed, buttonTooltip} = this.state;
     let hostArg = new URLSearchParams();
     hostArg.set("host", sfHost);
     let linkInNewTab = JSON.parse(localStorage.getItem("openLinksInNewTab"));
@@ -884,6 +887,19 @@ class App extends React.PureComponent {
               },
               h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#metrics", style: {fill: "#706E6B"}})),
               h("span", {className: "slds-assistive-text"}, "Limits"),
+            ),
+            h("a",
+              {
+                ref: "formulaHelperBtn",
+                href: formulaHelperHref,
+                target: linkTarget,
+                className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
+                title: "Formula Helper",
+                onMouseEnter: () => { this.setButtonTooltip("Formula Helper - Shortcut [y]"); },
+                onMouseLeave: () => { this.setButtonTooltip(""); }
+              },
+              h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#insert_tag_field", style: {fill: "#706E6B"}})),
+              h("span", {className: "slds-assistive-text"}, "Formula Helper"),
             ),
             h("a",
               {

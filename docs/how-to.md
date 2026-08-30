@@ -276,3 +276,13 @@ The customization is linked to the org, it means you can have different colors f
 You can choose to autogenerate color by environment. The same color will be used for Salesforce extension and Salesforce environment but salesforce inspector extension have a different icon. So you can find quickly the right envionment from tab.
 
 ![Option User experince tab](screenshots/options_ux_tab.png)
+
+## Formula Helper
+
+A standalone tool for writing and cleaning up Salesforce formulas: syntax highlighting, line numbers, autocompletion of field names, objects and formula functions, and real-time error checks.
+
+- Open it from the floating Inspector button's toolbar (shortcut `y`), or navigate directly to `formula-helper.html?host=<your org>`.
+- Pick an object at the top of the page to get field autocompletion (including relationship fields, e.g. typing `Owner.` suggests `User` fields) in addition to function/operator suggestions. Press `Ctrl+Space` to bring up suggestions.
+- The **Problems** panel below the editor lists client-side issues found as you type: unclosed/unmatched parentheses, unterminated strings, missing or misplaced commas, and function argument count mismatches. Click a problem to jump to its location in the editor. This is a local, best-effort check that complements — it does not call or replace — Salesforce's own "Check Syntax" button in Setup.
+- Click **Format** to pretty-print a nested formula (line breaks and indentation for deeply nested function calls); `Ctrl+Z` undoes it like any other edit.
+- Click **Copy result** to copy the current formula to the clipboard, ready to paste into the formula field/validation rule/flow you're editing in Salesforce Setup.
