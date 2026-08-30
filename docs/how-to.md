@@ -51,6 +51,7 @@ By the way, Data import date format can be customized too.
 
 On Data export, you can dit directly a field by double clicking on cell. Id must be present on SOQL and only field of main object is editable.
 For picklist, a list of picklist value is displayed with auto suggestion.
+A single click on a cell copies its value to the clipboard (the cell briefly flashes green to confirm).
 
 
 ## Use Sf Inspector with an External Client App
