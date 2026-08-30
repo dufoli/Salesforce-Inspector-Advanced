@@ -1265,14 +1265,46 @@ class ScrollTableCell extends React.Component {
     this.onSuggestionClick = this.onSuggestionClick.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onEditRecord = this.onEditRecord.bind(this);
+    this.onCopyCellValue = this.onCopyCellValue.bind(this);
     this.state = {
       activeSuggestion: 0,
-      showSuggestions: false
+      showSuggestions: false,
+      copied: false
     };
   }
+  componentWillUnmount() {
+    clearTimeout(this.copiedTimeoutId);
+    clearTimeout(this.clickTimeoutId);
+  }
   onTryEdit() {
+    // A double click fires as click, click, dblclick - cancel the pending
+    // single-click copy so double-clicking to edit never copies first.
+    clearTimeout(this.clickTimeoutId);
     let {model} = this.props;
     model.editCell(this.row.id, this.cell.id);
+  }
+  getCellText() {
+    let text = this.props.cell.label?.toString();
+    if (text == "[object Object]") {
+      text = "";
+    }
+    return text;
+  }
+  onCopyCellValue(e) {
+    e.preventDefault();
+    clearTimeout(this.clickTimeoutId);
+    this.clickTimeoutId = setTimeout(() => {
+      let text = this.getCellText();
+      if (!text) {
+        return;
+      }
+      navigator.clipboard.writeText(text);
+      this.setState({copied: true});
+      clearTimeout(this.copiedTimeoutId);
+      this.copiedTimeoutId = setTimeout(() => {
+        this.setState({copied: false});
+      }, 500);
+    }, 300);
   }
   onEditRecord(e) {
     e.preventDefault();
@@ -1394,20 +1426,21 @@ class ScrollTableCell extends React.Component {
   }
   render() {
     let {cell, rowHeight, colWidth, previousCell, row, model} = this.props;
-    let {activeSuggestion, showSuggestions} = this.state;
-    let cellLabel = cell.label?.toString();
-    if (cellLabel == "[object Object]") {
-      cellLabel = "";
-    }
+    let {activeSuggestion, showSuggestions, copied} = this.state;
+    let cellLabel = this.getCellText();
     let cellDataEditValue = cell.dataEditValue?.toString();
     if (cellDataEditValue == "[object Object]") {
       cellDataEditValue = "";
     }
     let className = "scrolltable-cell";
     let cellStyle = {minWidth: colWidth + "px", height: rowHeight + "px"};
-    let bgColor = model.getBackgroundColor(row.idx, cell.idx);
-    if (bgColor) {
-      cellStyle.backgroundColor = bgColor;
+    if (copied) {
+      cellStyle.backgroundColor = "#c8f7c5";
+    } else {
+      let bgColor = model.getBackgroundColor(row.idx, cell.idx);
+      if (bgColor) {
+        cellStyle.backgroundColor = bgColor;
+      }
     }
     if (cell.isEditing){
       cellStyle.height = (rowHeight + 10) + "px";
@@ -1434,7 +1467,7 @@ class ScrollTableCell extends React.Component {
         className += " scrolltable-cell-diff";
       }
       return h("td", {className, style: cellStyle},
-        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("div", {style: {height: "100%", width: "100%"}, onDoubleClick: this.onTryEdit}, cellLabel),
+        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("div", {title: "Click to copy, double-click to edit", style: {height: "100%", width: "100%"}, onClick: this.onCopyCellValue, onDoubleClick: this.onTryEdit}, cellLabel),
         cell.showMenu ? h("div", {className: "pop-menu"},
           cell.links.map((l, idx) => {
             let arr = [];

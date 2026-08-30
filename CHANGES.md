@@ -2,6 +2,7 @@
 
 ## Version 1.40
 
+- data export/import/inspect: single click on a non-Id result cell now copies its value to the clipboard (double click still enters inline edit mode).
 - inspect: search box now also matches formula/roll-up summary definitions and adds a "Stored field" keyword to find plain (non-formula, non-roll-up) fields.
 - popup: add filter checkboxes (Include inactive/portal users, Object schema/Records, Flows/Profiles/Permission Sets/Communities/Apex classes) to the Objects, Users and Shortcuts quick search boxes.
 - metadata retrieve: add Download Translations (CustomObjectTranslation + global Translations for custom labels/tabs/etc.) for a selected language, similar to Workbench's translation download.
