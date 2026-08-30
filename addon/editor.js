@@ -22,6 +22,11 @@ export class Editor extends React.Component {
     this.model = props.model;
     this.keywordColor = props.keywordColor;
     this.keywordCaseSensitive = props.keywordCaseSensitive;
+    // String delimiter and comment support are configurable (backward-compatible: default to
+    // the original SOQL/Apex behavior) so other grammars, e.g. Salesforce formulas which use "
+    // for strings and have no comments, can reuse this component without a fork.
+    this.stringDelimiter = props.stringDelimiter || "'";
+    this.enableComments = props.enableComments !== false;
     this.handlekeyDown = this.handlekeyDown.bind(this);
     this.handleChange = this.handleChange.bind(this);
     this.editorAutocompleteEvent = this.editorAutocompleteEvent.bind(this);
@@ -347,22 +352,29 @@ export class Editor extends React.Component {
       keywords.push(keyword);
     }
 
-    let keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(\\/\\/|\\/\\*|'|{|\\[|\\(|}|\\]|\\))", "g" + (keywordCaseSensitive ? "" : "i"));
+    const stringDelimiter = this.stringDelimiter;
+    const escapedDelimiter = stringDelimiter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const specialTokens = this.enableComments ? ["\\/\\/", "\\/\\*"] : [];
+    specialTokens.push(escapedDelimiter, "{", "\\[", "\\(", "}", "\\]", "\\)");
+    const specialTokenPattern = specialTokens.join("|");
+
+    let keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(" + specialTokenPattern + ")", "g" + (keywordCaseSensitive ? "" : "i"));
     const colorBrackets = ["gold", "purple", "deepskyblue"];
     let bracketIndex = 0;
     //yellow for function
     while ((keywordMatch = keywordRegEx.exec(remaining)) !== null) {
       let color = "blue";
       let sentence = keywordMatch[1];
-      if (keywordMatch[0] == "'") {
+      if (keywordMatch[0] == stringDelimiter) {
         color = "orange";
-        let match = remaining.substring(keywordMatch.index + 1).match(/[^\\]'/);
+        let closeRegEx = new RegExp("[^\\\\]" + escapedDelimiter);
+        let match = remaining.substring(keywordMatch.index + 1).match(closeRegEx);
         if (match) {
           sentence = remaining.substring(keywordMatch.index, keywordMatch.index + 1 + match.index + 2);
         } else {
           sentence = remaining.substring(keywordMatch.index);
         }
-      } else if (keywordMatch[0] == "//") {
+      } else if (this.enableComments && keywordMatch[0] == "//") {
         color = "green";
         let endIndex = remaining.indexOf("\n", keywordMatch.index + 2);
         if (endIndex > 0) {
@@ -370,7 +382,7 @@ export class Editor extends React.Component {
         } else {
           sentence = remaining.substring(keywordMatch.index);
         }
-      } else if (keywordMatch[0] == "/*") {
+      } else if (this.enableComments && keywordMatch[0] == "/*") {
         color = "green";
         let endIndex = remaining.indexOf("*/", keywordMatch.index + 2);
         if (endIndex > 0) {
@@ -421,7 +433,7 @@ export class Editor extends React.Component {
       }
       remaining = remaining.substring(keywordMatch.index + sentence.length);
       selStart -= keywordMatch.index + sentence.length;
-      keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(\\/\\/|\\/\\*|'|{|\\[|\\(|}|\\]|\\))", "g" + (keywordCaseSensitive ? "" : "i"));
+      keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(" + specialTokenPattern + ")", "g" + (keywordCaseSensitive ? "" : "i"));
       if (highlighted.length > 1000) {
         break;
       }

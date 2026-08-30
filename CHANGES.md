@@ -2,6 +2,7 @@
 
 ## Version 1.40
 
+- add Formula Helper: a new standalone tool for writing Salesforce formulas, with syntax highlighting, line numbers, field/object/function autocompletion, real-time client-side error checks (unmatched parentheses, missing/misplaced commas, function arity), and one-click formatting.
 - data export/import/inspect: single click on a non-Id result cell now copies its value to the clipboard (double click still enters inline edit mode).
 - inspect: search box now also matches formula/roll-up summary definitions and adds a "Stored field" keyword to find plain (non-formula, non-roll-up) fields.
 - popup: add filter checkboxes (Include inactive/portal users, Object schema/Records, Flows/Profiles/Permission Sets/Communities/Apex classes) to the Objects, Users and Shortcuts quick search boxes.

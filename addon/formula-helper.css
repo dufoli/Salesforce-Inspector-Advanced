@@ -1,0 +1,330 @@
+/*******************
+* General template *
+*******************/
+* {
+  box-sizing: border-box;
+}
+div[hidden] {
+  display: none !important;
+}
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  margin: 0;
+}
+.sf-link {
+  margin-right: 1em;
+  background-color: rgb(6, 28, 63);
+  border-radius: 3px;
+  line-height: 2em;
+  text-decoration: none;
+  display: inline-block;
+  padding: 2px;
+  color: white;
+  padding-right: 1em;
+}
+.sf-link svg {
+  width: 2em;
+  height: 2em;
+  display: block;
+  margin-left: 1px;
+  margin-right: 1em;
+  float: left;
+  background-color: #ef7ead;
+  border-radius: 2px;
+  fill: white;
+}
+.error-message {
+  font-size: 1.2em;
+  font-weight: bold;
+  margin: .5em 0;
+  background-color: #fe3;
+  padding: .5em;
+  border: 1px solid red;
+  border-radius: 7px;
+}
+#spinner {
+  position: absolute;
+  left: -15px;
+  top: -15px;
+}
+.object-bar {
+  position: fixed;
+  background-color: rgba(255, 255, 255, 0.9);
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  z-index: 1;
+  align-items: center;
+}
+.object-bar h1 {
+  font-size: 1.2em;
+  margin: 0 0 0 .5em;
+}
+.body {
+  padding: 4.3em 8px 8px;
+}
+
+/****************
+* Formula toolbar *
+****************/
+.formula-toolbar {
+  display: flex;
+  align-items: center;
+  gap: .75em;
+  margin-bottom: .5em;
+}
+.formula-toolbar label {
+  font-weight: bold;
+}
+.formula-toolbar input[type="text"],
+.formula-toolbar input:not([type]) {
+  padding: 4px 6px;
+  border: 1px solid #DDDBDA;
+  border-radius: .25rem;
+  min-width: 14em;
+}
+.formula-toolbar button {
+  padding: 4px 10px;
+  border: 1px solid #DDDBDA;
+  border-radius: .25rem;
+  background: white;
+  cursor: pointer;
+}
+.formula-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+/*******************************************
+* Editor (adapted from data-export.css)   *
+*******************************************/
+.editor-container {
+  display: flex;
+}
+.editor-wrapper {
+  flex-grow: 1;
+}
+.editor_container {
+  position: relative;
+  text-align: left;
+  box-sizing: border-box;
+  padding: 0px;
+  overflow: hidden;
+}
+.editor_textarea {
+  position: relative;
+  word-wrap: break-word;
+  background: transparent;
+  border: 1px solid #DDDBDA;
+  color: transparent;
+  caret-color: black;
+  line-height: 1em;
+  font-kerning: none;
+  min-width: 600px;
+  min-height: 130px;
+}
+.editor_container_mirror span {
+  vertical-align: top;
+}
+.editor_container_mirror {
+  position: absolute;
+  border: 1px solid #DDDBDA;
+  vertical-align: top;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  resize: vertical;
+  overflow-wrap: break-word;
+  font-size: 0.9rem;
+  padding: 8px 10px;
+  border-radius: 0.25rem;
+  font-family: monospace, Arial, Helvetica, sans-serif;
+  box-sizing: border-box;
+  letter-spacing: normal;
+  line-height: 2em;
+  word-spacing: normal;
+  overflow: auto;
+  background-color: white;
+  color: transparent;
+  white-space: pre-wrap;
+  bottom: 0;
+  font-kerning: none;
+  margin: 0;
+  min-width: 600px;
+  min-height: 130px;
+}
+.editor_caret {
+  background-color: transparent;
+  width: 0px;
+}
+.line-numbers-wrapper {
+  position: relative;
+  width: 44px;
+  overflow: hidden;
+}
+.line-numbers {
+  text-align: right;
+  padding: 8px 10px;
+  position: absolute;
+  width: 44px;
+}
+.line-numbers span {
+  counter-increment: linenumber;
+}
+.line-numbers span::before {
+  content: counter(linenumber);
+  display: block;
+  color: #506882;
+  font-size: .8125rem;
+}
+
+/*******************************************
+* Autocomplete popup                       *
+*******************************************/
+.autocomplete-results-over {
+  display: block;
+  position: absolute;
+  background-color: white;
+  z-index: 999;
+  overflow: auto;
+  height: 200px;
+}
+.autocomplete-results-over .autocomplete-result {
+  border-bottom: 1px solid #DDDBDA;
+  height: 22px;
+}
+.autocomplete-results-over .active,
+.autocomplete-results-over .autocomplete-result:hover,
+.autocomplete-results-over .autocomplete-result:active {
+  background-color: #aacbff;
+  color: #005fb2;
+}
+.autocomplete-result {
+  display: block;
+  white-space: nowrap;
+  text-decoration: none;
+  color: #006dcc;
+  background-color: white;
+  padding: 2px 6px;
+}
+.autocomplete-icon {
+  display: inline-block;
+  margin: -1px 2px 0 1px;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 0.95rem;
+  background-color: #706E6B;
+  width: 16px;
+  height: 16px;
+}
+.fieldName .autocomplete-icon {
+  -webkit-mask-image: url(images/question_mark.svg);
+}
+.fieldName.reference .autocomplete-icon {
+  -webkit-mask-image: url(images/record_lookup.svg);
+}
+.fieldName.string .autocomplete-icon,
+.fieldName.textarea .autocomplete-icon {
+  -webkit-mask-image: url(images/string.svg);
+}
+.fieldName.id .autocomplete-icon {
+  -webkit-mask-image: url(images/anchor.svg);
+}
+.fieldName.picklist .autocomplete-icon {
+  -webkit-mask-image: url(images/picklist.svg);
+}
+.fieldName.multipicklist .autocomplete-icon {
+  -webkit-mask-image: url(images/multi-picklist.svg);
+}
+.fieldName.boolean .autocomplete-icon {
+  -webkit-mask-image: url(images/boolean.svg);
+}
+.fieldName.phone .autocomplete-icon {
+  -webkit-mask-image: url(images/call.svg);
+}
+.fieldName.url .autocomplete-icon {
+  -webkit-mask-image: url(images/link.svg);
+}
+.fieldName.int .autocomplete-icon,
+.fieldName.double .autocomplete-icon,
+.fieldName.long .autocomplete-icon,
+.fieldName.currency .autocomplete-icon,
+.fieldName.percent .autocomplete-icon {
+  -webkit-mask-image: url(images/number.svg);
+}
+.fieldName.datetime .autocomplete-icon {
+  -webkit-mask-image: url(images/date-time.svg);
+}
+.fieldName.date .autocomplete-icon {
+  -webkit-mask-image: url(images/date.svg);
+}
+.fieldName.email .autocomplete-icon {
+  -webkit-mask-image: url(images/email.svg);
+}
+.fieldName.location .autocomplete-icon,
+.fieldName.address .autocomplete-icon {
+  -webkit-mask-image: url(images/checkin.svg);
+}
+.fieldName.encryptedstring .autocomplete-icon {
+  -webkit-mask-image: url(images/lock.svg);
+}
+.fieldName.time .autocomplete-icon {
+  -webkit-mask-image: url(images/clock.svg);
+}
+.function .autocomplete-icon {
+  -webkit-mask-image: url(images/advanced_function.svg);
+  background-color: #706E6B;
+}
+.operator .autocomplete-icon,
+.literal .autocomplete-icon {
+  -webkit-mask-image: url(images/steps.svg);
+}
+.object .autocomplete-icon {
+  -webkit-mask-image: url(images/sobject.svg);
+  background-color: #04844B;
+}
+.relationshipName {
+  font-style: italic;
+}
+.relationshipName .autocomplete-icon {
+  -webkit-mask-image: url(images/relate.svg);
+  background-color: #0070d2;
+}
+
+/****************
+* Problems panel *
+****************/
+.problems-panel {
+  margin-top: .5em;
+  border: 1px solid #DDDBDA;
+  border-radius: .25rem;
+}
+.problems-header {
+  padding: 6px 10px;
+  font-weight: bold;
+  background-color: #f3f3f3;
+  border-bottom: 1px solid #DDDBDA;
+}
+.problems-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+}
+.problems-panel li {
+  padding: 4px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f3f3;
+}
+.problems-panel li:hover {
+  background-color: #f3f8ff;
+}
+.problem-error {
+  color: #c23934;
+}
+.problem-warning {
+  color: #b56800;
+}
