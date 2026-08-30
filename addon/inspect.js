@@ -738,13 +738,17 @@ class TableRow {
       let s = this.sortKey(col.name);
       return s != null && ("" + s).toLowerCase().includes(term);
     };
+    let searchSummary = term => {
+      let s = this.summary();
+      return s != null && s.toLowerCase().includes(term);
+    };
     if (this.rowList.model.useTab != "all") {
       return selectedColumns.every(col =>
         !col.columnFilter || split(col.columnFilter).every(term => search(term, col))
       );
     } else {
       return split(this.rowList.model.rowsFilter).every(term =>
-        !term || selectedColumns.some(col => search(term, col))
+        !term || selectedColumns.some(col => search(term, col)) || searchSummary(term)
       );
     }
   }
@@ -931,9 +935,12 @@ class FieldRow extends TableRow {
       }
     }
     if (fieldDescribe) {
+      let isFormula = !!fieldDescribe.calculatedFormula;
+      let isRollup = !!(fieldDefinition && fieldDefinition.summaryOperation);
       return this.fieldName + "\n"
-        + (fieldDescribe.calculatedFormula ? "Formula: " + fieldDescribe.calculatedFormula + "\n" : "")
-        + (summary ? "Roll-up: " + summary + "\n" : "")
+        + (isFormula ? "Formula: " + fieldDescribe.calculatedFormula + "\n" : "")
+        + (isRollup ? "Roll-up: " + summary + "\n" : "")
+        + (!isFormula && !isRollup ? "Stored field\n" : "")
         + (fieldDescribe.inlineHelpText ? "Help text: " + fieldDescribe.inlineHelpText + "\n" : "")
         + (fieldDescribe.picklistValues && fieldDescribe.picklistValues.length > 0 ? "Picklist values: " + fieldDescribe.picklistValues.map(pickval => pickval.value).join(", ") + "\n" : "")
       ;
