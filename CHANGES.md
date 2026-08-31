@@ -12,6 +12,7 @@
 - dependency viewer: fix hidden suggestion for flow
 - cache: add a cache for flow dependencies
 - popup: fix bug which prevent popup close
+- data export: fix result table column order for subquery fields not following the query's field order
 
 ## Version 1.39
 

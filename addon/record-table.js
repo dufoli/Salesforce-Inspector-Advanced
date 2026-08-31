@@ -217,8 +217,7 @@ export class RecordTable {
         return this.cellToString(cell).toLowerCase().includes(this.filter.value.toLowerCase());
     }
   }
-  async discoverQueryColumns(record, vm) {
-    let fields = vm.columnIndex.fields;
+  async discoverQueryColumns(record, vm, fields = vm.columnIndex.fields, prefix = "") {
     let sobjectDescribe = null;
     //TODO we will need parent model of rt maybe
     if (record.attributes && record.attributes.type) {
@@ -229,9 +228,9 @@ export class RecordTable {
     for (let field of fields) {
       let fieldName = "";
       let fieldType = "";
+      let subRecord = record;
       if (field.name) {
         let fieldNameSplitted = field.name.split(".");
-        let subRecord = record;
         let currentSobjectDescribe = sobjectDescribe;
         for (let i = 0; i < fieldNameSplitted.length; i++) {
           const currentFieldName = fieldNameSplitted[i];
@@ -267,6 +266,8 @@ export class RecordTable {
             }
           }
           // 2. try to collect name with record structure
+          // (this is also how a subquery's relationship name is resolved, since child
+          // relationships live in describe.childRelationships, not describe.fields)
           for (let f in subRecord) {
             if (f && currentFieldName && f.toLowerCase() == currentFieldName.toLowerCase()) {
               subRecord = subRecord[f];
@@ -276,17 +277,18 @@ export class RecordTable {
           }
         }
       }
-      if (fieldName && !this.columnIdx.has(fieldName)) {
+      let fullFieldName = fieldName ? prefix + fieldName : "";
+      if (fullFieldName && !this.columnIdx.has(fullFieldName)) {
         let c = this.header.length;
-        this.columnIdx.set(fieldName, c);
+        this.columnIdx.set(fullFieldName, c);
         for (let row of this.table) {
           row.push(undefined);
         }
-        this.header[c] = fieldName;
+        this.header[c] = fullFieldName;
         // hide object column
         this.colVisibilities.push((!field.fields));
-        if (fieldName.includes(".")) {
-          let splittedField = fieldName.split(".");
+        if (fullFieldName.includes(".")) {
+          let splittedField = fullFieldName.split(".");
           splittedField.slice(0, splittedField.length - 1).map(col => {
             if (!this.skipTechnicalColumns && !this.columnIdx.has(col)) {
               let c = this.header.length;
@@ -299,6 +301,15 @@ export class RecordTable {
               this.colVisibilities.push((false));
             }
           });
+        }
+      }
+      // Recurse into a subquery's child records (in query order) right after registering
+      if (field.fields && fieldName) {
+        let subRecords = subRecord && subRecord.records ? subRecord.records : null;
+        if (subRecords) {
+          for (let idx = 0; idx < subRecords.length; idx++) {
+            await this.discoverQueryColumns(subRecords[idx], vm, field.fields, fullFieldName + "." + idx + ".");
+          }
         }
       }
     }
