@@ -42,6 +42,14 @@ In data import, you can choose to use assigment rules or not for lead, case and 
 
 The SOQL editor support color, suggestion over text, and we have fixed a lot of issue in suggestion of original Salesforce inspector (subquery object name, subquery field suggestion, in list suggestion, __r suggest all custom relation, ...)
 
+GraphQL queries (e.g. `{ uiapi { query { Account { edges { node { Name { value } } } } } } }`) also get keyword, object and field suggestions and syntax highlighting, including:
+
+- relationship fields (e.g. `Account { Name { value } }`) and child-relationship sub-queries (e.g. `Contacts { edges { node { ... } } }`)
+- `where`, `orderBy`, `first` and `after` arguments on an object, e.g. `Account(where: { Industry: { eq: "Energie" } }, orderBy: { Name: { order: ASC } }, first: 10)`
+- `aggregate` queries (e.g. `{ uiapi { aggregate { Opportunity { edges { node { aggregate { Amount { avg { displayValue } } } } } } } } }`)
+
+Suggestion clicks insert already-balanced braces so you don't have to close them by hand. `and`/`or` combinator arrays in `where`, grouping fields alongside an `aggregate` selection, and "Format Query" are not supported for GraphQL yet.
+
 Technical column (done, count, object type) can be skipped with an option.
 
 Date format and date time format is now customizable in option. So data can fit directly to your need.
