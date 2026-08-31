@@ -486,6 +486,18 @@ class Model {
     let idx = this.activeSuggestion > -1 ? this.activeSuggestion : 0;
 
     this.editor.focus();
+    if (ar[idx].nestOffset != null) {
+      // GraphQL nesting suggestions (e.g. "uiapi { }") insert an already-closed pair and place the
+      // caret just inside it, since setRangeText below does not trigger the editor's key-press
+      // driven bracket auto-pairing the way an actual "{" keystroke would.
+      let contextPath = this.autocompleteResults.contextPath ? this.autocompleteResults.contextPath : "";
+      this.applyEdit(contextPath + ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
+      let caretPos = selStart + contextPath.length + ar[idx].nestOffset;
+      this.editor.setSelectionRange(caretPos, caretPos);
+      this.activeSuggestion = -1;
+      this.editorAutocompleteHandler();
+      return;
+    }
     this.applyEdit((this.autocompleteResults.contextPath ? this.autocompleteResults.contextPath : "") + ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
     if (ar[idx].value.startsWith("FIELDS") && !this.editor.value.toLowerCase().includes("limit")) {
       this.editor.value += " LIMIT 200";
@@ -693,6 +705,498 @@ class Model {
         .toArray()
     };
     return;
+  }
+
+  /**
+   * GraphQL query autocomplete handling.
+   * Only supports the fixed skeleton produced/consumed by callRest():
+   * { uiapi { query|aggregate { <Object>(where: ..., orderBy: ..., first: ..., after: ...) {
+   *   edges { node { <Field...> | aggregate { <Field> { avg|sum|min|max|count { value|displayValue
+   *   } } } } } totalCount } } } }
+   * Suggests keywords (uiapi, query, aggregate, edges, node, totalCount, value, label,
+   * displayValue), object names after "query {"/"aggregate {", field names after "node {",
+   * including one level of to-one relationship nesting (reference fields resolve to their first
+   * referenceTo candidate, same simplification used for polymorphic lookups in
+   * formula-helper.js), child (one-to-many) relationship sub-queries, aggregate function results,
+   * and where/orderBy/first/after arguments (field names, comparison operators, ASC/DESC/nulls).
+   * Does not support "and"/"or" combinator arrays in where, argument suggestions for grouping
+   * fields alongside an aggregate, or mutations.
+   */
+  graphqlAutocompleteHandler() {
+    let vm = this; // eslint-disable-line consistent-this
+    let query = vm.editor.value;
+    let selStart = vm.editor.selectionStart;
+    let selEnd = vm.editor.selectionEnd;
+    let searchTerm = selStart != selEnd
+      ? query.substring(selStart, selEnd)
+      : query.substring(0, selStart).match(/[a-zA-Z0-9_]*$/)[0];
+    selStart = selEnd - searchTerm.length;
+
+    // GraphQL selections are whitespace-separated (no commas), and every suggestion that opens a
+    // new nesting level inserts the fully closed "{ }" (or ": { }" for an argument) pair with the
+    // caret placed just inside it, since suggestion insertion (applyEdit/setRangeText) does not
+    // trigger the editor's key-press driven bracket auto-pairing.
+    function nestKeyword(value, colon, rank = 1) {
+      let suffix = (colon ? ": " : " ") + "{ }";
+      return {value, title: value, suffix, nestOffset: value.length + suffix.length - 1, rank, autocompleteType: "keyword", dataType: ""};
+    }
+    function plainKeyword(value, rank = 1) {
+      return {value, title: value, suffix: " ", rank, autocompleteType: "keyword", dataType: ""};
+    }
+    function colonKeyword(value, rank = 1) {
+      return {value, title: value, suffix: ": ", rank, autocompleteType: "keyword", dataType: ""};
+    }
+    function filterKeywords(results) {
+      return results.filter(r => r.value.toLowerCase().includes(searchTerm.toLowerCase()));
+    }
+
+    let stack = this.parseGraphqlContext(query, selStart);
+    let frame = stack[stack.length - 1];
+    switch (frame.type) {
+      case "empty":
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords([nestKeyword("uiapi")])};
+        return;
+      case "root":
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords([nestKeyword("uiapi")])};
+        return;
+      case "uiapi":
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords([nestKeyword("query"), nestKeyword("aggregate")])};
+        return;
+      case "query":
+      case "aggregate":
+        this.autocompleteGraphqlObject(vm, searchTerm);
+        return;
+      case "object":
+        vm.autocompleteResults = {sobjectName: frame.sobjectName, title: "Suggestions:", results: filterKeywords([nestKeyword("edges"), plainKeyword("totalCount")])};
+        return;
+      case "edges":
+        vm.autocompleteResults = {sobjectName: frame.sobjectName, title: "Suggestions:", results: filterKeywords([nestKeyword("node")])};
+        return;
+      case "node":
+        if (frame.aggregate) {
+          vm.autocompleteResults = {sobjectName: frame.sobjectName, title: "Suggestions:", results: filterKeywords([nestKeyword("aggregate")])};
+        } else {
+          this.autocompleteGraphqlField(vm, searchTerm, frame.sobjectName);
+        }
+        return;
+      case "fieldWrapper": {
+        let results = [plainKeyword("value")];
+        if (frame.fieldType == "picklist" || frame.fieldType == "multipicklist") {
+          results.push(plainKeyword("label", 2), plainKeyword("displayValue", 2));
+        }
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords(results)};
+        return;
+      }
+      case "aggregateFields":
+        this.autocompleteGraphqlAggregateField(vm, searchTerm, frame.sobjectName);
+        return;
+      case "aggregateFunctions":
+        vm.autocompleteResults = {
+          sobjectName: frame.sobjectName,
+          title: "Suggestions:",
+          results: filterKeywords([nestKeyword("avg"), nestKeyword("sum"), nestKeyword("min"), nestKeyword("max"), nestKeyword("count")])
+        };
+        return;
+      case "aggregateResult":
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords([plainKeyword("value"), plainKeyword("displayValue")])};
+        return;
+      case "argName":
+        vm.autocompleteResults = {
+          sobjectName: frame.sobjectName,
+          title: "Suggestions:",
+          results: filterKeywords([nestKeyword("where", true), nestKeyword("orderBy", true), colonKeyword("first"), colonKeyword("after")])
+        };
+        return;
+      case "whereField":
+        this.autocompleteGraphqlArgField(vm, searchTerm, frame.sobjectName, "where field suggestions:");
+        return;
+      case "whereOp":
+        vm.autocompleteResults = {
+          sobjectName: frame.sobjectName,
+          title: frame.fieldName + " operator suggestions:",
+          results: filterKeywords([colonKeyword("eq"), colonKeyword("ne"), colonKeyword("gt"), colonKeyword("lt"), colonKeyword("gte"), colonKeyword("lte"), colonKeyword("like"), colonKeyword("in"), colonKeyword("nin")])
+        };
+        return;
+      case "orderByField":
+        this.autocompleteGraphqlArgField(vm, searchTerm, frame.sobjectName, "orderBy field suggestions:");
+        return;
+      case "orderByOptions":
+        vm.autocompleteResults = {sobjectName: frame.sobjectName, title: "Suggestions:", results: filterKeywords([colonKeyword("order"), colonKeyword("nulls")])};
+        return;
+      case "orderByOrderValue":
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords([plainKeyword("ASC"), plainKeyword("DESC")])};
+        return;
+      case "orderByNullsValue":
+        vm.autocompleteResults = {sobjectName: "", title: "Suggestions:", results: filterKeywords([plainKeyword("FIRST"), plainKeyword("LAST")])};
+        return;
+      case "firstValue":
+        vm.autocompleteResults = {
+          sobjectName: "",
+          title: "first suggestions:",
+          results: filterKeywords([plainKeyword("1"), plainKeyword("10"), plainKeyword("100"), plainKeyword("200")])
+        };
+        return;
+      case "afterValue":
+        vm.autocompleteResults = {sobjectName: "", title: "after takes an opaque page cursor (from a previous page's edges[].cursor)", results: []};
+        return;
+      default:
+        vm.autocompleteResults = {sobjectName: "", title: "", results: []};
+    }
+  }
+
+  autocompleteGraphqlObject(vm, searchTerm) {
+    // GraphQL (UI API) always queries the standard API, never the Tooling API.
+    let {globalStatus, globalDescribe} = vm.describeInfo.describeGlobal(false);
+    if (!globalDescribe) {
+      switch (globalStatus) {
+        case "loading":
+          vm.autocompleteResults = {sobjectName: "", title: "Loading metadata...", results: []};
+          return;
+        case "loadfailed":
+          vm.autocompleteResults = {sobjectName: "", title: "Loading metadata failed.", results: [{value: "Retry", title: "Retry", reload: true}]};
+          return;
+        default:
+          vm.autocompleteResults = {sobjectName: "", title: "Unexpected error: " + globalStatus, results: []};
+          return;
+      }
+    }
+    vm.autocompleteResults = {
+      sobjectName: "",
+      title: "Objects suggestions:",
+      results: new Enumerable(globalDescribe.sobjects)
+        .filter(sobjectDescribe => sobjectDescribe.queryable && (sobjectDescribe.name.toLowerCase().includes(searchTerm.toLowerCase()) || sobjectDescribe.label.toLowerCase().includes(searchTerm.toLowerCase())))
+        .map(sobjectDescribe => ({value: sobjectDescribe.name, title: sobjectDescribe.label, suffix: " { }", nestOffset: sobjectDescribe.name.length + 3, rank: 1, autocompleteType: "object", dataType: ""}))
+        .toArray()
+        .sort(this.resultsSort(searchTerm))
+    };
+  }
+
+  // Resolves sobjectName's describe for GraphQL suggestions, writing an appropriate
+  // loading/loadfailed/notfound message into vm.autocompleteResults and returning null while it
+  // isn't ready yet, or the sobjectDescribe once it is. Shared by every GraphQL suggestion builder
+  // that needs a describe (field, argument-field, and aggregate-field suggestions).
+  resolveGraphqlSobject(vm, sobjectName) {
+    let {sobjectStatus, sobjectDescribe} = vm.describeInfo.describeSobject(false, sobjectName);
+    if (sobjectDescribe) {
+      return sobjectDescribe;
+    }
+    switch (sobjectStatus) {
+      case "loading":
+        vm.autocompleteResults = {sobjectName, title: "Loading " + sobjectName + " metadata...", results: []};
+        break;
+      case "loadfailed":
+        vm.autocompleteResults = {sobjectName, title: "Loading " + sobjectName + " metadata failed.", results: [{value: "Retry", title: "Retry", reload: true}]};
+        break;
+      case "notfound":
+        vm.autocompleteResults = {sobjectName, title: "Unknown object: " + sobjectName, results: []};
+        break;
+      default:
+        vm.autocompleteResults = {sobjectName, title: "Unexpected error for object: " + sobjectName + ": " + sobjectStatus, results: []};
+    }
+    return null;
+  }
+
+  autocompleteGraphqlField(vm, searchTerm, sobjectName) {
+    let sobjectDescribe = this.resolveGraphqlSobject(vm, sobjectName);
+    if (!sobjectDescribe) {
+      return;
+    }
+    vm.autocompleteResults = {
+      sobjectName,
+      title: sobjectName + " fields suggestions:",
+      results: new Enumerable(sobjectDescribe.fields)
+        .filter(field => field.type != "address")
+        .filter(field => field.type != "reference" || field.relationshipName)
+        .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase())
+          || field.label.toLowerCase().includes(searchTerm.toLowerCase())
+          || (field.relationshipName && field.relationshipName.toLowerCase().includes(searchTerm.toLowerCase())))
+        .map(field => {
+          if (field.type == "id") {
+            return {value: field.name, title: field.label, suffix: " ", rank: 1, autocompleteType: "fieldName", dataType: field.type};
+          } else if (field.type == "reference") {
+            // UI API GraphQL exposes to-one relationships under their relationship name (e.g.
+            // "Account"), not the raw foreign-key field name (e.g. "AccountId").
+            return {value: field.relationshipName, title: field.label, suffix: " { }", nestOffset: field.relationshipName.length + 3, rank: 1, autocompleteType: "relationshipName", dataType: field.type};
+          } else {
+            return {value: field.name, title: field.label, suffix: " { value } ", rank: 1, autocompleteType: "fieldName", dataType: field.type};
+          }
+        })
+        .concat(
+          new Enumerable(sobjectDescribe.childRelationships)
+            .filter(rel => rel.relationshipName && (rel.relationshipName.toLowerCase().includes(searchTerm.toLowerCase()) || rel.childSObject.toLowerCase().includes(searchTerm.toLowerCase())))
+            .map(rel => ({value: rel.relationshipName, title: rel.relationshipName + "(" + rel.childSObject + "." + rel.field + ")", suffix: " { }", nestOffset: rel.relationshipName.length + 3, rank: 2, autocompleteType: "object", dataType: rel.childSObject}))
+        )
+        .toArray()
+        .sort(this.resultsSort(searchTerm))
+    };
+  }
+
+  // Field suggestions for a "where: { <here> }" or "orderBy: { <here> }" argument body -- each
+  // field opens a "FieldName: { ... }" filter/sort-option object, keyed by the plain API field
+  // name (where/orderBy target the underlying field directly, not the relationship name the way
+  // node selections do).
+  autocompleteGraphqlArgField(vm, searchTerm, sobjectName, title) {
+    let sobjectDescribe = this.resolveGraphqlSobject(vm, sobjectName);
+    if (!sobjectDescribe) {
+      return;
+    }
+    vm.autocompleteResults = {
+      sobjectName,
+      title,
+      results: new Enumerable(sobjectDescribe.fields)
+        .filter(field => field.type != "address")
+        .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
+        .map(field => ({value: field.name, title: field.label, suffix: ": { }", nestOffset: field.name.length + 4, rank: 1, autocompleteType: "fieldName", dataType: field.type}))
+        .toArray()
+        .sort(this.resultsSort(searchTerm))
+    };
+  }
+
+  // Field suggestions for a node's "aggregate: { <here> }" body -- each field opens an
+  // "FieldName { avg { ... } ... }" aggregate-functions object. Reference/address fields are
+  // excluded since aggregate functions (avg/sum/min/max/count) don't apply to them.
+  autocompleteGraphqlAggregateField(vm, searchTerm, sobjectName) {
+    let sobjectDescribe = this.resolveGraphqlSobject(vm, sobjectName);
+    if (!sobjectDescribe) {
+      return;
+    }
+    vm.autocompleteResults = {
+      sobjectName,
+      title: sobjectName + " aggregate fields suggestions:",
+      results: new Enumerable(sobjectDescribe.fields)
+        .filter(field => field.type != "address" && field.type != "reference")
+        .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
+        .map(field => ({value: field.name, title: field.label, suffix: " { }", nestOffset: field.name.length + 3, rank: 1, autocompleteType: "fieldName", dataType: field.type}))
+        .toArray()
+        .sort(this.resultsSort(searchTerm))
+    };
+  }
+
+  // Resolves an identifier at a GraphQL field-selection position to its describe field, matching
+  // either the API field name (e.g. "Id") or, for reference fields, the relationship name UI API
+  // GraphQL actually exposes them under (e.g. "Account", not "AccountId").
+  findGraphqlField(sobjectDescribe, ident) {
+    if (!sobjectDescribe) {
+      return null;
+    }
+    let lower = ident.toLowerCase();
+    return sobjectDescribe.fields.find(f => f.name.toLowerCase() == lower)
+      || sobjectDescribe.fields.find(f => f.relationshipName && f.relationshipName.toLowerCase() == lower)
+      || null;
+  }
+
+  // Resolves an identifier at a GraphQL field-selection position to a child (one-to-many)
+  // relationship, so a nested sub-query (e.g. Contacts on Account) is recognized and repeats the
+  // same edges/node shape as the top-level query object.
+  findGraphqlChildRelationship(sobjectDescribe, ident) {
+    if (!sobjectDescribe) {
+      return null;
+    }
+    let lower = ident.toLowerCase();
+    return sobjectDescribe.childRelationships.find(rel => rel.relationshipName && rel.relationshipName.toLowerCase() == lower) || null;
+  }
+
+  // Skips a balanced, string-aware "(...)" argument list starting at text[pos] (a "(" character),
+  // returning the index right after the matching ")", or -1 if it's still unclosed within `text`
+  // (the caret sits inside it -- parseGraphqlContext then parses the arguments themselves instead
+  // of skipping over them).
+  skipGraphqlArgs(text, pos) {
+    let i = pos + 1;
+    let depth = 1;
+    while (i < text.length && depth > 0) {
+      let ch = text[i];
+      if (ch == "\"") {
+        i++;
+        while (i < text.length && text[i] != "\"") {
+          if (text[i] == "\\") i++;
+          i++;
+        }
+      } else if (ch == "(") {
+        depth++;
+      } else if (ch == ")") {
+        depth--;
+      }
+      i++;
+    }
+    return depth > 0 ? -1 : i;
+  }
+
+  // Parses the contents of a GraphQL object's still-open argument list, e.g.
+  // Account(where: { Industry: { eq: "x" } }) -- reached only when the caret sits inside an
+  // unclosed "(...)" (parseGraphqlContext delegates here instead of skipping over it, since it
+  // can no longer just jump to a matching ")" that hasn't been typed yet). Arguments have their
+  // own small grammar (argName: value, with where/orderBy taking a nested field-keyed filter/sort
+  // object) so they're parsed independently of the outer object/edges/node frame stack, using the
+  // same left-to-right, best-effort scanning style. "and"/"or" combinator arrays (e.g.
+  // where: { and: [...] }) are not supported: a "[" is treated as an opaque, unclassified nesting
+  // level, so a caret inside one gets a best-effort (possibly inaccurate) context rather than a
+  // crash.
+  parseGraphqlArgsContext(argsText, sobjectName) {
+    let stack = [{type: "argName", sobjectName}];
+    let pendingIdent = null;
+    let i = 0;
+    while (i < argsText.length) {
+      let ch = argsText[i];
+      let top = stack[stack.length - 1];
+      if (/\s/.test(ch) || ch == "," || ch == ":") {
+        i++;
+      } else if (ch == "\"") {
+        i++;
+        while (i < argsText.length && argsText[i] != "\"") {
+          if (argsText[i] == "\\") i++;
+          i++;
+        }
+        i++;
+        pendingIdent = null;
+      } else if (ch == "{" || ch == "[") {
+        let frame;
+        if (ch == "[") {
+          frame = {type: "unknown"};
+        } else if (top.type == "argName" && pendingIdent && pendingIdent.toLowerCase() == "where") {
+          frame = {type: "whereField", sobjectName: top.sobjectName};
+        } else if (top.type == "whereField" && pendingIdent) {
+          frame = {type: "whereOp", sobjectName: top.sobjectName, fieldName: pendingIdent};
+        } else if (top.type == "argName" && pendingIdent && pendingIdent.toLowerCase() == "orderby") {
+          frame = {type: "orderByField", sobjectName: top.sobjectName};
+        } else if (top.type == "orderByField" && pendingIdent) {
+          frame = {type: "orderByOptions", sobjectName: top.sobjectName, fieldName: pendingIdent};
+        } else {
+          frame = {type: "unknown"};
+        }
+        stack.push(frame);
+        pendingIdent = null;
+        i++;
+      } else if (ch == "}" || ch == "]") {
+        if (stack.length > 1) {
+          stack.pop();
+        }
+        pendingIdent = null;
+        i++;
+      } else if (/[a-zA-Z_]/.test(ch)) {
+        let start = i;
+        while (i < argsText.length && /[a-zA-Z0-9_]/.test(argsText[i])) i++;
+        pendingIdent = argsText.substring(start, i);
+      } else {
+        i++;
+      }
+    }
+    let top = stack[stack.length - 1];
+    let lower = pendingIdent ? pendingIdent.toLowerCase() : "";
+    if (top.type == "argName" && lower == "first") {
+      return {type: "firstValue"};
+    }
+    if (top.type == "argName" && lower == "after") {
+      return {type: "afterValue"};
+    }
+    if (top.type == "orderByOptions" && lower == "order") {
+      return {type: "orderByOrderValue"};
+    }
+    if (top.type == "orderByOptions" && lower == "nulls") {
+      return {type: "orderByNullsValue"};
+    }
+    return top;
+  }
+
+  // Builds the GraphQL selection-nesting frame stack for the text before the caret, by walking the
+  // fixed skeleton { uiapi { query|aggregate { <Object>(where: ..., orderBy: ..., first: ...,
+  // after: ...) { edges { node { <Field...> | aggregate { <Field> { <avgSumMinMaxCount> { ... } }
+  // } } } totalCount } } } } left to right. Best-effort/tolerant like the rest of this file's
+  // hand-rolled parsers: an unrecognized token just produces an "unknown" frame instead of
+  // throwing, and a stray "}" is ignored rather than underflowing the stack (both routinely happen
+  // while the user is still mid-edit).
+  parseGraphqlContext(query, contextEnd) {
+    let text = query.substring(0, contextEnd);
+    let stack = [];
+    let pendingIdent = null;
+    let i = 0;
+    while (i < text.length) {
+      let ch = text[i];
+      if (/\s/.test(ch)) {
+        i++;
+      } else if (ch == "\"") {
+        i++;
+        while (i < text.length && text[i] != "\"") {
+          if (text[i] == "\\") i++;
+          i++;
+        }
+        i++;
+        pendingIdent = null;
+      } else if (ch == "(") {
+        // The object identifier immediately precedes its own argument list, e.g. "Account(...)".
+        let objectName = pendingIdent;
+        let closeIdx = this.skipGraphqlArgs(text, i);
+        if (closeIdx == -1) {
+          // The caret sits inside these still-open arguments: parse them directly instead of
+          // skipping over them (there is no closing ")" within `text` to jump to), and stop --
+          // argument context is independent of the outer object/edges/node frame stack.
+          return [this.parseGraphqlArgsContext(text.substring(i + 1), objectName)];
+        }
+        i = closeIdx;
+      } else if (ch == "{") {
+        let parent = stack.length ? stack[stack.length - 1] : null;
+        let frame;
+        if (!parent) {
+          frame = {type: "root"};
+        } else if (parent.type == "root" && pendingIdent == "uiapi") {
+          frame = {type: "uiapi"};
+        } else if (parent.type == "uiapi" && pendingIdent == "query") {
+          frame = {type: "query"};
+        } else if (parent.type == "uiapi" && pendingIdent == "aggregate") {
+          frame = {type: "aggregate"};
+        } else if ((parent.type == "query" || parent.type == "aggregate") && pendingIdent) {
+          frame = {type: "object", sobjectName: pendingIdent, aggregate: parent.type == "aggregate"};
+        } else if (parent.type == "object" && pendingIdent == "edges") {
+          frame = {type: "edges", sobjectName: parent.sobjectName, aggregate: parent.aggregate};
+        } else if (parent.type == "edges" && pendingIdent == "node") {
+          frame = {type: "node", sobjectName: parent.sobjectName, aggregate: parent.aggregate};
+        } else if (parent.type == "node" && parent.aggregate) {
+          // Aggregate-mode nodes only expose the "aggregate { <Field> { <fn> { ... } } }"
+          // container -- grouping fields alongside it are not supported.
+          frame = pendingIdent && pendingIdent.toLowerCase() == "aggregate"
+            ? {type: "aggregateFields", sobjectName: parent.sobjectName}
+            : {type: "unknown"};
+        } else if (parent.type == "aggregateFields" && pendingIdent) {
+          frame = {type: "aggregateFunctions", sobjectName: parent.sobjectName, fieldName: pendingIdent};
+        } else if (parent.type == "aggregateFunctions" && pendingIdent) {
+          frame = {type: "aggregateResult"};
+        } else if (parent.type == "node" && pendingIdent) {
+          let {sobjectDescribe} = this.describeInfo.describeSobject(false, parent.sobjectName);
+          let field = this.findGraphqlField(sobjectDescribe, pendingIdent);
+          let childRel = field ? null : this.findGraphqlChildRelationship(sobjectDescribe, pendingIdent);
+          if (field && field.type == "reference" && field.referenceTo && field.referenceTo.length > 0) {
+            // Polymorphic reference fields (e.g. Owner) resolve to the first referenceTo candidate only.
+            frame = {type: "node", sobjectName: field.referenceTo[0]};
+          } else if (childRel) {
+            // Child (one-to-many) relationships (e.g. Contacts on Account) repeat the same
+            // "edges { node { ... } }" shape as the top-level query object.
+            frame = {type: "object", sobjectName: childRel.childSObject};
+          } else {
+            frame = {type: "fieldWrapper", fieldType: field ? field.type : ""};
+          }
+        } else {
+          frame = {type: "unknown"};
+        }
+        stack.push(frame);
+        pendingIdent = null;
+        i++;
+      } else if (ch == "}") {
+        if (stack.length > 0) {
+          stack.pop();
+        }
+        pendingIdent = null;
+        i++;
+      } else if (/[a-zA-Z_]/.test(ch)) {
+        let start = i;
+        while (i < text.length && /[a-zA-Z0-9_]/.test(text[i])) i++;
+        pendingIdent = text.substring(start, i);
+      } else {
+        i++;
+      }
+    }
+    if (stack.length == 0) {
+      stack.push({type: "empty"});
+    }
+    return stack;
   }
 
   resultsSort(searchTerm) {
@@ -1426,6 +1930,9 @@ class Model {
     if (this.isSearchMode()) {
       this.searchAutocompleteHandler(e);
       return;
+    } else if (this.isGraphMode()) {
+      this.graphqlAutocompleteHandler();
+      return;
     }
 
     // Skip the calculation when no change is made. This improves performance and prevents async operations (Ctrl+Space) from being canceled when they should not be.
@@ -1491,7 +1998,10 @@ class Model {
         vm.autocompleteResults = {
           sobjectName: "",
           title: "",
-          results: [{value: "SELECT", title: "SELECT", suffix: " ", rank: 1, autocompleteType: "keyword", dataType: ""}]
+          results: [{value: "SELECT", title: "SELECT", suffix: " ", rank: 1, autocompleteType: "keyword", dataType: ""},
+            {value: "FIND", title: "FIND (SOSL)", suffix: " ", rank: 2, autocompleteType: "keyword", dataType: ""},
+            {value: "{", title: "{ (graphql)", suffix: " ", rank: 3, autocompleteType: "keyword", dataType: ""}
+          ]
         };
         return;
       } else if (selStart <= query.toLowerCase().indexOf("from") || query.substring(0, selStart).match(/select\s+[a-zA-Z0-9_]+\s/gi)) {
@@ -2740,6 +3250,12 @@ class App extends React.Component {
       ["category", "blue"], ["at", "blue"], ["above", "blue"], ["below", "blue"], ["abov_or_below", "blue"], ["and", "blue"],
       ["or", "blue"], ["not", "blue"], ["like", "blue"], ["highlight", "blue"], ["snippet", "blue"], ["network", "blue"],
       ["metadata", "blue"], ["having", "blue"]]);
+    let keywordColorGraphql = new Map([["uiapi", "blue"], ["query", "blue"], ["aggregate", "blue"], ["edges", "blue"],
+      ["node", "blue"], ["totalCount", "blue"], ["value", "blue"], ["label", "blue"], ["displayValue", "blue"],
+      ["avg", "blue"], ["sum", "blue"], ["min", "blue"], ["max", "blue"], ["count", "blue"],
+      ["where", "blue"], ["orderBy", "blue"], ["first", "blue"], ["after", "blue"],
+      ["eq", "blue"], ["ne", "blue"], ["gt", "blue"], ["lt", "blue"], ["gte", "blue"], ["lte", "blue"], ["like", "blue"], ["in", "blue"], ["nin", "blue"],
+      ["order", "blue"], ["nulls", "blue"], ["ASC", "blue"], ["DESC", "blue"], ["FIRST", "blue"], ["LAST", "blue"]]);
     const perf = model.perfStatus();
     return h("div", {onClick: this.onClick},
       h("div", {id: "user-info"},
@@ -2792,7 +3308,13 @@ class App extends React.Component {
             ),
           ),
         ),
-        h(Editor, {model, keywordColor: model.isSearchMode() ? keywordColorSosl : keywordColor, keywordCaseSensitive: false}),
+        h(Editor, {
+          model,
+          keywordColor: model.isSearchMode() ? keywordColorSosl : model.isGraphMode() ? keywordColorGraphql : keywordColor,
+          keywordCaseSensitive: model.isGraphMode(),
+          stringDelimiter: model.isGraphMode() ? "\"" : "'",
+          enableComments: !model.isGraphMode()
+        }),
         h("div", {className: "autocomplete-box" + (model.expandAutocomplete ? " expanded" : "")},
           h("div", {className: "autocomplete-header"},
             h("span", {}, model.autocompleteResults.title + suggestionHelper),

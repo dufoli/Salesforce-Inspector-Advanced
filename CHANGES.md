@@ -13,6 +13,7 @@
 - cache: add a cache for flow dependencies
 - popup: fix bug which prevent popup close
 - data export: fix result table column order for subquery fields not following the query's field order
+- data export: add keyword/object/field autocompletion and syntax highlighting for GraphQL queries
 
 ## Version 1.39
 
