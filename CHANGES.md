@@ -21,7 +21,7 @@
 
 - data export: Query history and saved queries revamped: rename, tags, sorting, direct editing of saved queries [issue 272](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/272)
 - data export: copy to clipboard for excel provide html for jira, word and many others.
-- options: content now scrolls properly when it exceeds viewport height [issue 288](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/288) 
+- options: content now scrolls properly when it exceeds viewport height [issue 288](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/288) by @DanielSenaDev
 - data export: fix Empty comment followed by a query causes MALFORMED_QUERY [issue 284](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/284)
 - data import: fix bulk api on import.
 - data import: if import failed, you can edit failed before retry
