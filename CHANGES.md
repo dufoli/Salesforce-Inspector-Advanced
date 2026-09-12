@@ -2,18 +2,20 @@
 
 ## Version 1.40
 
-- add Formula Helper: a new standalone tool for writing Salesforce formulas, with syntax highlighting, line numbers, field/object/function autocompletion, real-time client-side error checks (unmatched parentheses, missing/misplaced commas, function arity), and one-click formatting.
-- data export/import/inspect: single click on a non-Id result cell now copies its value to the clipboard (double click still enters inline edit mode).
-- inspect: search box now also matches formula/roll-up summary definitions and adds a "Stored field" keyword to find plain (non-formula, non-roll-up) fields.
-- popup: add filter checkboxes (Include inactive/portal users, Object schema/Records, Flows/Profiles/Permission Sets/Communities/Apex classes) to the Objects, Users and Shortcuts quick search boxes.
-- metadata retrieve: add Download Translations (CustomObjectTranslation + global Translations for custom labels/tabs/etc.) for a selected language, similar to Workbench's translation download.
-- data export: fix Date field values shifted by one day when a custom Date Format is set, caused by applying timezone conversion to date-only fields.
-- editor: fix auto-close of parentheses, brackets and quotes duplicating characters instead of typing over an existing matching one or on closing character.
+- add Formula Helper: a new standalone tool for writing Salesforce formulas, with syntax highlighting, line numbers, field/object/function autocompletion, real-time client-side error checks (unmatched parentheses, missing/misplaced commas, function arity), and one-click formatting.  [issue 218](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/218)
+- data export/import/inspect: single click on a non-Id result cell now copies its value to the clipboard (double click still enters inline edit mode). [issue 263](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/263)
+- inspect: search box now also matches formula/roll-up summary definitions and adds a "Stored field" keyword to find plain (non-formula, non-roll-up) fields. [issue 279](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/279)
+- popup: add filter checkboxes (Include inactive/portal users, Object schema/Records, Flows/Profiles/Permission Sets/Communities/Apex classes) to the Objects, Users and Shortcuts quick search boxes. [issue 310](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/310)
+- metadata retrieve: add Download Translations (CustomObjectTranslation + global Translations for custom labels/tabs/etc.) for a selected language, similar to Workbench's translation download. [issue 294](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/294)
+- data export: fix Date field values shifted by one day when a custom Date Format is set, caused by applying timezone conversion to date-only fields. [issue 312](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/312)
+- editor: fix auto-close of parentheses, brackets and quotes duplicating characters instead of typing over an existing matching one or on closing character.  [issue 311](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/311)
 - dependency viewer: fix hidden suggestion for flow
-- cache: add a cache for flow dependencies
-- popup: fix bug which prevent popup close
+- cache: add a cache for flow dependencies [issue 308](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/308)
+- popup: fix bug which prevent popup close and popup's icon click on popup close it [issue 287](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/287)
 - data export: fix result table column order for subquery fields not following the query's field order
-- data export: add keyword/object/field autocompletion and syntax highlighting for GraphQL queries
+- data export: add keyword/object/field autocompletion and syntax highlighting for GraphQL queries [issue 185](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/185)
+- data export/apex runner: fix history entries crashing when loaded from an older storage format [issue 307](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/307)
+- data export: suggest on recordType is filter by object type [issue 305](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/305)
 
 ## Version 1.39
 
