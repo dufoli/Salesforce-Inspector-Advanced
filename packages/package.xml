@@ -4,5 +4,5 @@
         <members>*</members>
         <name>GenAiPromptTemplate</name>
     </types>
-    <version>67.0</version>
+    <version>68.0</version>
 </Package>
