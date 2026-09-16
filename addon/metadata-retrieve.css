@@ -155,3 +155,55 @@ input:disabled:hover {
   margin-bottom: 1.25rem;
   background-color: #fafaf9;
 }
+.filter-bar {
+  border: 1px solid #dddbda;
+  border-radius: 0.25rem;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+  background-color: #fafaf9;
+}
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #fff;
+  border: 1px solid #c9c7c5;
+  border-radius: 15px;
+  padding: 2px 4px 2px 10px;
+  margin: 2px 4px 2px 0;
+  font-size: 0.8125rem;
+  line-height: 1.5rem;
+}
+.filter-pill button {
+  border: none;
+  background: transparent;
+  height: 16px;
+  width: 16px;
+  min-width: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #706e6b;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+.filter-pill button:hover {
+  color: #080707;
+  background-color: #ecebea;
+  border-radius: 50%;
+}
+.results-table-container {
+  max-height: 26rem;
+  overflow-y: auto;
+  border: 1px solid #dddbda;
+  border-radius: 0.25rem;
+  margin-bottom: 1rem;
+}
+.results-table-container thead th {
+  position: sticky;
+  top: 0;
+  background-color: #fff;
+  z-index: 1;
+}

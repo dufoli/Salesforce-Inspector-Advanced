@@ -44,28 +44,60 @@ const defaultTranslationLanguages = [
   {code: "vi", label: "Vietnamese"}
 ];
 
+function flattenArray(x) {
+  return [].concat(...x);
+}
+
+function groupByThree(list) {
+  let groups = [];
+  for (let element of list) {
+    if (groups.length == 0 || groups[groups.length - 1].length == 3) {
+      groups.push([]);
+    }
+    groups[groups.length - 1].push(element);
+  }
+  return groups;
+}
+
+let timeout = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 class Model {
   constructor(sfHost) {
     this.reactCallback = null;
 
-    // Raw fetched data
-    this.globalDescribe = null;
-    this.sobjectDescribePromise = null;
-    this.objectData = null;
-    this.recordData = null;
-    this.layoutInfo = null;
-
-    // Processed data and UI state
     this.sfLink = "https://" + sfHost;
+
+    // Metadata type catalog (from describeMetadata), used by the type autosuggest and package.xml expansion
+    this.metadataTypeCatalog = null;
+
+    // Download Metadata: filters
+    this.selectedTypes = [];
+    this.typeFilterInput = "";
+    this.typeSuggestions = [];
+    this.showTypeSuggestions = false;
+    this.nameContains = "";
+    this.modifiedFrom = "";
+    this.modifiedTo = "";
+    this.modifiedByInput = "";
+    this.modifiedBySuggestions = [];
+    this.showModifiedBySuggestions = false;
+    this.userCatalog = null;
+    this.userCatalogLoading = false;
+
+    // Download Metadata: search results
+    this.searchResults = null;
+    this.searchProgress = "ready";
+    this.searchLogMessages = [];
+
+    // Download Metadata: retrieve / download
     this.logMessages = [];
     this.progress = "ready";
     this.downloadLink = null;
     this.statusLink = null;
-    this.metadataObjects = null;
-    this.searchValue = "";
-    this.filteredMetadataObjects = null;
-    this.selectAll = null;
     this.downloadAuto = false;
+    this.dragOverPackageXml = false;
+    this.downloadMode = "filter"; // "filter" (search & filter metadata) or "upload" (import an existing package.xml)
+
     // Translation download state
     this.translationLanguages = null;
     this.existingTranslationLanguageCodes = null;
@@ -73,19 +105,17 @@ class Model {
     this.objectsForTranslation = null;
     this.filteredObjectsForTranslation = null;
     this.objectSearchValue = "";
-    this.showTranslationOptions = false;
     this.translationProgress = "ready";
     this.translationLogMessages = [];
     this.translationDownloadLink = null;
     this.translationStatusLink = null;
+
     // Deploy state
     this.deployProgress = "ready";
     this.deployLogMessages = [];
     this.selectedFile = null;
     this.deployStatusLink = null;
     this.showDeployOptions = false;
-    // Drag and drop state
-    this.dragOverPackageXml = false;
     this.dragOverZip = false;
     // Deploy options
     this.checkOnly = false;
@@ -112,13 +142,12 @@ class Model {
     }
   }
 
-  setSelectAll(selec) {
-    this.selectAll = selec;
-  }
-
   title() {
     if (this.progress == "working") {
       return "(Loading) Download Metadata";
+    }
+    if (this.searchProgress == "working") {
+      return "(Searching) Download Metadata";
     }
     if (this.deployProgress == "working") {
       return "(Deploying) Upload Metadata";
@@ -126,7 +155,7 @@ class Model {
     if (this.translationProgress == "working") {
       return "(Loading) Download Translations";
     }
-    return "Download Metadata";
+    return "Metadata Retrieve";
   }
 
   async batchHandler(batch, options) {
@@ -153,6 +182,7 @@ class Model {
   }
 
   async downloadDataModel() {
+    let self = this;
     this.progress = "working";
     let query = "SELECT QualifiedApiName FROM EntityDefinition ORDER BY QualifiedApiName";
     let result = {rows: []};
@@ -176,7 +206,7 @@ class Model {
     }
     let downloadLink = document.createElement("a");
     downloadLink.download = "datamodel.csv";
-    let BOM = "\uFEFF";
+    let BOM = "﻿";
     let rt = new RecordTable();
     rt.addToTable(fieldsFesult.rows);
     let bb = new Blob([BOM, rt.csvSerialize(separator)], {type: "text/csv;charset=utf-8"});
@@ -186,189 +216,459 @@ class Model {
     this.didUpdate();
   }
 
-  filterMetadata(searchKeyword) {
-    this.searchValue = searchKeyword;
-    this.filteredMetadataObjects = this.metadataObjects
-      .filter(metadataObject => metadataObject.xmlName.toLowerCase().includes(searchKeyword)
-      || metadataObject.directoryName.toLowerCase().includes(searchKeyword));
-  }
+  // ----- Metadata type catalog -----
 
-  startLoading() {
-    let logWait = this.logWait.bind(this);
-    (async () => {
-      try {
-        this.progress = "working";
-        this.didUpdate();
-
-        // Code below is originally from forcecmd
-        let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
-        let res = await logWait(
-          "DescribeMetadata",
-          sfConn.soap(metadataApi, "describeMetadata", {apiVersion})
-        );
-        let availableMetadataObjects = res.metadataObjects
-          .filter(metadataObject => metadataObject.xmlName != "InstalledPackage");
-        // End of forcecmd code
-        this.metadataObjects = availableMetadataObjects;
-        this.filteredMetadataObjects = availableMetadataObjects;
-        for (let metadataObject of this.metadataObjects) {
-          metadataObject.selected = true;
-        }
-        this.progress = "ready";
-        this.didUpdate();
-      } catch (e) {
-        this.logError(e);
-      }
-    })();
-  }
-
-  startDownloading() {
-    let logMsg = msg => {
-      this.logMessages.push({level: "info", text: msg});
+  async loadMetadataTypeCatalog() {
+    try {
+      this.progress = "working";
       this.didUpdate();
-    };
-    let logWait = this.logWait.bind(this);
-    (async () => {
-      function flattenArray(x) {
-        return [].concat(...x);
-      }
-
-      function groupByThree(list) {
-        let groups = [];
-        for (let element of list) {
-          if (groups.length == 0 || groups[groups.length - 1].length == 3) {
-            groups.push([]);
-          }
-          groups[groups.length - 1].push(element);
-        }
-        return groups;
-      }
-
-      try {
-        let metadataObjects = this.metadataObjects;
-        //this.metadataObjects = null;
-        //this.filteredMetadataObjects = null;
-        this.progress = "working";
-        this.downloadLink = null;
-        this.statusLink = null;
-        this.didUpdate();
-
-        let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
-        let res;
-        let selectedMetadataObjects = metadataObjects
-          .filter(metadataObject => metadataObject.selected);
-        // Code below is originally from forcecmd
-        let folderMap = {};
-        let x = selectedMetadataObjects
-          .map(metadataObject => {
-            let xmlNames = sfConn.asArray(metadataObject.childXmlNames).concat(metadataObject.xmlName);
-            return xmlNames.map(xmlName => {
-              if (metadataObject.inFolder == "true") {
-                if (xmlName == "EmailTemplate") {
-                  folderMap["EmailFolder"] = "EmailTemplate";
-                  xmlName = "EmailFolder";
-                } else {
-                  folderMap[xmlName + "Folder"] = xmlName;
-                  xmlName = xmlName + "Folder";
-                }
-              }
-              return xmlName;
-            });
-          });
-        res = await Promise.all(groupByThree(flattenArray(x)).map(async xmlNames => {
-          let someItems = sfConn.asArray(await logWait(
-            "ListMetadata " + xmlNames.join(", "),
-            sfConn.soap(metadataApi, "listMetadata", {queries: xmlNames.map(xmlName => ({type: xmlName}))})
-          ));
-          let folders = someItems.filter(folder => folderMap[folder.type]);
-          let nonFolders = someItems.filter(folder => !folderMap[folder.type]);
-          let p = await Promise
-            .all(groupByThree(folders).map(async folderGroup =>
-              sfConn.asArray(await logWait(
-                "ListMetadata " + folderGroup.map(folder => folderMap[folder.type] + "/" + folder.fullName).join(", "),
-                sfConn.soap(metadataApi, "listMetadata", {queries: folderGroup.map(folder => ({type: folderMap[folder.type], folder: folder.fullName}))})
-              ))
-            ));
-          return flattenArray(p).concat(
-            folders.map(folder => ({type: folderMap[folder.type], fullName: folder.fullName})),
-            nonFolders,
-            xmlNames.map(xmlName => ({type: xmlName, fullName: "*"}))
-          );
-        }));
-        let types = flattenArray(res);
-        if (types.filter(x => x.type == "StandardValueSet").map(x => x.fullName).join(",") == "*") {
-          // We are using an API version that supports the StandardValueSet type, but it didn't list its contents.
-          // https://success.salesforce.com/ideaView?id=0873A000000cMdrQAE
-          // Here we hardcode the supported values as of Winter 17 / API version 38.
-          types = types.concat([
-            "AccountContactMultiRoles", "AccountContactRole", "AccountOwnership", "AccountRating", "AccountType", "AddressCountryCode", "AddressStateCode", "AssetStatus", "CampaignMemberStatus", "CampaignStatus", "CampaignType", "CaseContactRole", "CaseOrigin", "CasePriority", "CaseReason", "CaseStatus", "CaseType", "ContactRole", "ContractContactRole", "ContractStatus", "EntitlementType", "EventSubject", "EventType", "FiscalYearPeriodName", "FiscalYearPeriodPrefix", "FiscalYearQuarterName", "FiscalYearQuarterPrefix", "IdeaCategory1", "IdeaMultiCategory", "IdeaStatus", "IdeaThemeStatus", "Industry", "InvoiceStatus", "LeadSource", "LeadStatus", "OpportunityCompetitor", "OpportunityStage", "OpportunityType", "OrderStatus1", "OrderType", "PartnerRole", "Product2Family", "QuestionOrigin1", "QuickTextCategory", "QuickTextChannel", "QuoteStatus", "SalesTeamRole", "Salutation", "ServiceContractApprovalStatus", "SocialPostClassification", "SocialPostEngagementLevel", "SocialPostReviewedStatus", "SolutionStatus", "TaskPriority", "TaskStatus", "TaskSubject", "TaskType", "WorkOrderLineItemStatus", "WorkOrderPriority", "WorkOrderStatus"
-          ].map(x => ({type: "StandardValueSet", fullName: x})));
-        }
-        types.sort((a, b) => {
-          let ka = a.type + "~" + a.fullName;
-          let kb = b.type + "~" + b.fullName;
-          if (ka < kb) {
-            return -1;
-          }
-          if (ka > kb) {
-            return 1;
-          }
-          return 0;
-        });
-        types = types.map(x => ({name: x.type, members: decodeURIComponent(x.fullName)}));
-        //console.log(types);
-        let result = await logWait(
-          "Retrieve",
-          sfConn.soap(metadataApi, "retrieve", {retrieveRequest: {apiVersion, unpackaged: {types, version: apiVersion}}})
-        );
-        logMsg("(Id: " + result.id + ")");
-        for (let interval = 2000; ;) {
-          await logWait(
-            "(Waiting)",
-            timeout(interval)
-          );
-          res = await logWait(
-            "CheckRetrieveStatus",
-            sfConn.soap(metadataApi, "checkRetrieveStatus", {id: result.id})
-          );
-          if (res.done !== "false") {
-            break;
-          }
-        }
-        if (res.success != "true") {
-          let err = new Error("Retrieve failed");
-          err.result = res;
-          throw err;
-        }
-        let statusJson = JSON.stringify({
-          fileProperties: sfConn.asArray(res.fileProperties)
-            .filter(fp => fp.id != "000000000000000AAA" || fp.fullName != "")
-            .sort((fp1, fp2) => fp1.fileName < fp2.fileName ? -1 : fp1.fileName > fp2.fileName ? 1 : 0),
-          messages: res.messages
-        }, null, "    ");
-        //console.log("(Reading response and writing files)");
-        // End of forcecmd code
-        logMsg("(Finished)");
-        let zipBin = Uint8Array.from(atob(res.zipFile), c => c.charCodeAt(0));
-        this.downloadLink = URL.createObjectURL(new Blob([zipBin], {type: "application/zip"}));
-        this.statusLink = URL.createObjectURL(new Blob([statusJson], {type: "application/json"}));
-        if (this.downloadAuto) {
-          let downloadATag = document.createElement("a");
-          downloadATag.download = "metadata.zip";
-          downloadATag.href = this.downloadLink;
-          downloadATag.click();
-          let downloadATag2 = document.createElement("a");
-          downloadATag2.download = "metadataStatus.json";
-          downloadATag2.href = this.statusLink;
-          downloadATag2.click();
-        }
-        this.progress = "done";
-        this.didUpdate();
-      } catch (e) {
-        this.logError(e);
-      }
-    })();
+      let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+      let res = await this.logWait(
+        "DescribeMetadata",
+        sfConn.soap(metadataApi, "describeMetadata", {apiVersion})
+      );
+      this.metadataTypeCatalog = sfConn.asArray(res.metadataObjects)
+        .filter(metadataObject => metadataObject.xmlName != "InstalledPackage");
+      this.progress = "ready";
+      this.didUpdate();
+    } catch (e) {
+      this.logError(e);
+    }
   }
+
+  // ----- Metadata Type filter (multi-select autosuggest) -----
+
+  updateTypeSuggestions() {
+    if (!this.metadataTypeCatalog) {
+      this.typeSuggestions = [];
+      return;
+    }
+    let kw = this.typeFilterInput.trim().toLowerCase();
+    this.typeSuggestions = this.metadataTypeCatalog
+      .filter(metadataObject => !this.selectedTypes.includes(metadataObject.xmlName))
+      .filter(metadataObject => !kw
+        || metadataObject.xmlName.toLowerCase().includes(kw)
+        || metadataObject.directoryName.toLowerCase().includes(kw))
+      .sort((a, b) => a.xmlName < b.xmlName ? -1 : a.xmlName > b.xmlName ? 1 : 0)
+      .slice(0, 50);
+  }
+  onTypeFilterInput(text) {
+    this.typeFilterInput = text;
+    this.updateTypeSuggestions();
+  }
+  onTypeFilterFocus() {
+    this.showTypeSuggestions = true;
+    this.updateTypeSuggestions();
+  }
+  onTypeFilterBlur() {
+    this.showTypeSuggestions = false;
+  }
+  addSelectedType(xmlName) {
+    if (!this.selectedTypes.includes(xmlName)) {
+      this.selectedTypes.push(xmlName);
+    }
+    this.typeFilterInput = "";
+    this.updateTypeSuggestions();
+  }
+  removeSelectedType(xmlName) {
+    this.selectedTypes = this.selectedTypes.filter(t => t != xmlName);
+    this.updateTypeSuggestions();
+  }
+
+  // ----- Modified By filter (autosuggest of users) -----
+
+  async loadUserCatalogIfNeeded() {
+    if (this.userCatalog || this.userCatalogLoading) {
+      return;
+    }
+    this.userCatalogLoading = true;
+    try {
+      let query = "SELECT Name FROM User ORDER BY Name LIMIT 2000";
+      let res = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query), {});
+      this.userCatalog = (res.records || []).map(u => u.Name);
+    } catch (e) {
+      this.userCatalog = [];
+    }
+    this.userCatalogLoading = false;
+    this.updateModifiedBySuggestions();
+    this.didUpdate();
+  }
+  updateModifiedBySuggestions() {
+    if (!this.userCatalog) {
+      this.modifiedBySuggestions = [];
+      return;
+    }
+    let kw = this.modifiedByInput.trim().toLowerCase();
+    this.modifiedBySuggestions = !kw
+      ? this.userCatalog.slice(0, 20)
+      : this.userCatalog.filter(name => name.toLowerCase().includes(kw)).slice(0, 20);
+  }
+  onModifiedByInput(text) {
+    this.modifiedByInput = text;
+    this.updateModifiedBySuggestions();
+  }
+  onModifiedByFocus() {
+    this.showModifiedBySuggestions = true;
+    this.loadUserCatalogIfNeeded();
+    this.updateModifiedBySuggestions();
+  }
+  onModifiedByBlur() {
+    this.showModifiedBySuggestions = false;
+  }
+  selectModifiedByUser(name) {
+    this.modifiedByInput = name;
+    this.showModifiedBySuggestions = false;
+  }
+
+  clearFilters() {
+    this.selectedTypes = [];
+    this.typeFilterInput = "";
+    this.nameContains = "";
+    this.modifiedFrom = "";
+    this.modifiedTo = "";
+    this.modifiedByInput = "";
+    this.searchResults = null;
+    this.searchProgress = "ready";
+    this.searchLogMessages = [];
+    this.didUpdate();
+  }
+
+  // ----- Search (lists actual metadata components matching the filters) -----
+
+  logWaitSearch(msg, promise) {
+    let message = {level: "working", text: msg};
+    this.searchLogMessages.push(message);
+    this.didUpdate();
+    promise.then(res => {
+      message.level = "info";
+      this.didUpdate();
+      return res;
+    }, err => {
+      message.level = "error";
+      this.didUpdate();
+      throw err;
+    });
+    return promise;
+  }
+
+  async runSearch() {
+    if (this.selectedTypes.length === 0) {
+      this.searchLogMessages = [{level: "error", text: "(Please select at least one metadata type)"}];
+      this.didUpdate();
+      return;
+    }
+    let logWait = this.logWaitSearch.bind(this);
+    try {
+      this.searchProgress = "working";
+      this.searchResults = null;
+      this.searchLogMessages = [];
+      this.didUpdate();
+
+      let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+      let selectedCatalogEntries = this.metadataTypeCatalog
+        .filter(metadataObject => this.selectedTypes.includes(metadataObject.xmlName));
+      let folderMap = {};
+      let xmlNameGroups = selectedCatalogEntries.map(metadataObject => {
+        let xmlNames = sfConn.asArray(metadataObject.childXmlNames).concat(metadataObject.xmlName);
+        return xmlNames.map(xmlName => {
+          if (metadataObject.inFolder == "true") {
+            if (xmlName == "EmailTemplate") {
+              folderMap["EmailFolder"] = "EmailTemplate";
+              xmlName = "EmailFolder";
+            } else {
+              folderMap[xmlName + "Folder"] = xmlName;
+              xmlName = xmlName + "Folder";
+            }
+          }
+          return xmlName;
+        });
+      });
+      let xmlNames = flattenArray(xmlNameGroups);
+
+      let resultGroups = await Promise.all(groupByThree(xmlNames).map(async xmlNamesGroup => {
+        let someItems = sfConn.asArray(await logWait(
+          "ListMetadata " + xmlNamesGroup.join(", "),
+          sfConn.soap(metadataApi, "listMetadata", {queries: xmlNamesGroup.map(xmlName => ({type: xmlName}))})
+        ));
+        let folders = someItems.filter(item => folderMap[item.type]);
+        let nonFolders = someItems.filter(item => !folderMap[item.type]);
+        let folderContents = await Promise.all(groupByThree(folders).map(async folderGroup =>
+          sfConn.asArray(await logWait(
+            "ListMetadata " + folderGroup.map(folder => folderMap[folder.type] + "/" + folder.fullName).join(", "),
+            sfConn.soap(metadataApi, "listMetadata", {queries: folderGroup.map(folder => ({type: folderMap[folder.type], folder: folder.fullName}))})
+          ))
+        ));
+        return nonFolders.concat(flattenArray(folderContents));
+      }));
+      let items = flattenArray(resultGroups);
+
+      let nameKw = this.nameContains.trim().toLowerCase();
+      let byKw = this.modifiedByInput.trim().toLowerCase();
+      let fromDate = this.modifiedFrom ? new Date(this.modifiedFrom + "T00:00:00") : null;
+      let toDate = this.modifiedTo ? new Date(this.modifiedTo + "T23:59:59") : null;
+
+      let filtered = items.filter(item => {
+        if (nameKw && !(item.fullName || "").toLowerCase().includes(nameKw)) {
+          return false;
+        }
+        if (byKw && !(item.lastModifiedByName || "").toLowerCase().includes(byKw)) {
+          return false;
+        }
+        if (fromDate || toDate) {
+          if (!item.lastModifiedDate) {
+            return false;
+          }
+          let d = new Date(item.lastModifiedDate);
+          if (fromDate && d < fromDate) {
+            return false;
+          }
+          if (toDate && d > toDate) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      filtered.sort((a, b) => {
+        let ka = a.type + "~" + a.fullName;
+        let kb = b.type + "~" + b.fullName;
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+
+      this.searchResults = filtered.map(item => ({
+        type: item.type,
+        fullName: item.fullName,
+        lastModifiedByName: item.lastModifiedByName || "",
+        lastModifiedDate: item.lastModifiedDate || "",
+        selected: false
+      }));
+      this.searchProgress = "done";
+      this.didUpdate();
+    } catch (e) {
+      this.searchProgress = "error";
+      console.error(e);
+      this.searchLogMessages.push({level: "error", text: "(Error: " + e.message + ")"});
+      this.didUpdate();
+    }
+  }
+
+  toggleResultSelected(row, checked) {
+    row.selected = checked;
+    this.didUpdate();
+  }
+  toggleSelectAllResults(checked) {
+    if (!this.searchResults) {
+      return;
+    }
+    for (let row of this.searchResults) {
+      row.selected = checked;
+    }
+    this.didUpdate();
+  }
+
+  getSelectedResultsTypeMap() {
+    let selected = (this.searchResults || []).filter(row => row.selected);
+    let typeMap = {};
+    for (let row of selected) {
+      if (!typeMap[row.type]) {
+        typeMap[row.type] = [];
+      }
+      typeMap[row.type].push(row.fullName);
+    }
+    return typeMap;
+  }
+
+  buildPackageXml(typeMap) {
+    let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    xml += "<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n";
+    let sortedTypes = Object.keys(typeMap).sort();
+    for (let typeName of sortedTypes) {
+      xml += "    <types>\n";
+      for (let member of typeMap[typeName]) {
+        xml += "        <members>" + member + "</members>\n";
+      }
+      xml += "        <name>" + typeName + "</name>\n";
+      xml += "    </types>\n";
+    }
+    xml += "    <version>" + apiVersion + "</version>\n";
+    xml += "</Package>";
+    return xml;
+  }
+
+  generatePackageXmlFromResults() {
+    let typeMap = this.getSelectedResultsTypeMap();
+    if (Object.keys(typeMap).length === 0) {
+      this.searchLogMessages.push({level: "error", text: "(Error: Please select at least one metadata item)"});
+      this.didUpdate();
+      return;
+    }
+    let xml = this.buildPackageXml(typeMap);
+    let downloadLink = document.createElement("a");
+    downloadLink.download = "package.xml";
+    downloadLink.href = window.URL.createObjectURL(new Blob([xml], {type: "application/xml"}));
+    downloadLink.click();
+    this.searchLogMessages.push({level: "info", text: "(package.xml generated successfully)"});
+    this.didUpdate();
+  }
+
+  async startDownloadSelectedResults() {
+    let typeMap = this.getSelectedResultsTypeMap();
+    if (Object.keys(typeMap).length === 0) {
+      this.searchLogMessages.push({level: "error", text: "(Error: Please select at least one metadata item)"});
+      this.didUpdate();
+      return;
+    }
+    let types = Object.keys(typeMap).sort().map(name => ({name, members: typeMap[name]}));
+    await this.performRetrieve(types);
+  }
+
+  // ----- package.xml import (downloads directly, without going through Search) -----
+
+  async readZipFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const arrayBuffer = event.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+        // Convert to base64
+        let binary = "";
+        for (let i = 0; i < uint8Array.length; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64 = btoa(binary);
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  async readPackageXmlFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        resolve(event.target.result);
+      };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+  async resolveWildcardTypes(typeEntries) {
+    let exactEntries = typeEntries.filter(entry => !entry.members.includes("*"));
+    let wildcardNames = typeEntries.filter(entry => entry.members.includes("*")).map(entry => entry.name);
+    if (wildcardNames.length === 0) {
+      return exactEntries;
+    }
+    if (!this.metadataTypeCatalog) {
+      await this.loadMetadataTypeCatalog();
+    }
+    let catalogByName = {};
+    for (let metadataObject of this.metadataTypeCatalog || []) {
+      catalogByName[metadataObject.xmlName] = metadataObject;
+    }
+    let folderMap = {};
+    let xmlNames = wildcardNames.map(xmlName => {
+      let metadataObject = catalogByName[xmlName];
+      if (metadataObject && metadataObject.inFolder == "true") {
+        if (xmlName == "EmailTemplate") {
+          folderMap["EmailFolder"] = "EmailTemplate";
+          return "EmailFolder";
+        }
+        folderMap[xmlName + "Folder"] = xmlName;
+        return xmlName + "Folder";
+      }
+      return xmlName;
+    });
+
+    let logWait = this.logWait.bind(this);
+    let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+    let resultGroups = await Promise.all(groupByThree(xmlNames).map(async xmlNamesGroup => {
+      let someItems = sfConn.asArray(await logWait(
+        "ListMetadata " + xmlNamesGroup.join(", "),
+        sfConn.soap(metadataApi, "listMetadata", {queries: xmlNamesGroup.map(xmlName => ({type: xmlName}))})
+      ));
+      let folders = someItems.filter(item => folderMap[item.type]);
+      let nonFolders = someItems.filter(item => !folderMap[item.type]);
+      let folderContents = await Promise.all(groupByThree(folders).map(async folderGroup =>
+        sfConn.asArray(await logWait(
+          "ListMetadata " + folderGroup.map(folder => folderMap[folder.type] + "/" + folder.fullName).join(", "),
+          sfConn.soap(metadataApi, "listMetadata", {queries: folderGroup.map(folder => ({type: folderMap[folder.type], folder: folder.fullName}))})
+        ))
+      ));
+      return {
+        items: nonFolders.concat(flattenArray(folderContents)),
+        folderContainers: folders.map(folder => ({type: folderMap[folder.type], fullName: folder.fullName}))
+      };
+    }));
+
+    let expandedTypeMap = {};
+    for (let name of wildcardNames) {
+      expandedTypeMap[name] = new Set(["*"]);
+    }
+    for (let group of resultGroups) {
+      for (let item of group.items) {
+        if (!expandedTypeMap[item.type]) {
+          expandedTypeMap[item.type] = new Set();
+        }
+        expandedTypeMap[item.type].add(item.fullName);
+      }
+      for (let container of group.folderContainers) {
+        if (!expandedTypeMap[container.type]) {
+          expandedTypeMap[container.type] = new Set();
+        }
+        expandedTypeMap[container.type].add(container.fullName);
+      }
+    }
+    let expandedEntries = Object.keys(expandedTypeMap).map(name => ({name, members: [...expandedTypeMap[name]]}));
+    return exactEntries.concat(expandedEntries);
+  }
+
+  async importPackageXml(file) {
+    try {
+      this.progress = "working";
+      this.downloadLink = null;
+      this.statusLink = null;
+      this.logMessages = [{level: "info", text: "(Reading package.xml file)"}];
+      this.didUpdate();
+
+      const xmlContent = await this.readPackageXmlFile(file);
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlContent, "text/xml");
+
+      const parseError = xmlDoc.querySelector("parsererror");
+      if (parseError) {
+        throw new Error("Invalid XML format: " + parseError.textContent);
+      }
+      const packageElement = xmlDoc.querySelector("Package");
+      if (!packageElement) {
+        throw new Error("Invalid package.xml: Package element not found");
+      }
+      const typeElements = packageElement.querySelectorAll("types");
+      let typeEntries = [];
+      for (let typeElement of typeElements) {
+        const nameEl = typeElement.querySelector("name");
+        if (!nameEl) {
+          continue;
+        }
+        const members = [...typeElement.querySelectorAll("members")].map(m => m.textContent.trim()).filter(Boolean);
+        typeEntries.push({name: nameEl.textContent.trim(), members: members.length ? members : ["*"]});
+      }
+      if (typeEntries.length === 0) {
+        throw new Error("No <types> found in package.xml");
+      }
+
+      this.logMessages.push({level: "info", text: "(Found " + typeEntries.length + " metadata type(s) in package.xml)"});
+      this.didUpdate();
+
+      let resolvedTypes = await this.resolveWildcardTypes(typeEntries);
+      await this.performRetrieve(resolvedTypes);
+    } catch (e) {
+      this.logError(e);
+    }
+  }
+
+  // ----- Shared retrieve (SOAP retrieve + poll + zip) -----
 
   logWait(msg, promise) {
     let message = {level: "working", text: msg};
@@ -398,6 +698,69 @@ class Model {
     this.logMessages.push({level: "error", text: msg});
     this.didUpdate();
   }
+
+  async performRetrieve(types) {
+    let logWait = this.logWait.bind(this);
+    try {
+      this.progress = "working";
+      this.downloadLink = null;
+      this.statusLink = null;
+      this.didUpdate();
+
+      let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+      let result = await logWait(
+        "Retrieve",
+        sfConn.soap(metadataApi, "retrieve", {retrieveRequest: {apiVersion, unpackaged: {types, version: apiVersion}}})
+      );
+      this.logMessages.push({level: "info", text: "(Id: " + result.id + ")"});
+      this.didUpdate();
+      let res;
+      for (let interval = 2000; ;) {
+        await logWait(
+          "(Waiting)",
+          timeout(interval)
+        );
+        res = await logWait(
+          "CheckRetrieveStatus",
+          sfConn.soap(metadataApi, "checkRetrieveStatus", {id: result.id})
+        );
+        if (res.done !== "false") {
+          break;
+        }
+      }
+      if (res.success != "true") {
+        let err = new Error("Retrieve failed");
+        err.result = res;
+        throw err;
+      }
+      let statusJson = JSON.stringify({
+        fileProperties: sfConn.asArray(res.fileProperties)
+          .filter(fp => fp.id != "000000000000000AAA" || fp.fullName != "")
+          .sort((fp1, fp2) => fp1.fileName < fp2.fileName ? -1 : fp1.fileName > fp2.fileName ? 1 : 0),
+        messages: res.messages
+      }, null, "    ");
+      this.logMessages.push({level: "info", text: "(Finished)"});
+      let zipBin = Uint8Array.from(atob(res.zipFile), c => c.charCodeAt(0));
+      this.downloadLink = URL.createObjectURL(new Blob([zipBin], {type: "application/zip"}));
+      this.statusLink = URL.createObjectURL(new Blob([statusJson], {type: "application/json"}));
+      if (this.downloadAuto) {
+        let downloadATag = document.createElement("a");
+        downloadATag.download = "metadata.zip";
+        downloadATag.href = this.downloadLink;
+        downloadATag.click();
+        let downloadATag2 = document.createElement("a");
+        downloadATag2.download = "metadataStatus.json";
+        downloadATag2.href = this.statusLink;
+        downloadATag2.click();
+      }
+      this.progress = "done";
+      this.didUpdate();
+    } catch (e) {
+      this.logError(e);
+    }
+  }
+
+  // ----- Translations -----
 
   async loadTranslationOptions() {
     if (this.objectsForTranslation) {
@@ -534,171 +897,7 @@ class Model {
     this.didUpdate();
   }
 
-  async readZipFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const arrayBuffer = event.target.result;
-        const uint8Array = new Uint8Array(arrayBuffer);
-        // Convert to base64
-        let binary = "";
-        for (let i = 0; i < uint8Array.length; i++) {
-          binary += String.fromCharCode(uint8Array[i]);
-        }
-        const base64 = btoa(binary);
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  async readPackageXmlFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        resolve(event.target.result);
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  }
-
-  generatePackageXml() {
-    if (!this.metadataObjects) {
-      this.logMessages.push({level: "error", text: "(Error: Please wait for metadata objects to load)"});
-      this.didUpdate();
-      return;
-    }
-
-    let selectedMetadataObjects = this.metadataObjects
-      .filter(metadataObject => metadataObject.selected);
-
-    if (selectedMetadataObjects.length === 0) {
-      this.logMessages.push({level: "error", text: "(Error: Please select at least one metadata type)"});
-      this.didUpdate();
-      return;
-    }
-
-    // Group selected metadata by type
-    let typeMap = {};
-    for (let metadataObject of selectedMetadataObjects) {
-      let xmlName = metadataObject.xmlName;
-      if (!typeMap[xmlName]) {
-        typeMap[xmlName] = [];
-      }
-      // For now, we'll use "*" to indicate all members of this type
-      // In a more advanced version, we could track individual members
-      typeMap[xmlName].push("*");
-    }
-
-    // Build package.xml
-    let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    xml += "<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n";
-
-    // Sort types for consistent output
-    let sortedTypes = Object.keys(typeMap).sort();
-    for (let typeName of sortedTypes) {
-      xml += "    <types>\n";
-      // Add all members (using * for all)
-      for (let member of typeMap[typeName]) {
-        xml += "        <members>" + member + "</members>\n";
-      }
-      xml += "        <name>" + typeName + "</name>\n";
-      xml += "    </types>\n";
-    }
-
-    xml += "    <version>" + apiVersion + "</version>\n";
-    xml += "</Package>";
-
-    // Create download link
-    let downloadLink = document.createElement("a");
-    downloadLink.download = "package.xml";
-    let blob = new Blob([xml], {type: "application/xml"});
-    downloadLink.href = window.URL.createObjectURL(blob);
-    downloadLink.click();
-
-    this.logMessages.push({level: "info", text: "(Package.xml generated successfully)"});
-    this.didUpdate();
-  }
-
-  async importPackageXml(file) {
-    try {
-      this.progress = "working";
-      this.logMessages.push({level: "info", text: "(Reading package.xml file)"});
-      this.didUpdate();
-
-      const xmlContent = await this.readPackageXmlFile(file);
-
-      // Parse XML
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlContent, "text/xml");
-
-      // Check for parsing errors
-      const parseError = xmlDoc.querySelector("parsererror");
-      if (parseError) {
-        throw new Error("Invalid XML format: " + parseError.textContent);
-      }
-
-      const packageElement = xmlDoc.querySelector("Package");
-      if (!packageElement) {
-        throw new Error("Invalid package.xml: Package element not found");
-      }
-
-      // Get all type elements
-      const typeElements = packageElement.querySelectorAll("types");
-
-      if (!this.metadataObjects) {
-        throw new Error("Metadata objects not loaded. Please wait and try again.");
-      }
-
-      // First, unselect all
-      for (let metadataObject of this.metadataObjects) {
-        metadataObject.selected = false;
-      }
-
-      // Map of XML names to metadata objects
-      let xmlNameMap = {};
-      for (let metadataObject of this.metadataObjects) {
-        xmlNameMap[metadataObject.xmlName] = metadataObject;
-        // Also check child XML names
-        if (metadataObject.childXmlNames) {
-          let childNames = sfConn.asArray(metadataObject.childXmlNames);
-          for (let childName of childNames) {
-            xmlNameMap[childName] = metadataObject;
-          }
-        }
-      }
-
-      // Select metadata objects based on package.xml
-      let selectedCount = 0;
-      for (let typeElement of typeElements) {
-        const nameElement = typeElement.querySelector("name");
-        if (nameElement) {
-          const typeName = nameElement.textContent.trim();
-          if (xmlNameMap[typeName]) {
-            xmlNameMap[typeName].selected = true;
-            selectedCount++;
-          } else {
-            this.logMessages.push({level: "warning", text: "(Warning: Unknown metadata type in package.xml: " + typeName + ")"});
-          }
-        }
-      }
-
-      // Update filtered list if search is active
-      if (this.searchValue) {
-        this.filterMetadata(this.searchValue);
-      } else {
-        this.filteredMetadataObjects = this.metadataObjects;
-      }
-
-      this.logMessages.push({level: "info", text: "(Package.xml imported successfully. Selected " + selectedCount + " metadata type(s))"});
-      this.progress = "ready";
-      this.didUpdate();
-    } catch (e) {
-      this.logError(e);
-    }
-  }
+  // ----- Deploy (Upload Metadata) -----
 
   startDeploying() {
     let logMsg = msg => {
@@ -837,94 +1036,164 @@ class Model {
 
 }
 
-let timeout = ms => new Promise(resolve => setTimeout(resolve, ms));
-
 let h = React.createElement;
 
 class App extends React.Component {
   constructor(props) {
     super(props);
-    this.onStartClick = this.onStartClick.bind(this);
-    this.onSelectAllChange = this.onSelectAllChange.bind(this);
-    this.onSearchInput = this.onSearchInput.bind(this);
+    this.state = {activeTab: "download"};
+    this.onSetTab = this.onSetTab.bind(this);
+    // Download Metadata tab
+    this.onTypeFilterChange = this.onTypeFilterChange.bind(this);
+    this.onTypeFilterFocus = this.onTypeFilterFocus.bind(this);
+    this.onTypeFilterBlur = this.onTypeFilterBlur.bind(this);
+    this.onTypeFilterKeyDown = this.onTypeFilterKeyDown.bind(this);
+    this.onAddType = this.onAddType.bind(this);
+    this.onRemoveType = this.onRemoveType.bind(this);
+    this.onNameContainsChange = this.onNameContainsChange.bind(this);
+    this.onModifiedFromChange = this.onModifiedFromChange.bind(this);
+    this.onModifiedToChange = this.onModifiedToChange.bind(this);
+    this.onModifiedByChange = this.onModifiedByChange.bind(this);
+    this.onModifiedByFocus = this.onModifiedByFocus.bind(this);
+    this.onModifiedByBlur = this.onModifiedByBlur.bind(this);
+    this.onSelectModifiedBy = this.onSelectModifiedBy.bind(this);
+    this.onClearFilters = this.onClearFilters.bind(this);
+    this.onSearchClick = this.onSearchClick.bind(this);
+    this.onSelectAllResultsChange = this.onSelectAllResultsChange.bind(this);
+    this.onToggleResultRow = this.onToggleResultRow.bind(this);
+    this.onGeneratePackageXmlFromResults = this.onGeneratePackageXmlFromResults.bind(this);
+    this.onDownloadSelectedResults = this.onDownloadSelectedResults.bind(this);
     this.onDownloadAutoChange = this.onDownloadAutoChange.bind(this);
-    this.onClickDataModel = this.onClickDataModel.bind(this);
-    this.onFileChange = this.onFileChange.bind(this);
-    this.onDeployClick = this.onDeployClick.bind(this);
-    this.onCheckOnlyChange = this.onCheckOnlyChange.bind(this);
-    this.onToggleDeployOptions = this.onToggleDeployOptions.bind(this);
-    this.onDeployOptionChange = this.onDeployOptionChange.bind(this);
-    this.onGeneratePackageXml = this.onGeneratePackageXml.bind(this);
     this.onImportPackageXml = this.onImportPackageXml.bind(this);
     this.onDragOverPackageXml = this.onDragOverPackageXml.bind(this);
     this.onDragLeavePackageXml = this.onDragLeavePackageXml.bind(this);
     this.onDropPackageXml = this.onDropPackageXml.bind(this);
+    this.onClickDataModel = this.onClickDataModel.bind(this);
+    this.onSetDownloadMode = this.onSetDownloadMode.bind(this);
+    // Upload Metadata tab
+    this.onFileChange = this.onFileChange.bind(this);
+    this.onDeployClick = this.onDeployClick.bind(this);
+    this.onToggleDeployOptions = this.onToggleDeployOptions.bind(this);
+    this.onDeployOptionChange = this.onDeployOptionChange.bind(this);
     this.onDragOverZip = this.onDragOverZip.bind(this);
     this.onDragLeaveZip = this.onDragLeaveZip.bind(this);
     this.onDropZip = this.onDropZip.bind(this);
-    this.onToggleTranslationOptions = this.onToggleTranslationOptions.bind(this);
+    // Download Translation tab
     this.onTranslationLanguageChange = this.onTranslationLanguageChange.bind(this);
     this.onTranslationSearchInput = this.onTranslationSearchInput.bind(this);
     this.onSelectAllTranslationObjectsChange = this.onSelectAllTranslationObjectsChange.bind(this);
     this.onStartTranslationClick = this.onStartTranslationClick.bind(this);
   }
-  onSelectAllChange(e) {
+
+  onSetTab(tab) {
     let {model} = this.props;
-    let checked = e.target.checked;
-    for (let metadataObject of model.filteredMetadataObjects) {
-      metadataObject.selected = checked;
+    this.setState({activeTab: tab});
+    if (tab == "translation") {
+      model.loadTranslationOptions();
     }
-    if (model.selectAll && model.filteredMetadataObjects) {
-      model.selectAll.indeterminate = (model.filteredMetadataObjects.some(metadataObject => metadataObject.selected) && model.filteredMetadataObjects.some(metadataObject => !metadataObject.selected));
-    }
+  }
+
+  // --- Download Metadata tab handlers ---
+  onTypeFilterChange(e) {
+    let {model} = this.props;
+    model.onTypeFilterInput(e.target.value);
     model.didUpdate();
   }
-  onStartClick() {
+  onTypeFilterFocus() {
     let {model} = this.props;
-    model.startDownloading();
-  }
-  onSearchInput(e) {
-    let {model} = this.props;
-    model.filterMetadata(e.target.value);
+    model.onTypeFilterFocus();
     model.didUpdate();
+  }
+  onTypeFilterBlur() {
+    let {model} = this.props;
+    setTimeout(() => {
+      model.onTypeFilterBlur();
+      model.didUpdate();
+    }, 150);
+  }
+  onTypeFilterKeyDown(e) {
+    let {model} = this.props;
+    if (e.keyCode === 13 && model.typeSuggestions.length > 0) {
+      e.preventDefault();
+      model.addSelectedType(model.typeSuggestions[0].xmlName);
+      model.didUpdate();
+    }
+  }
+  onAddType(xmlName) {
+    let {model} = this.props;
+    model.addSelectedType(xmlName);
+    model.didUpdate();
+  }
+  onRemoveType(xmlName) {
+    let {model} = this.props;
+    model.removeSelectedType(xmlName);
+    model.didUpdate();
+  }
+  onNameContainsChange(e) {
+    let {model} = this.props;
+    model.nameContains = e.target.value;
+    model.didUpdate();
+  }
+  onModifiedFromChange(e) {
+    let {model} = this.props;
+    model.modifiedFrom = e.target.value;
+    model.didUpdate();
+  }
+  onModifiedToChange(e) {
+    let {model} = this.props;
+    model.modifiedTo = e.target.value;
+    model.didUpdate();
+  }
+  onModifiedByChange(e) {
+    let {model} = this.props;
+    model.onModifiedByInput(e.target.value);
+    model.didUpdate();
+  }
+  onModifiedByFocus() {
+    let {model} = this.props;
+    model.onModifiedByFocus();
+    model.didUpdate();
+  }
+  onModifiedByBlur() {
+    let {model} = this.props;
+    setTimeout(() => {
+      model.onModifiedByBlur();
+      model.didUpdate();
+    }, 150);
+  }
+  onSelectModifiedBy(name) {
+    let {model} = this.props;
+    model.selectModifiedByUser(name);
+    model.didUpdate();
+  }
+  onClearFilters() {
+    let {model} = this.props;
+    model.clearFilters();
+  }
+  onSearchClick() {
+    let {model} = this.props;
+    model.runSearch();
+  }
+  onSelectAllResultsChange(e) {
+    let {model} = this.props;
+    model.toggleSelectAllResults(e.target.checked);
+  }
+  onToggleResultRow(row, checked) {
+    let {model} = this.props;
+    model.toggleResultSelected(row, checked);
+  }
+  onGeneratePackageXmlFromResults() {
+    let {model} = this.props;
+    model.generatePackageXmlFromResults();
+  }
+  onDownloadSelectedResults() {
+    let {model} = this.props;
+    model.startDownloadSelectedResults();
   }
   onDownloadAutoChange(e) {
     let {model} = this.props;
     model.downloadAuto = e.target.checked;
     model.didUpdate();
-  }
-  onClickDataModel() {
-    let {model} = this.props;
-    model.downloadDataModel();
-    model.didUpdate();
-  }
-  onFileChange(e) {
-    let {model} = this.props;
-    model.selectedFile = e.target.files[0] || null;
-    model.didUpdate();
-  }
-  onDeployClick() {
-    let {model} = this.props;
-    model.startDeploying();
-  }
-  onCheckOnlyChange(e) {
-    let {model} = this.props;
-    model.checkOnly = e.target.checked;
-    model.didUpdate();
-  }
-  onToggleDeployOptions() {
-    let {model} = this.props;
-    model.showDeployOptions = !model.showDeployOptions;
-    model.didUpdate();
-  }
-  onDeployOptionChange(optionName, value) {
-    let {model} = this.props;
-    model[optionName] = value;
-    model.didUpdate();
-  }
-  onGeneratePackageXml() {
-    let {model} = this.props;
-    model.generatePackageXml();
   }
   onImportPackageXml(e) {
     let {model} = this.props;
@@ -932,7 +1201,6 @@ class App extends React.Component {
     if (file) {
       model.importPackageXml(file);
     }
-    // Reset the input so the same file can be selected again
     e.target.value = "";
   }
   onDragOverPackageXml(e) {
@@ -969,6 +1237,37 @@ class App extends React.Component {
       }
     }
   }
+  onClickDataModel() {
+    let {model} = this.props;
+    model.downloadDataModel();
+    model.didUpdate();
+  }
+  onSetDownloadMode(mode) {
+    let {model} = this.props;
+    model.downloadMode = mode;
+    model.didUpdate();
+  }
+
+  // --- Upload Metadata tab handlers ---
+  onFileChange(e) {
+    let {model} = this.props;
+    model.selectedFile = e.target.files[0] || null;
+    model.didUpdate();
+  }
+  onDeployClick() {
+    let {model} = this.props;
+    model.startDeploying();
+  }
+  onToggleDeployOptions() {
+    let {model} = this.props;
+    model.showDeployOptions = !model.showDeployOptions;
+    model.didUpdate();
+  }
+  onDeployOptionChange(optionName, value) {
+    let {model} = this.props;
+    model[optionName] = value;
+    model.didUpdate();
+  }
   onDragOverZip(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -1004,14 +1303,8 @@ class App extends React.Component {
       }
     }
   }
-  onToggleTranslationOptions() {
-    let {model} = this.props;
-    model.showTranslationOptions = !model.showTranslationOptions;
-    if (model.showTranslationOptions) {
-      model.loadTranslationOptions();
-    }
-    model.didUpdate();
-  }
+
+  // --- Download Translation tab handlers ---
   onTranslationLanguageChange(e) {
     let {model} = this.props;
     model.selectedTranslationLanguage = e.target.value;
@@ -1034,17 +1327,459 @@ class App extends React.Component {
     let {model} = this.props;
     model.startDownloadingTranslations();
   }
-  componentDidMount() {
+
+  renderRetrieveOutput() {
     let {model} = this.props;
-    let selectAll = this.refs.selectref;
-    model.setSelectAll(selectAll);
+    if (!model.downloadLink && !model.statusLink && model.logMessages.length === 0) {
+      return null;
+    }
+    return h("div", {className: "slds-m-top_small"},
+      model.downloadLink ? h("div", {className: "slds-m-bottom_small"},
+        h("a", {href: model.downloadLink, download: "metadata.zip", className: "button slds-m-right_x-small"}, "Save downloaded metadata"),
+        model.statusLink ? h("a", {href: model.statusLink, download: "status.json", className: "button"}, "Save status info") : null
+      ) : null,
+      h("div", {},
+        model.logMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
+      )
+    );
   }
+
+  renderDownloadMetadataTab() {
+    let {model} = this.props;
+    let allResultsSelected = model.searchResults && model.searchResults.length > 0 && model.searchResults.every(row => row.selected);
+    let anySelected = model.searchResults && model.searchResults.some(row => row.selected);
+    return h("div", {},
+      h("div", {className: "slds-m-bottom_medium"},
+        h("div", {className: "slds-form-element"},
+          h("label", {className: "slds-form-element__label"}, "How do you want to pick the metadata to download?"),
+          h("div", {className: "slds-button-group", role: "group", "aria-label": "Download mode"},
+            h("button", {
+              type: "button",
+              className: "slds-button slds-button_neutral" + (model.downloadMode == "filter" ? " slds-button_brand" : ""),
+              "aria-pressed": model.downloadMode == "filter" ? "true" : "false",
+              onClick: () => this.onSetDownloadMode("filter")
+            }, "Search & filter"),
+            h("button", {
+              type: "button",
+              className: "slds-button slds-button_neutral" + (model.downloadMode == "upload" ? " slds-button_brand" : ""),
+              "aria-pressed": model.downloadMode == "upload" ? "true" : "false",
+              onClick: () => this.onSetDownloadMode("upload")
+            }, "Upload a package.xml")
+          )
+        )
+      ),
+
+      model.downloadMode == "filter" ? h("div", {className: "filter-bar"},
+        h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Filters"),
+        h("div", {className: "slds-form-element slds-m-bottom_small"},
+          h("label", {className: "slds-form-element__label", htmlFor: "metadataTypeInput"}, "Metadata Type"),
+          model.selectedTypes.length > 0 ? h("div", {className: "slds-m-bottom_x-small"},
+            model.selectedTypes.map(xmlName => h("span", {className: "filter-pill", key: xmlName},
+              h("span", {}, xmlName),
+              h("button", {type: "button", title: "Remove", onClick: () => this.onRemoveType(xmlName)},
+                h("svg", {className: "slds-button__icon slds-button__icon_x-small", "aria-hidden": "true", style: {width: "0.6rem", height: "0.6rem"}},
+                  h("use", {xlinkHref: "symbols.svg#close"})
+                )
+              )
+            ))
+          ) : null,
+          h("div", {className: "slds-form-element__control"},
+            h("div", {className: "slds-combobox_container"},
+              h("div", {className: "slds-combobox slds-dropdown-trigger slds-dropdown-trigger_click" + ((model.showTypeSuggestions && model.typeSuggestions.length) ? " slds-is-open" : "")},
+                h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"},
+                  h("input", {
+                    id: "metadataTypeInput",
+                    type: "text",
+                    className: "slds-input slds-combobox__input",
+                    autoComplete: "off",
+                    placeholder: model.metadataTypeCatalog ? "Search a metadata type…" : "Loading metadata types…",
+                    disabled: !model.metadataTypeCatalog,
+                    value: model.typeFilterInput,
+                    onChange: this.onTypeFilterChange,
+                    onFocus: this.onTypeFilterFocus,
+                    onBlur: this.onTypeFilterBlur,
+                    onKeyDown: this.onTypeFilterKeyDown
+                  }),
+                  h("span", {className: "slds-icon_container slds-icon-utility-search slds-input__icon slds-input__icon_right"},
+                    h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": "true"},
+                      h("use", {xlinkHref: "symbols.svg#search"})
+                    )
+                  )
+                ),
+                (model.showTypeSuggestions && model.typeSuggestions.length > 0) ? h("div", {className: "slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid", role: "listbox"},
+                  h("ul", {className: "slds-listbox slds-listbox_vertical", role: "presentation"},
+                    model.typeSuggestions.map(metadataObject => h("li", {role: "presentation", className: "slds-listbox-item", key: metadataObject.xmlName, onMouseDown: () => this.onAddType(metadataObject.xmlName)},
+                      h("div", {className: "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small", role: "option"},
+                        h("span", {className: "slds-media__body"},
+                          h("span", {className: "slds-truncate"}, metadataObject.xmlName + (metadataObject.directoryName && metadataObject.directoryName != metadataObject.xmlName ? " (" + metadataObject.directoryName + ")" : ""))
+                        )
+                      )
+                    ))
+                  )
+                ) : null
+              )
+            )
+          )
+        ),
+        h("div", {className: "slds-grid slds-gutters slds-wrap"},
+          h("div", {className: "slds-col slds-size_1-of-1 slds-medium-size_1-of-4 slds-form-element"},
+            h("label", {className: "slds-form-element__label", htmlFor: "nameContainsInput"}, "Metadata Name"),
+            h("div", {className: "slds-form-element__control"},
+              h("input", {id: "nameContainsInput", type: "text", className: "slds-input", placeholder: "Contains…", value: model.nameContains, onChange: this.onNameContainsChange})
+            )
+          ),
+          h("div", {className: "slds-col slds-size_1-of-2 slds-medium-size_1-of-4 slds-form-element"},
+            h("label", {className: "slds-form-element__label", htmlFor: "modifiedFromInput"}, "Modified From"),
+            h("div", {className: "slds-form-element__control"},
+              h("input", {id: "modifiedFromInput", type: "date", className: "slds-input", value: model.modifiedFrom, onChange: this.onModifiedFromChange})
+            )
+          ),
+          h("div", {className: "slds-col slds-size_1-of-2 slds-medium-size_1-of-4 slds-form-element"},
+            h("label", {className: "slds-form-element__label", htmlFor: "modifiedToInput"}, "Modified To"),
+            h("div", {className: "slds-form-element__control"},
+              h("input", {id: "modifiedToInput", type: "date", className: "slds-input", value: model.modifiedTo, onChange: this.onModifiedToChange})
+            )
+          ),
+          h("div", {className: "slds-col slds-size_1-of-1 slds-medium-size_1-of-4 slds-form-element"},
+            h("label", {className: "slds-form-element__label", htmlFor: "modifiedByInput"}, "Modified By"),
+            h("div", {className: "slds-form-element__control"},
+              h("div", {className: "slds-combobox_container"},
+                h("div", {className: "slds-combobox slds-dropdown-trigger slds-dropdown-trigger_click" + ((model.showModifiedBySuggestions && model.modifiedBySuggestions.length) ? " slds-is-open" : "")},
+                  h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"},
+                    h("input", {
+                      id: "modifiedByInput",
+                      type: "text",
+                      className: "slds-input slds-combobox__input",
+                      autoComplete: "off",
+                      placeholder: "User name…",
+                      value: model.modifiedByInput,
+                      onChange: this.onModifiedByChange,
+                      onFocus: this.onModifiedByFocus,
+                      onBlur: this.onModifiedByBlur
+                    })
+                  ),
+                  (model.showModifiedBySuggestions && model.modifiedBySuggestions.length > 0) ? h("div", {className: "slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid", role: "listbox"},
+                    h("ul", {className: "slds-listbox slds-listbox_vertical", role: "presentation"},
+                      model.modifiedBySuggestions.map(name => h("li", {role: "presentation", className: "slds-listbox-item", key: name, onMouseDown: () => this.onSelectModifiedBy(name)},
+                        h("div", {className: "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small", role: "option"},
+                          h("span", {className: "slds-media__body"}, h("span", {className: "slds-truncate"}, name))
+                        )
+                      ))
+                    )
+                  ) : null
+                )
+              )
+            )
+          )
+        ),
+        h("div", {className: "slds-m-top_small"},
+          h("button", {
+            className: "slds-button slds-button_brand",
+            onClick: this.onSearchClick,
+            disabled: model.searchProgress == "working",
+            title: model.selectedTypes.length == 0 ? "Select at least one metadata type" : ""
+          }, "Search"),
+          h("button", {className: "slds-button slds-button_neutral", onClick: this.onClearFilters, disabled: model.searchProgress == "working"}, "Clear filters")
+        ),
+        model.searchLogMessages.length > 0 ? h("div", {className: "slds-m-top_small"},
+          model.searchLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
+        ) : null
+      ) : null,
+
+      model.downloadMode == "upload" ? h("div", {className: "package-xml-tools"},
+        h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Upload a package.xml"),
+        h("div", {
+          onDragOver: this.onDragOverPackageXml,
+          onDragLeave: this.onDragLeavePackageXml,
+          onDrop: this.onDropPackageXml,
+          className: "drag-drop-zone" + (model.dragOverPackageXml ? " drag-over" : "")
+        },
+        h("p", {className: "slds-text-body_regular slds-m-bottom_x-small slds-text-color_weak"}, "Drop it here to download its metadata directly, or"),
+        h("label", {htmlFor: "packageXmlFile", className: "slds-button slds-button_link"}, "click to browse"),
+        h("input", {
+          id: "packageXmlFile",
+          name: "packageXmlFile",
+          type: "file",
+          accept: ".xml",
+          onChange: this.onImportPackageXml,
+          disabled: model.progress == "working",
+          className: "file-input-hidden"
+        })
+        ),
+        this.renderRetrieveOutput()
+      ) : null,
+
+      (model.downloadMode == "filter" && model.searchResults) ? h("div", {},
+        h("div", {className: "slds-grid slds-grid_align-spread slds-m-bottom_x-small"},
+          h("h3", {className: "slds-text-heading_small"}, "Results"),
+          h("span", {className: "slds-text-body_small slds-text-color_weak"}, model.searchResults.length + " result(s)")
+        ),
+        model.searchResults.length > 0 ? h("div", {className: "results-table-container"},
+          h("table", {className: "slds-table slds-table_bordered slds-table_striped slds-no-row-hover"},
+            h("thead", {},
+              h("tr", {className: "slds-line-height_reset"},
+                h("th", {style: {width: "2.5rem"}},
+                  h("input", {type: "checkbox", checked: allResultsSelected, onChange: this.onSelectAllResultsChange, className: "slds-checkbox"}),
+                  h("span", {className: "slds-checkbox__label"})
+                ),
+                h("th", {}, "Metadata Type"),
+                h("th", {}, "Metadata Name"),
+                h("th", {}, "Modified By"),
+                h("th", {}, "Modified At")
+              )
+            ),
+            h("tbody", {},
+              model.searchResults.map(row => h("tr", {key: row.type + "~" + row.fullName, className: "slds-hint-parent"},
+                h("td", {},
+                  h("input", {type: "checkbox", checked: row.selected, onChange: e => this.onToggleResultRow(row, e.target.checked), className: "slds-checkbox"}),
+                  h("span", {className: "slds-checkbox__label"})
+                ),
+                h("td", {title: row.type}, row.type),
+                h("td", {title: row.fullName}, row.fullName),
+                h("td", {title: row.lastModifiedByName}, row.lastModifiedByName),
+                h("td", {title: row.lastModifiedDate}, row.lastModifiedDate ? new Date(row.lastModifiedDate).toLocaleString() : "")
+              ))
+            )
+          )
+        ) : h("p", {className: "slds-text-body_regular slds-text-color_weak slds-m-bottom_small"}, "No metadata matches the current filters."),
+
+        h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-bottom_small slds-wrap slds-m-top_small"},
+          h("div", {},
+            h("button", {className: "slds-button slds-button_neutral", onClick: this.onGeneratePackageXmlFromResults, disabled: !anySelected}, "Generate package.xml"),
+            h("button", {className: "slds-button slds-button_brand", onClick: this.onDownloadSelectedResults, disabled: !anySelected || model.progress == "working"}, "Download metadata package")
+          ),
+          h("div", {},
+            h("input", {type: "checkbox", checked: model.downloadAuto, onChange: this.onDownloadAutoChange, className: "slds-checkbox__input"}),
+            h("span", {className: "slds-checkbox__label"}, "Download package when ready")
+          )
+        ),
+        this.renderRetrieveOutput()
+      ) : null
+    );
+  }
+
+  renderToolsTab() {
+    let {model} = this.props;
+    return h("div", {},
+      h("div", {className: "package-xml-tools"},
+        h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Data Model"),
+        h("p", {className: "slds-text-body_regular slds-m-bottom_small slds-text-color_weak"}, "Download a CSV export of all objects and fields in this org."),
+        h("button", {onClick: this.onClickDataModel, disabled: (model.progress == "working" || model.deployProgress == "working"), title: "Download Data Model"},
+          h("svg", {className: "download-icon"},
+            h("use", {xlinkHref: "symbols.svg#download"})
+          ),
+          " Download Data Model"
+        )
+      )
+    );
+  }
+
+  renderUploadMetadataTab() {
+    let {model} = this.props;
+    return h("div", {},
+      h("div", {
+        onDragOver: this.onDragOverZip,
+        onDragLeave: this.onDragLeaveZip,
+        onDrop: this.onDropZip,
+        className: "drag-drop-zone" + (model.dragOverZip ? " drag-over" : "")
+      },
+      h("p", {className: "slds-text-heading_small slds-m-bottom_x-small"}, "Drop zip file here or"),
+      h("label", {htmlFor: "zipFile", className: "slds-button slds-button_link"}, "click to browse"),
+      h("input", {
+        id: "zipFile",
+        name: "zipFile",
+        type: "file",
+        accept: ".zip",
+        onChange: this.onFileChange,
+        disabled: (model.deployProgress == "working"),
+        className: "file-input-hidden"
+      }),
+      model.selectedFile ? h("p", {className: "slds-text-body_small slds-m-top_x-small slds-text-color_weak"}, "Selected: " + model.selectedFile.name) : null
+      ),
+      h("button", {
+        onClick: this.onToggleDeployOptions,
+        disabled: (model.deployProgress == "working"),
+        className: "slds-button slds-button_neutral slds-m-top_small slds-m-bottom_small"
+      }, model.showDeployOptions ? "Hide Deploy Options" : "Show Deploy Options"),
+      model.showDeployOptions ? h("div", {className: "slds-card slds-m-top_small slds-m-bottom_small"},
+        h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Deploy Options"),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.checkOnly,
+            onChange: e => this.onDeployOptionChange("checkOnly", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Check only (validate without deploying)")
+        ),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.allowMissingFiles,
+            onChange: e => this.onDeployOptionChange("allowMissingFiles", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Allow missing files")
+        ),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.ignoreWarnings,
+            onChange: e => this.onDeployOptionChange("ignoreWarnings", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Ignore warnings")
+        ),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.performRetrieve,
+            onChange: e => this.onDeployOptionChange("performRetrieve", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Perform retrieve")
+        ),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.purgeOnDelete,
+            onChange: e => this.onDeployOptionChange("purgeOnDelete", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Purge on delete")
+        ),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.rollbackOnError,
+            onChange: e => this.onDeployOptionChange("rollbackOnError", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Rollback on error")
+        ),
+        h("label", {className: "slds-m-top_x-small"},
+          h("input", {
+            type: "checkbox",
+            checked: model.singlePackage,
+            onChange: e => this.onDeployOptionChange("singlePackage", e.target.checked),
+            disabled: (model.deployProgress == "working"),
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, " Single package")
+        ),
+        h("div", {className: "slds-form-element slds-m-top_x-small"},
+          h("label", {className: "slds-form-element__label"}, "Test Level:"),
+          h("div", {className: "slds-form-element__control"},
+            h("select", {
+              value: model.testLevel,
+              onChange: e => this.onDeployOptionChange("testLevel", e.target.value),
+              disabled: (model.deployProgress == "working"),
+              className: "slds-select"
+            },
+            h("option", {value: "NoTestRun"}, "NoTestRun"),
+            h("option", {value: "RunSpecifiedTests"}, "RunSpecifiedTests"),
+            h("option", {value: "RunLocalTests"}, "RunLocalTests"),
+            h("option", {value: "RunAllTestsInOrg"}, "RunAllTestsInOrg")
+            )
+          )
+        ),
+        h("div", {className: "slds-form-element slds-m-top_x-small"},
+          h("label", {className: "slds-form-element__label"}, "Run Tests (comma-separated, for RunSpecifiedTests):"),
+          h("div", {className: "slds-form-element__control"},
+            h("input", {
+              type: "text",
+              value: model.runTests,
+              onChange: e => this.onDeployOptionChange("runTests", e.target.value),
+              disabled: (model.deployProgress == "working" || model.testLevel !== "RunSpecifiedTests"),
+              placeholder: "e.g., MyTestClass1, MyTestClass2",
+              className: "slds-input"
+            })
+          )
+        )
+      ) : null,
+      h("br", {}),
+      h("button", {onClick: this.onDeployClick, disabled: (model.deployProgress == "working" || !model.selectedFile)}, "Deploy metadata"),
+      h("br", {}),
+      model.deployStatusLink ? h("a", {href: model.deployStatusLink, download: "deployStatus.json", className: "button"}, "Save deployment status") : null,
+      h("div", {},
+        model.deployLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
+      )
+    );
+  }
+
+  renderDownloadTranslationTab() {
+    let {model} = this.props;
+    let selectAllTranslationChecked = model.filteredObjectsForTranslation && model.filteredObjectsForTranslation.length > 0 && model.filteredObjectsForTranslation.every(sobject => sobject.selected);
+    if (!model.objectsForTranslation) {
+      return h("div", {}, "Loading translation options…");
+    }
+    return h("div", {className: "package-xml-tools"},
+      h("div", {className: "slds-form-element"},
+        h("label", {className: "slds-form-element__label"}, "Language:"),
+        h("div", {className: "slds-form-element__control"},
+          h("select", {
+            value: model.selectedTranslationLanguage,
+            onChange: this.onTranslationLanguageChange,
+            disabled: (!model.translationLanguages || model.translationProgress == "working"),
+            className: "slds-select"
+          },
+          (model.translationLanguages || []).map(lang => h("option", {key: lang.code, value: lang.code}, lang.label))
+          )
+        )
+      ),
+      model.translationDownloadLink ? h("div", {className: "slds-m-top_small slds-m-bottom_small"},
+        h("a", {href: model.translationDownloadLink, download: "translations.zip", className: "button slds-m-right_x-small"}, "Save downloaded translations"),
+        model.translationStatusLink ? h("a", {href: model.translationStatusLink, download: "translationStatus.json", className: "button"}, "Save status info") : null
+      ) : null,
+      h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-top_small slds-m-bottom_small slds-wrap"},
+        h("label", {htmlFor: "translationSearchText", className: "slds-form-element__label"}, "Search:"),
+        h("input", {
+          id: "translationSearchText",
+          name: "translationSearchText",
+          placeholder: "Filter objects",
+          type: "search",
+          value: model.objectSearchValue,
+          onInput: this.onTranslationSearchInput,
+          disabled: model.translationProgress == "working",
+          className: "slds-input"
+        }),
+        h("label", {},
+          h("input", {
+            type: "checkbox",
+            checked: selectAllTranslationChecked,
+            onChange: this.onSelectAllTranslationObjectsChange,
+            disabled: model.translationProgress == "working",
+            className: "slds-checkbox__input"
+          }),
+          h("span", {className: "slds-checkbox__label"}, "Select all")
+        )
+      ),
+      h("p", {className: "slds-text-body_regular slds-m-bottom_small slds-text-color_weak"}, "Select a language and the objects to include, then click the button below."),
+      h("button", {
+        onClick: this.onStartTranslationClick,
+        disabled: (model.translationProgress == "working" || !model.objectsForTranslation),
+        className: "slds-button slds-button_brand slds-m-bottom_small"
+      }, "Download translations"),
+      h("div", {className: "slds-grid slds-wrap"},
+        model.filteredObjectsForTranslation.map(sobject => h(TranslationObjectSelector, {key: sobject.name, sobject, model}))
+      ),
+      h("div", {},
+        model.translationLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
+      )
+    );
+  }
+
   render() {
     let {model} = this.props;
+    let {activeTab} = this.state;
     document.title = model.title();
-    let selectAllChecked = model.filteredMetadataObjects && model.filteredMetadataObjects.every(metadataObject => metadataObject.selected);
-    let selectAllTranslationChecked = model.filteredObjectsForTranslation && model.filteredObjectsForTranslation.length > 0 && model.filteredObjectsForTranslation.every(sobject => sobject.selected);
-    let anyWorking = model.progress == "working" || model.deployProgress == "working" || model.translationProgress == "working";
+    let anyWorking = model.progress == "working" || model.deployProgress == "working" || model.translationProgress == "working" || model.searchProgress == "working";
     return (
       h("div", {},
         h("div", {className: "object-bar"},
@@ -1054,319 +1789,43 @@ class App extends React.Component {
             ),
             " Salesforce Home"
           ),
-          h("span", {className: "progress progress-" + (model.progress == "working" ? model.progress : model.deployProgress == "working" ? model.deployProgress : model.translationProgress)},
+          h("span", {className: "progress progress-" + (anyWorking ? "working" : (model.progress == "done" || model.deployProgress == "done" || model.translationProgress == "done" || model.searchProgress == "done") ? "done" : (model.progress == "error" || model.deployProgress == "error" || model.translationProgress == "error" || model.searchProgress == "error") ? "error" : "ready")},
             model.progress == "working" ? "Downloading..."
             : model.deployProgress == "working" ? "Deploying..."
             : model.translationProgress == "working" ? "Downloading Translations..."
-            : model.progress == "done" || model.deployProgress == "done" || model.translationProgress == "done" ? "Finished"
-            : model.progress == "error" || model.deployProgress == "error" || model.translationProgress == "error" ? "Error!"
+            : model.searchProgress == "working" ? "Searching..."
+            : anyWorking ? "Working..."
+            : (model.progress == "done" || model.deployProgress == "done" || model.translationProgress == "done" || model.searchProgress == "done") ? "Finished"
+            : (model.progress == "error" || model.deployProgress == "error" || model.translationProgress == "error" || model.searchProgress == "error") ? "Error!"
             : "Ready"
           )
         ),
         h("div", {className: "body"},
-          h("h1", {}, "Data Model"),
-          h("button", {onClick: this.onClickDataModel, disabled: (model.progress == "working" || model.deployProgress == "working"), title: "Download Data Model"},
-            h("svg", {className: "download-icon"},
-              h("use", {xlinkHref: "symbols.svg#download"})
+          h("div", {className: "slds-tabs_default"},
+            h("ul", {className: "slds-tabs_default__nav", role: "tablist"},
+              h("li", {className: "slds-tabs_default__item" + (activeTab == "download" ? " slds-is-active" : ""), title: "Download Metadata", role: "presentation"},
+                h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: "0", onClick: e => { e.preventDefault(); this.onSetTab("download"); }}, "Download Metadata")
+              ),
+              h("li", {className: "slds-tabs_default__item" + (activeTab == "translation" ? " slds-is-active" : ""), title: "Download Translation", role: "presentation"},
+                h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: "0", onClick: e => { e.preventDefault(); this.onSetTab("translation"); }}, "Download Translation")
+              ),
+              h("li", {className: "slds-tabs_default__item" + (activeTab == "upload" ? " slds-is-active" : ""), title: "Upload Metadata", role: "presentation"},
+                h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: "0", onClick: e => { e.preventDefault(); this.onSetTab("upload"); }}, "Upload Metadata")
+              ),
+              h("li", {className: "slds-tabs_default__item" + (activeTab == "dataModel" ? " slds-is-active" : ""), title: "Data Model", role: "presentation"},
+                h("a", {className: "slds-tabs_default__link", href: "#", role: "tab", tabIndex: "0", onClick: e => { e.preventDefault(); this.onSetTab("dataModel"); }}, "Data Model")
+              )
             )
           ),
-          h("h1", {}, "Upload Metadata"),
-          h("div", {},
-            h("div", {
-              onDragOver: this.onDragOverZip,
-              onDragLeave: this.onDragLeaveZip,
-              onDrop: this.onDropZip,
-              className: "drag-drop-zone" + (model.dragOverZip ? " drag-over" : "")
-            },
-            h("p", {className: "slds-text-heading_small slds-m-bottom_x-small"}, "Drop zip file here or"),
-            h("label", {htmlFor: "zipFile", className: "slds-button slds-button_link"}, "click to browse"),
-            h("input", {
-              id: "zipFile",
-              name: "zipFile",
-              type: "file",
-              accept: ".zip",
-              onChange: this.onFileChange,
-              disabled: (model.deployProgress == "working"),
-              className: "file-input-hidden"
-            }),
-            model.selectedFile ? h("p", {className: "slds-text-body_small slds-m-top_x-small slds-text-color_weak"}, "Selected: " + model.selectedFile.name) : null
-            ),
-            h("button", {
-              onClick: this.onToggleDeployOptions,
-              disabled: (model.deployProgress == "working"),
-              className: "slds-button slds-button_neutral slds-m-top_small slds-m-bottom_small"
-            }, model.showDeployOptions ? "Hide Deploy Options" : "Show Deploy Options"),
-            model.showDeployOptions ? h("div", {className: "slds-card slds-m-top_small slds-m-bottom_small"},
-              h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Deploy Options"),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.checkOnly,
-                  onChange: e => this.onDeployOptionChange("checkOnly", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Check only (validate without deploying)")
-              ),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.allowMissingFiles,
-                  onChange: e => this.onDeployOptionChange("allowMissingFiles", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Allow missing files")
-              ),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.ignoreWarnings,
-                  onChange: e => this.onDeployOptionChange("ignoreWarnings", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Ignore warnings")
-              ),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.performRetrieve,
-                  onChange: e => this.onDeployOptionChange("performRetrieve", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Perform retrieve")
-              ),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.purgeOnDelete,
-                  onChange: e => this.onDeployOptionChange("purgeOnDelete", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Purge on delete")
-              ),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.rollbackOnError,
-                  onChange: e => this.onDeployOptionChange("rollbackOnError", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Rollback on error")
-              ),
-              h("label", {className: "slds-checkbox slds-m-top_x-small"},
-                h("input", {
-                  type: "checkbox",
-                  checked: model.singlePackage,
-                  onChange: e => this.onDeployOptionChange("singlePackage", e.target.checked),
-                  disabled: (model.deployProgress == "working"),
-                  className: "slds-checkbox__input"
-                }),
-                h("span", {className: "slds-checkbox__label"}, " Single package")
-              ),
-              h("div", {className: "slds-form-element slds-m-top_x-small"},
-                h("label", {className: "slds-form-element__label"}, "Test Level:"),
-                h("div", {className: "slds-form-element__control"},
-                  h("select", {
-                    value: model.testLevel,
-                    onChange: e => this.onDeployOptionChange("testLevel", e.target.value),
-                    disabled: (model.deployProgress == "working"),
-                    className: "slds-select"
-                  },
-                  h("option", {value: "NoTestRun"}, "NoTestRun"),
-                  h("option", {value: "RunSpecifiedTests"}, "RunSpecifiedTests"),
-                  h("option", {value: "RunLocalTests"}, "RunLocalTests"),
-                  h("option", {value: "RunAllTestsInOrg"}, "RunAllTestsInOrg")
-                  )
-                )
-              ),
-              h("div", {className: "slds-form-element slds-m-top_x-small"},
-                h("label", {className: "slds-form-element__label"}, "Run Tests (comma-separated, for RunSpecifiedTests):"),
-                h("div", {className: "slds-form-element__control"},
-                  h("input", {
-                    type: "text",
-                    value: model.runTests,
-                    onChange: e => this.onDeployOptionChange("runTests", e.target.value),
-                    disabled: (model.deployProgress == "working" || model.testLevel !== "RunSpecifiedTests"),
-                    placeholder: "e.g., MyTestClass1, MyTestClass2",
-                    className: "slds-input"
-                  })
-                )
-              )
-            ) : null,
-            h("br", {}),
-            h("button", {onClick: this.onDeployClick, disabled: (model.deployProgress == "working" || !model.selectedFile)}, "Deploy metadata"),
-            h("br", {}),
-            model.deployStatusLink ? h("a", {href: model.deployStatusLink, download: "deployStatus.json", className: "button"}, "Save deployment status") : null,
-            h("div", {},
-              model.deployLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
-            )
-          ),
-          h("h1", {}, "Download Translations"),
-          h("div", {},
-            h("button", {
-              onClick: this.onToggleTranslationOptions,
-              disabled: anyWorking,
-              className: "slds-button slds-button_neutral slds-m-top_small slds-m-bottom_small"
-            }, model.showTranslationOptions ? "Hide Translation Options" : "Show Translation Options"),
-            model.showTranslationOptions ? h("div", {className: "package-xml-tools"},
-              h("div", {className: "slds-form-element"},
-                h("label", {className: "slds-form-element__label"}, "Language:"),
-                h("div", {className: "slds-form-element__control"},
-                  h("select", {
-                    value: model.selectedTranslationLanguage,
-                    onChange: this.onTranslationLanguageChange,
-                    disabled: (!model.translationLanguages || anyWorking),
-                    className: "slds-select"
-                  },
-                  (model.translationLanguages || []).map(lang => h("option", {key: lang.code, value: lang.code}, lang.label))
-                  )
-                )
-              ),
-              model.translationDownloadLink ? h("div", {className: "slds-m-top_small slds-m-bottom_small"},
-                h("a", {href: model.translationDownloadLink, download: "translations.zip", className: "button slds-m-right_x-small"}, "Save downloaded translations"),
-                model.translationStatusLink ? h("a", {href: model.translationStatusLink, download: "translationStatus.json", className: "button"}, "Save status info") : null
-              ) : null,
-              h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-top_small slds-m-bottom_small slds-wrap"},
-                h("label", {htmlFor: "translationSearchText", className: "slds-form-element__label"}, "Search:"),
-                h("input", {
-                  id: "translationSearchText",
-                  name: "translationSearchText",
-                  placeholder: "Filter objects",
-                  type: "search",
-                  value: model.objectSearchValue,
-                  onInput: this.onTranslationSearchInput,
-                  disabled: anyWorking,
-                  className: "slds-input"
-                }),
-                h("label", {className: "slds-checkbox"},
-                  h("input", {
-                    type: "checkbox",
-                    checked: selectAllTranslationChecked,
-                    onChange: this.onSelectAllTranslationObjectsChange,
-                    disabled: anyWorking,
-                    className: "slds-checkbox__input"
-                  }),
-                  h("span", {className: "slds-checkbox__label"}, "Select all")
-                )
-              ),
-              h("p", {className: "slds-text-body_regular slds-m-bottom_small slds-text-color_weak"}, "Select a language and the objects to include, then click the button below."),
-              h("button", {
-                onClick: this.onStartTranslationClick,
-                disabled: (anyWorking || !model.objectsForTranslation),
-                className: "slds-button slds-button_brand slds-m-bottom_small"
-              }, "Download translations"),
-              model.objectsForTranslation ? h("div", {className: "slds-grid slds-wrap"},
-                model.filteredObjectsForTranslation.map(sobject => h(TranslationObjectSelector, {key: sobject.name, sobject, model}))
-              ) : null,
-              h("div", {},
-                model.translationLogMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text))
-              )
-            ) : null
-          ),
-          h("h1", {}, "Download Metadata"),
-          h("div", {hidden: !model.metadataObjects},
-            h("div", {className: "package-xml-tools"},
-              h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Package.xml Tools"),
-              h("div", {
-                onDragOver: this.onDragOverPackageXml,
-                onDragLeave: this.onDragLeavePackageXml,
-                onDrop: this.onDropPackageXml,
-                className: "drag-drop-zone" + (model.dragOverPackageXml ? " drag-over" : "")
-              },
-              h("p", {className: "slds-text-body_regular slds-m-bottom_x-small slds-text-color_weak"}, "Drop package.xml here or"),
-              h("label", {
-                htmlFor: "packageXmlFile",
-                className: "slds-button slds-button_link"
-              }, "click to browse"),
-              h("input", {
-                id: "packageXmlFile",
-                name: "packageXmlFile",
-                type: "file",
-                accept: ".xml",
-                onChange: this.onImportPackageXml,
-                disabled: (model.progress == "working" || model.deployProgress == "working"),
-                className: "file-input-hidden"
-              })
-              ),
-              h("div", {className: "slds-m-top_small"},
-                h("button", {
-                  onClick: this.onGeneratePackageXml,
-                  disabled: (model.progress == "working" || model.deployProgress == "working" || !model.metadataObjects),
-                  className: "slds-button slds-button_brand"
-                }, "Generate Package.xml")
-              )
-            ),
-            model.downloadLink ? h("div", {className: "slds-m-bottom_small"},
-              h("a", {href: model.downloadLink, download: "metadata.zip", className: "button slds-m-right_x-small"}, "Save downloaded metadata"),
-              model.statusLink ? h("a", {href: model.statusLink, download: "status.json", className: "button"}, "Save status info") : null
-            ) : null,
-            h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-bottom_small slds-wrap"},
-              h("label", {htmlFor: "search-text", className: "slds-form-element__label"}, "Search:"),
-              h("input", {
-                id: "searchText",
-                name: "searchText",
-                ref: "searchText",
-                placeholder: "Filter metadata",
-                type: "search",
-                value: model.searchValue,
-                onInput: this.onSearchInput,
-                className: "slds-input"
-              }),
-              h("label", {className: "slds-checkbox"},
-                h("input", {type: "checkbox", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange, className: "slds-checkbox__input"}),
-                h("span", {className: "slds-checkbox__label"}, "Select all")
-              )
-            ),
-            h("p", {className: "slds-text-body_regular slds-m-bottom_small slds-text-color_weak"}, "Select what to download above, and then click the button below. If downloading fails, try unchecking some of the boxes."),
-            h("div", {className: "slds-grid slds-grid_align-spread slds-gutters slds-m-bottom_small slds-wrap"},
-              h("button", {
-                onClick: this.onStartClick,
-                disabled: (model.progress == "working" || model.deployProgress == "working"),
-                className: "slds-button slds-button_brand"
-              }, "Create metadata package"),
-              h("label", {className: "slds-checkbox"},
-                h("input", {type: "checkbox", checked: model.downloadAuto, onChange: this.onDownloadAutoChange, className: "slds-checkbox__input"}),
-                h("span", {className: "slds-checkbox__label"}, "Download package when ready")
-              )
-            ),
-            model.metadataObjects
-              ? h("div", {},
-                h("div", {className: "slds-grid slds-wrap"},
-                  model.filteredMetadataObjects.map(metadataObject => h(ObjectSelector, {key: metadataObject.xmlName, metadataObject, model}))
-                )
-              )
-              : h("div", {}, model.logMessages.map(({level, text}, index) => h("div", {key: index, className: "log-" + level}, text)))
+          h("div", {className: "slds-tabs_default__content slds-m-top_medium"},
+            activeTab == "download" ? this.renderDownloadMetadataTab() : null,
+            activeTab == "translation" ? this.renderDownloadTranslationTab() : null,
+            activeTab == "upload" ? this.renderUploadMetadataTab() : null,
+            activeTab == "dataModel" ? this.renderToolsTab() : null
           )
         )
       )
     );
-  }
-}
-
-class ObjectSelector extends React.Component {
-  constructor(props) {
-    super(props);
-    this.onChange = this.onChange.bind(this);
-  }
-  onChange(e) {
-    let {metadataObject, model} = this.props;
-    metadataObject.selected = e.target.checked;
-    if (model.selectAll && model.filteredMetadataObjects) {
-      model.selectAll.indeterminate = (model.filteredMetadataObjects.some(metadataObject => metadataObject.selected) && model.filteredMetadataObjects.some(metadataObject => !metadataObject.selected));
-    }
-    model.didUpdate();
-  }
-  render() {
-    let {metadataObject} = this.props;
-    return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: metadataObject.xmlName},
-      h("input", {type: "checkbox", checked: metadataObject.selected, onChange: this.onChange}),
-      metadataObject.directoryName
-    ));
   }
 }
 
@@ -1398,7 +1857,7 @@ class TranslationObjectSelector extends React.Component {
 
     let root = document.getElementById("root");
     let model = new Model(sfHost);
-    model.startLoading();
+    model.loadMetadataTypeCatalog();
     model.reactCallback = cb => {
       ReactDOM.render(h(App, {model}), root, cb);
     };
