@@ -212,122 +212,124 @@ class App extends React.PureComponent {
       }
       if (e.contextSobject == "Report") {
         let report = await sfConn.rest("/services/data/v" + apiVersion + "/analytics/reports/" + e.contextRecordId.replace(/([\\'])/g, "\\$1") + "/describe", {});
-        let sobjectName = report.reportTypeMetadata.apiCustomReportTypeDetail.objects.filter(o => o.joinType.toUpperCase() == "ROOT").at(0)?.entityApiName;
-        let select = report.reportMetadata.detailColumns.filter(c => c.startsWith(sobjectName + ".")).map(c => c.substring(sobjectName.length + 1)).concat(
-          report.reportMetadata.groupingsDown.filter(g => !report.reportMetadata.detailColumns.includes(g.name) && g.name.startsWith(sobjectName + ".")).map(g => g.name.substring(sobjectName.length + 1))
-        ).join(", ");
-        for (let i = 0; i < report.reportTypeMetadata.apiCustomReportTypeDetail.objects.length; i++) {
-          let obj = report.reportTypeMetadata.apiCustomReportTypeDetail.objects[i];
-          if (obj.joinType.toUpperCase() == "ROOT") {
-            continue;
+        let objects = report.reportTypeMetadata?.apiCustomReportTypeDetail?.objects;
+        if (objects && objects.length) {
+          let sobjectName = objects.filter(o => o.joinType.toUpperCase() == "ROOT").at(0)?.entityApiName;
+          let select = report.reportMetadata.detailColumns.filter(c => c.startsWith(sobjectName + ".")).map(c => c.substring(sobjectName.length + 1)).concat(
+            report.reportMetadata.groupingsDown.filter(g => !report.reportMetadata.detailColumns.includes(g.name) && g.name.startsWith(sobjectName + ".")).map(g => g.name.substring(sobjectName.length + 1))
+          ).join(", ");
+          for (let i = 0; i < objects.length; i++) {
+            let obj = objects[i];
+            if (obj.joinType.toUpperCase() == "ROOT") {
+              continue;
+            }
+            let qry = `SELECT Id, QualifiedApiName, RelationshipName, DurableId, EntityDefinitionId, Metadata FROM FieldDefinition WHERE EntityDefinitionId = '${obj.crtObjectName}' and DurableId = '${obj.crtObjectName}.${obj.foreignKeyField}'`;
+            let fields = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(qry), {});
+            let rel = fields.records[0];
+            select += ", (SELECT " + report.reportMetadata.detailColumns.filter(c => c.startsWith(obj.entityApiName + ".")).map(c => c.substring(obj.entityApiName.length + 1)).concat(
+              report.reportMetadata.groupingsDown.filter(g => !report.reportMetadata.detailColumns.includes(g.name) && g.name.startsWith(obj.entityApiName + ".")).map(g => g.name.substring(obj.entityApiName.length + 1))).join(", ");
+            select += " FROM " + rel.Metadata.relationshipName + (rel.RelationshipName.endsWith("__r") ? "__r" : "");
           }
-          let qry = `SELECT Id, QualifiedApiName, RelationshipName, DurableId, EntityDefinitionId, Metadata FROM FieldDefinition WHERE EntityDefinitionId = '${obj.crtObjectName}' and DurableId = '${obj.crtObjectName}.${obj.foreignKeyField}'`;
-          let fields = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(qry), {});
-          let rel = fields.records[0];
-          select += ", (SELECT " + report.reportMetadata.detailColumns.filter(c => c.startsWith(obj.entityApiName + ".")).map(c => c.substring(obj.entityApiName.length + 1)).concat(
-            report.reportMetadata.groupingsDown.filter(g => !report.reportMetadata.detailColumns.includes(g.name) && g.name.startsWith(obj.entityApiName + ".")).map(g => g.name.substring(obj.entityApiName.length + 1))).join(", ");
-          select += " FROM " + rel.Metadata.relationshipName + (rel.RelationshipName.endsWith("__r") ? "__r" : "");
-        }
-        select += ")".repeat(report.reportTypeMetadata.apiCustomReportTypeDetail.objects.length - 1);
+          select += ")".repeat(objects.length - 1);
 
-        // let aggregates = report.reportMetadata.aggregates.map(agg => {
-        //   switch (agg) {
-        //     case "RowCount":
-        //       return "Count(Id)";
-        //     // case "Sum":
-        //     //   return "SUM(" + agg.column + ")";
-        //     // case "Average":
-        //     //   return "AVG(" + agg.column + ")";
-        //     // case "Maximum":
-        //     //   return "MAX(" + agg.column + ")";
-        //     // case "Minimum":
-        //     //   return "MIN(" + agg.column + ")";
-        //     // case "Unique":
-        //     //   return "COUNT_DISTINCT(" + agg.column + ")";
-        //     // case "Median":
-        //     //   return "";//NOT SUPPORTED
-        //     // case "Noop":
-        //     //   return "";
-        //     default:
-        //       //TODO agg can be a field id for custom field
-        //       if (agg.startsWith("a!")) {
-        //         return "AVG(" + agg.substring(2) + ")";
-        //       } else if (agg.startsWith("s!")) {
-        //         return "SUM(" + agg.substring(2) + ")";
-        //       } else if (agg.startsWith("m!")) {
-        //         return "MIN(" + agg.substring(2) + ")";
-        //       } else if (agg.startsWith("x!")) {
-        //         return "MAX(" + agg.substring(2) + ")";
-        //       } else if (agg.startsWith("u!")) {
-        //         return "COUNT_DISTINCT(" + agg.substring(2) + ")";
-        //       }
-        //       return "";
-        //   }
-        // }).filter(agg => agg != "");
-        //.concat(aggregates)
-        query = "//BETA \nSELECT " + select;
-        query += " FROM " + sobjectName;
-        let filters = report.reportMetadata.reportFilters.map(f => {
-          let q = !isNaN(f.value) && !isNaN(parseFloat(f.value)) ? "" : "'";
-          switch (f.operator) {
-            case "notEqual":
-              return f.column + " != " + q + f.value + q;
-            case "equals":
-              return f.column + " = " + q + f.value + q;
-            case "lessThan":
-              return f.column + " < " + f.value;
-            case "greaterThan":
-              return f.column + " > " + f.value;
-            case "lessOrEqual":
-              return f.column + " <= " + f.value;
-            case "greaterOrEqual":
-              return f.column + " >= " + f.value;
-            case "contains":
-              return f.column + " like '%" + f.value + "%'";
-            case "notContain":
-              return f.column + "not like '%" + f.value + "%'";
-            case "startsWith":
-              return f.column + "like '" + f.value + "%'";
-            case "includes":
-              return f.column + "INCLUDES ('" + f.value + "')";
-            case "excludes":
-              return f.column + "EXCLUDES ('" + f.value + "')";
-            case "within":
-              return "DISTANCE(" + f.column + ", GEOLOCATION(37.775,-122.418), 'mi') < " + f.value;
-            default:
-              return "";
-          }
-        });
-        if (filters?.length) {
-          if (!report.reportMetadata.reportBooleanFilter) {
-            query += " WHERE (" + filters.join(" AND ") + ")";
-          } else {
-            query += " WHERE (" + report.reportMetadata.reportBooleanFilter.replace(/[0-9]+/g, m => {
-              let i = parseInt(m);
-              return filters[i];
-            }) + ")";
-          }
-        }
-        if (report.reportMetadata.standardDateFilter) {
-          let stdfltr = report.reportMetadata.standardDateFilter;
-          if (stdfltr.startDate != null || stdfltr.endDate != null) {
-            if (!filters?.length) {
-              query += " WHERE ";
+          // let aggregates = report.reportMetadata.aggregates.map(agg => {
+          //   switch (agg) {
+          //     case "RowCount":
+          //       return "Count(Id)";
+          //     // case "Sum":
+          //     //   return "SUM(" + agg.column + ")";
+          //     // case "Average":
+          //     //   return "AVG(" + agg.column + ")";
+          //     // case "Maximum":
+          //     //   return "MAX(" + agg.column + ")";
+          //     // case "Minimum":
+          //     //   return "MIN(" + agg.column + ")";
+          //     // case "Unique":
+          //     //   return "COUNT_DISTINCT(" + agg.column + ")";
+          //     // case "Median":
+          //     //   return "";//NOT SUPPORTED
+          //     // case "Noop":
+          //     //   return "";
+          //     default:
+          //       //TODO agg can be a field id for custom field
+          //       if (agg.startsWith("a!")) {
+          //         return "AVG(" + agg.substring(2) + ")";
+          //       } else if (agg.startsWith("s!")) {
+          //         return "SUM(" + agg.substring(2) + ")";
+          //       } else if (agg.startsWith("m!")) {
+          //         return "MIN(" + agg.substring(2) + ")";
+          //       } else if (agg.startsWith("x!")) {
+          //         return "MAX(" + agg.substring(2) + ")";
+          //       } else if (agg.startsWith("u!")) {
+          //         return "COUNT_DISTINCT(" + agg.substring(2) + ")";
+          //       }
+          //       return "";
+          //   }
+          // }).filter(agg => agg != "");
+          //.concat(aggregates)
+          query = "//BETA \nSELECT " + select;
+          query += " FROM " + sobjectName;
+          let filters = report.reportMetadata.reportFilters.map(f => {
+            let q = !isNaN(f.value) && !isNaN(parseFloat(f.value)) ? "" : "'";
+            switch (f.operator) {
+              case "notEqual":
+                return f.column + " != " + q + f.value + q;
+              case "equals":
+                return f.column + " = " + q + f.value + q;
+              case "lessThan":
+                return f.column + " < " + f.value;
+              case "greaterThan":
+                return f.column + " > " + f.value;
+              case "lessOrEqual":
+                return f.column + " <= " + f.value;
+              case "greaterOrEqual":
+                return f.column + " >= " + f.value;
+              case "contains":
+                return f.column + " like '%" + f.value + "%'";
+              case "notContain":
+                return f.column + "not like '%" + f.value + "%'";
+              case "startsWith":
+                return f.column + "like '" + f.value + "%'";
+              case "includes":
+                return f.column + "INCLUDES ('" + f.value + "')";
+              case "excludes":
+                return f.column + "EXCLUDES ('" + f.value + "')";
+              case "within":
+                return "DISTANCE(" + f.column + ", GEOLOCATION(37.775,-122.418), 'mi') < " + f.value;
+              default:
+                return "";
+            }
+          });
+          if (filters?.length) {
+            if (!report.reportMetadata.reportBooleanFilter) {
+              query += " WHERE (" + filters.join(" AND ") + ")";
             } else {
-              query += " AND ";
+              query += " WHERE (" + report.reportMetadata.reportBooleanFilter.replace(/[0-9]+/g, m => {
+                let i = parseInt(m);
+                return filters[i];
+              }) + ")";
             }
-            if (stdfltr.startDate != null) {
-              query += stdfltr.column + " > " + stdfltr.startDate;
-            }
-            if (stdfltr.endDate != null) {
-              if (stdfltr.startDate != null) {
+          }
+          if (report.reportMetadata.standardDateFilter) {
+            let stdfltr = report.reportMetadata.standardDateFilter;
+            if (stdfltr.startDate != null || stdfltr.endDate != null) {
+              if (!filters?.length) {
+                query += " WHERE ";
+              } else {
                 query += " AND ";
               }
-              query += stdfltr.column + " < " + stdfltr.endDate;
+              if (stdfltr.startDate != null) {
+                query += stdfltr.column + " > " + stdfltr.startDate;
+              }
+              if (stdfltr.endDate != null) {
+                if (stdfltr.startDate != null) {
+                  query += " AND ";
+                }
+                query += stdfltr.column + " < " + stdfltr.endDate;
+              }
             }
           }
-        }
-        query = query.replace(/__c\./g, "__r.");
+          query = query.replace(/__c\./g, "__r.");
         /*
         let groupBy = [];
         let sortBy = [];
@@ -373,6 +375,7 @@ class App extends React.PureComponent {
           query += " ORDER BY " + sortBy.join(", ");
         }
           */
+        }
       }
       exportArg.set("query", query);
       importArg.set("sobject", e.contextSobject);
@@ -1212,27 +1215,31 @@ class AllDataBox extends React.PureComponent {
       return sfConn.rest("/services/data/v" + apiVersion + "/tooling/query?q=" + encodeURIComponent("SELECT COUNT() FROM EntityDefinition"))
         .then(res => {
           let entityNb = res.totalSize;
+          let bucketPromises = [];
           for (let bucket = 0; bucket < Math.ceil(entityNb / 2000); bucket++) {
             let offset = bucket > 0 ? " OFFSET " + (bucket * 2000) : "";
             let query = "SELECT QualifiedApiName, Label, KeyPrefix, DurableId, IsCustomSetting, RecordTypesSupported, NewUrl, IsEverCreatable FROM EntityDefinition ORDER BY QualifiedApiName ASC LIMIT 2000" + offset;
-            sfConn.rest("/services/data/v" + apiVersion + "/tooling/query?q=" + encodeURIComponent(query))
-              .then(respEntity => {
-                for (let record of respEntity.records) {
-                  addEntity({
-                    name: record.QualifiedApiName,
-                    label: record.Label,
-                    keyPrefix: record.KeyPrefix,
-                    durableId: record.DurableId,
-                    isCustomSetting: record.IsCustomSetting,
-                    recordTypesSupported: record.RecordTypesSupported,
-                    newUrl: record.NewUrl,
-                    isEverCreatable: record.IsEverCreatable
-                  }, null);
-                }
-              }).catch(err => {
-                console.error("list entity definitions: ", err);
-              });
+            bucketPromises.push(
+              sfConn.rest("/services/data/v" + apiVersion + "/tooling/query?q=" + encodeURIComponent(query))
+                .then(respEntity => {
+                  for (let record of respEntity.records) {
+                    addEntity({
+                      name: record.QualifiedApiName,
+                      label: record.Label,
+                      keyPrefix: record.KeyPrefix,
+                      durableId: record.DurableId,
+                      isCustomSetting: record.IsCustomSetting,
+                      recordTypesSupported: record.RecordTypesSupported,
+                      newUrl: record.NewUrl,
+                      isEverCreatable: record.IsEverCreatable
+                    }, null);
+                  }
+                }).catch(err => {
+                  console.error("list entity definitions: ", err);
+                })
+            );
           }
+          return Promise.all(bucketPromises);
         }).catch(err => {
           console.error("count entity definitions: ", err);
         });
@@ -1638,7 +1645,7 @@ class AllDataBoxSObject extends React.PureComponent {
     if (!sobjectsList) {
       return null;
     }
-    let sobject = sobjectsList.find(sobject => sobject.name.toLowerCase() == query.toLowerCase());
+    let sobject = sobjectsList.find(sobject => sobject.name && sobject.name.toLowerCase() == query.toLowerCase());
     let queryKeyPrefix = query.substring(0, 3);
     if (!sobject) {
       sobject = sobjectsList.find(sobject => sobject.availableKeyPrefix == queryKeyPrefix);
@@ -1666,21 +1673,21 @@ class AllDataBoxSObject extends React.PureComponent {
     let queryKeyPrefix = query.substring(0, 3);
     let res = objectSchema
       ? sobjectsList
-        .filter(sobject => sobject.name.toLowerCase().includes(query.toLowerCase()) || sobject.label.toLowerCase().includes(query.toLowerCase()) || sobject.keyPrefix == queryKeyPrefix)
+        .filter(sobject => (sobject.name && sobject.name.toLowerCase().includes(query.toLowerCase())) || (sobject.label &&sobject.label.toLowerCase().includes(query.toLowerCase())) || (sobject.keyPrefix && sobject.keyPrefix == queryKeyPrefix))
         .map(sobject => ({
           recordId: null,
           sobject,
           // TO-DO: merge with the sortRank function in data-export
           relevance:
             (sobject.keyPrefix == queryKeyPrefix ? 2
-            : sobject.name.toLowerCase() == query.toLowerCase() ? 3
-            : sobject.label.toLowerCase() == query.toLowerCase() ? 4
-            : sobject.name.toLowerCase().startsWith(query.toLowerCase()) ? 5
-            : sobject.label.toLowerCase().startsWith(query.toLowerCase()) ? 6
-            : sobject.name.toLowerCase().includes("__" + query.toLowerCase()) ? 7
-            : sobject.name.toLowerCase().includes("_" + query.toLowerCase()) ? 8
-            : sobject.label.toLowerCase().includes(" " + query.toLowerCase()) ? 9
-            : 10) + (sobject.availableApis.length == 0 ? 20 : 0)
+            : (sobject.name && sobject.name.toLowerCase() == query.toLowerCase()) ? 3
+            : (sobject.label && sobject.label.toLowerCase() == query.toLowerCase()) ? 4
+            : (sobject.name && sobject.name.toLowerCase().startsWith(query.toLowerCase())) ? 5
+            : (sobject.label && sobject.label.toLowerCase().startsWith(query.toLowerCase())) ? 6
+            : (sobject.name && sobject.name.toLowerCase().includes("__" + query.toLowerCase())) ? 7
+            : (sobject.name && sobject.name.toLowerCase().includes("_" + query.toLowerCase())) ? 8
+            : (sobject.label && sobject.label.toLowerCase().includes(" " + query.toLowerCase())) ? 9
+            : 10) + ((!sobject.availableApis || sobject.availableApis.length == 0) ? 20 : 0)
         }))
       : [];
     if (records) {
@@ -1738,7 +1745,7 @@ class AllDataBoxSObject extends React.PureComponent {
         h("div", {className: "autocomplete-item-main", key: "main"},
           value.recordId || h(MarkSubstring, {
             text: value.sobject.name,
-            start: value.sobject.name.toLowerCase().indexOf(userQuery.toLowerCase()),
+            start: (value.sobject.name && value.sobject.name.toLowerCase().indexOf(userQuery.toLowerCase())),
             length: userQuery.length
           }),
           value.sobject.availableApis.length == 0 ? " (Not readable)" : ""

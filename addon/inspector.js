@@ -207,13 +207,12 @@ export let sfConn = {
       let err = new Error();
       err.name = "SalesforceRestError";
       err.detail = xhr.response;
-      try {
+      if (Array.isArray(err.detail)) {
         err.message = err.detail.map(err => `${err.errorCode}: ${err.message}${err.fields && err.fields.length > 0 ? ` [${err.fields.join(", ")}]` : ""}`).join("\n");
-      } catch (ex) {
-        err.message = JSON.stringify(xhr.response);
-      }
-      if (!err.message) {
+      } else if (!err.message) {
         err.message = "HTTP error " + xhr.status + " " + xhr.statusText;
+      } else {
+        err.message = JSON.stringify(xhr.response);
       }
       throw err;
     }
