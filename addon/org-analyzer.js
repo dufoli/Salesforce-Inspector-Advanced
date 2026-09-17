@@ -46,9 +46,9 @@ class ApexAnalyzer {
     let apexSoqlInLoopRule = this.model.isRuleEnable("Apex SOQL in loop");
     let apexDmlInLoopRule = this.model.isRuleEnable("Apex DML in loop");
     let apexWithoutSharingRule = this.model.isRuleEnable("Apex class without explicit sharing");
-    let apexTriggerWithLogicRule = this.model.isRuleEnable("Apex trigger with logic, SOQL or DML instead of service class");
+    let apexTriggerWithLogicRule = this.model.isRuleEnable("Apex trigger with SOQL/DML instead of service class");
     let apexClassNotReferencedRule = this.model.isRuleEnable("Apex class not referenced (not REST Apex)");
-    let apexBatchableWithoutJobsRule = this.model.isRuleEnable("Apex batchable or queueable schedulable without jobs in last 365 days");
+    let apexBatchableWithoutJobsRule = this.model.isRuleEnable("Apex job schedulable with no jobs in 365 days");
     let apexSoqlInjectionRule = this.model.isRuleEnable("Apex SOQL injection: missing escape on parameter");
 
     try {
@@ -368,7 +368,7 @@ class ApexAnalyzer {
                 let type = isBatchable ? "Batchable" : (isQueueable ? "Queueable" : "Schedulable");
                 logs.push({
                   reference: className,
-                  name: "Apex batchable or queueable schedulable without jobs in last 365 days",
+                  name: "Apex job schedulable with no jobs in 365 days",
                   description: `This Apex class implements ${type} but has no jobs executed in the last 365 days. Consider reviewing if this class is still needed or if it should be scheduled/executed.`,
                   priority: 4
                 });
@@ -408,7 +408,7 @@ class ApexAnalyzer {
               if ((hasSoql || hasDml) && !callsServiceClass) {
                 logs.push({
                   reference: triggerName + (apexTrigger.TableEnumOrId ? " (" + apexTrigger.TableEnumOrId + ")" : ""),
-                  name: "Apex trigger with logic, SOQL or DML instead of service class",
+                  name: "Apex trigger with SOQL/DML instead of service class",
                   description: "This Apex trigger contains SOQL queries or DML operations directly instead of delegating to a service class. Consider refactoring to use a trigger handler pattern with service classes for better maintainability and testability.",
                   priority: 2
                 });
@@ -1362,9 +1362,9 @@ class Model {
       {name: "Apex SOQL in loop", selected: true},
       {name: "Apex DML in loop", selected: true},
       {name: "Apex class without explicit sharing", selected: true},
-      {name: "Apex trigger with logic, SOQL or DML instead of service class", selected: true},
+      {name: "Apex trigger with SOQL/DML instead of service class", selected: true},
       {name: "Apex class not referenced (not REST Apex)", selected: true},
-      {name: "Apex batchable or queueable schedulable without jobs in last 365 days", selected: true},
+      {name: "Apex job schedulable with no jobs in 365 days", selected: true},
       {name: "Apex SOQL injection: missing escape on parameter", selected: true},
       {name: "Inactive user", selected: true},
       {name: "Too many System Administrators", selected: true},
