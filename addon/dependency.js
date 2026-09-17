@@ -858,6 +858,7 @@ class ComponentNameAutocomplete extends React.Component {
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onFocus = this.onFocus.bind(this);
     this.onBlur = this.onBlur.bind(this);
+    this.latestRequestId = 0;
   }
 
   componentDidUpdate() {
@@ -867,18 +868,28 @@ class ComponentNameAutocomplete extends React.Component {
     const {model, type} = this.props;
     if (!type) return;
 
-    if (!model.componentNameSuggestionsLoading) {
-      model.fetchComponentNames(type, model.name || "");
-    }
-
-    const filteredSuggestions = model.componentNameSuggestions.filter(suggestion =>
+    // Show whatever we already have immediately, then refresh once the fetch resolves.
+    const staleFiltered = model.componentNameSuggestions.filter(suggestion =>
       !this.state.searchTerm || suggestion.label.toLowerCase().includes(this.state.searchTerm.toLowerCase())
     );
-
     this.setState({
       activeSuggestion: 0,
-      filteredSuggestions,
+      filteredSuggestions: staleFiltered,
       showSuggestions: true
+    });
+
+    const requestId = ++this.latestRequestId;
+    const searchTerm = model.name || "";
+    model.fetchComponentNames(type, searchTerm).then(suggestions => {
+      if (requestId !== this.latestRequestId) return; // a newer request superseded this one
+      const filteredSuggestions = suggestions.filter(suggestion =>
+        !searchTerm || suggestion.label.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      this.setState({
+        activeSuggestion: 0,
+        filteredSuggestions,
+        showSuggestions: true
+      });
     });
   }
 
@@ -909,20 +920,28 @@ class ComponentNameAutocomplete extends React.Component {
     // Update the model's name
     this.props.onChange(e);
 
-    // Fetch suggestions if needed
-    if (!model.componentNameSuggestionsLoading) {
-      model.fetchComponentNames(type, userInput);
-    }
-
-    const filteredSuggestions = model.componentNameSuggestions.filter(suggestion =>
+    // Show whatever we already have immediately, then refresh once the fetch resolves.
+    const staleFiltered = model.componentNameSuggestions.filter(suggestion =>
       suggestion.label.toLowerCase().includes(userInput.toLowerCase())
     );
-
     this.setState({
       activeSuggestion: 0,
-      filteredSuggestions,
+      filteredSuggestions: staleFiltered,
       showSuggestions: true,
       searchTerm: userInput
+    });
+
+    const requestId = ++this.latestRequestId;
+    model.fetchComponentNames(type, userInput).then(suggestions => {
+      if (requestId !== this.latestRequestId) return; // a newer request superseded this one
+      const filteredSuggestions = suggestions.filter(suggestion =>
+        suggestion.label.toLowerCase().includes(userInput.toLowerCase())
+      );
+      this.setState({
+        activeSuggestion: 0,
+        filteredSuggestions,
+        showSuggestions: true
+      });
     });
   }
 
@@ -978,7 +997,7 @@ class ComponentNameAutocomplete extends React.Component {
   }
 
   render() {
-    const {model, type, name, disabled} = this.props;
+    const {type, name, disabled} = this.props;
     const {activeSuggestion, filteredSuggestions, showSuggestions} = this.state;
     const hasSuggestions = type && filteredSuggestions.length > 0;
 
@@ -1104,8 +1123,8 @@ class DependencyForm extends React.Component {
             onChange: this.onTypeChange,
             placeholder: "Type"
           },
-          [h("option", {value: "", key: "", label: "-- Select Type --"}), ...(model.metadataTypes.filter(type => type.display !== false).map(type =>
-            h("option", {key: type.value, value: type.object}, type.label)
+          [h("option", {value: "", key: "None", label: "-- Select Type --"}), ...(model.metadataTypes.filter(type => type.display !== false).map(type =>
+            h("option", {key: type.object, value: type.object}, type.label)
           ))]
           ),
           h(ComponentNameAutocomplete, {
