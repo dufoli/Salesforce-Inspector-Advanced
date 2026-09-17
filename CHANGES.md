@@ -1,5 +1,17 @@
 # Release Notes
 
+## Version 1.41
+
+- Metadata retrieve: reworked into a tabbed layout with a new search tool to find metadata by who last modified it, by date, by name or by type, so you can select exactly what you need. You can still download the metadata or a package.xml for the sf CLI  [issue 324](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/324)
+- Metadata retrieve: show a warning instead of failing the whole load when Translations are disabled on the org
+- Apex runner: replace the native "Resume polling?" confirm dialog with an in-app popup, so resuming log polling works even when the apex runner tab isn't the active/focused tab
+- Org analyzer: fix the Process Builder rule's SOQL, which filtered on the wrong `ProcessType` and never matched any process, fix the record-triggered flow count, which relied on Flow tooling-API fields that don't hold that data; now resolved via `FlowDefinitionView`  [issue 328](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/328)
+- Org analyzer: shorten a few rule names that were too long to display properly
+- Dependency viewer: fix the component search autocomplete occasionally showing stale results when typing fast triggered overlapping searches [issue 327](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/327)
+- Popup: fix "Objects"/"Users" search crashing and showing no results when the org has entities missing a name or label, and fix the entity list sometimes rendering before all pages had finished loading [issue 318](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/318)
+- data export: fix RecordType.Name value suggestions filtering on the top-level query's object instead of the actual parent object when RecordType is reached via a subquery or a linked/lookup field [issue 326](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/326)
+- fix: revert default API version back to 67 (68 was rolled back) for [issue 323](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/323) [issue 322](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/322)
+
 ## Version 1.40
 
 - add Formula Helper: a new standalone tool for writing Salesforce formulas, with syntax highlighting, line numbers, field/object/function autocompletion, real-time client-side error checks (unmatched parentheses, missing/misplaced commas, function arity), and one-click formatting.  [issue 218](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/218)
