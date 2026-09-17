@@ -1270,26 +1270,32 @@ class EntityAnalyzer {
       }
 
       // Query Flow triggers (record-triggered flows)
-      let flowTriggerQuery = "SELECT Id, MasterLabel, RecordTriggerType, TriggerType FROM Flow WHERE Status = 'Active' AND RecordTriggerType != null ORDER BY MasterLabel";
+      // Note: RecordTriggerType/TriggerType aren't fields on the Flow (tooling) object; the object/event
+      // a flow triggers on is exposed via FlowDefinitionView (standard API), as TriggerObjectOrEventLabel.
+      let flowTriggerQuery = "SELECT Id, Label, TriggerObjectOrEventLabel FROM FlowDefinitionView WHERE IsActive = true AND TriggerObjectOrEventLabel != null ORDER BY Label";
       let flowTriggerResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(flowTriggerQuery), {}), flowTriggerResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(flowTriggerQuery), {}), flowTriggerResult)
         .catch(error => {
           console.error(error);
         });
 
+      // TriggerObjectOrEventLabel is a label, but ApexTrigger.TableEnumOrId (used above) is an API name.
+      // Resolve the label back to an API name via the global describe so counts for the same object merge.
+      let {globalDescribe} = this.model.describeInfo.describeGlobal(false);
+      let labelToApiName = new Map();
+      for (let sobject of globalDescribe.sobjects) {
+        if (!labelToApiName.has(sobject.label)) {
+          labelToApiName.set(sobject.label, sobject.name);
+        }
+      }
+
       // Count Flow triggers per object
-      // Note: Flow triggers can be on multiple objects, but for simplicity we'll count each flow as one trigger
-      // RecordTriggerType can be a single object or multiple objects separated by comma
       for (let flowTrigger of flowTriggerResult.rows) {
-        if (flowTrigger.RecordTriggerType) {
-          // RecordTriggerType can be a comma-separated list of objects
-          let objects = flowTrigger.RecordTriggerType.split(",").map(obj => obj.trim());
-          for (let objectName of objects) {
-            if (objectName) {
-              let count = triggerCounts.get(objectName) || 0;
-              triggerCounts.set(objectName, count + 1);
-            }
-          }
+        let objectName = flowTrigger.TriggerObjectOrEventLabel;
+        if (objectName) {
+          objectName = labelToApiName.get(objectName) || objectName;
+          let count = triggerCounts.get(objectName) || 0;
+          triggerCounts.set(objectName, count + 1);
         }
       }
 
