@@ -12,3 +12,23 @@
   flex-direction: column;
   flex: 1 1 0;
 }
+#confirm-background {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0,0,0,0.8);
+  z-index: 99999;
+}
+#confirm-dialog {
+  width: 400px;
+  position: relative;
+  margin: 10% auto;
+  border-radius: 10px;
+  background: #fff;
+  padding: 20px;
+}
+.dialog-buttons {
+  text-align: center;
+}

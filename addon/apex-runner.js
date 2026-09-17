@@ -77,6 +77,7 @@ class Model {
     this.isWorking = false;
     this.executeStatus = "Ready";
     this.executeError = null;
+    this.confirmPopup = null;
     this.logs = null;
     this.jobs = null;
     this.tests = null;
@@ -901,9 +902,24 @@ class Model {
     let vm = this; // eslint-disable-line consistent-this
     this.executeStatus = "Polling finished";
     this.isWorking = false;
-
-    if (confirm("Resume Polling of logs?")) {
-      vm.enableLogs();
+    this.confirmPopup = {
+      text: "Resume Polling of logs?",
+      onYes: () => vm.enableLogs()
+    };
+    this.didUpdate();
+  }
+  confirmPopupYes() {
+    let onYes = this.confirmPopup && this.confirmPopup.onYes;
+    this.confirmPopup = null;
+    if (onYes) {
+      onYes();
+    }
+  }
+  confirmPopupNo() {
+    let onNo = this.confirmPopup && this.confirmPopup.onNo;
+    this.confirmPopup = null;
+    if (onNo) {
+      onNo();
     }
   }
   async enableLogs() {
@@ -1283,6 +1299,8 @@ class App extends React.Component {
     this.onLoopCountChange = this.onLoopCountChange.bind(this);
     this.onLoopDelayChange = this.onLoopDelayChange.bind(this);
     this.onLoopContinueOnErrorChange = this.onLoopContinueOnErrorChange.bind(this);
+    this.onConfirmPopupYesClick = this.onConfirmPopupYesClick.bind(this);
+    this.onConfirmPopupNoClick = this.onConfirmPopupNoClick.bind(this);
     this.state = {
       selectedTabId: 1
     };
@@ -1403,51 +1421,75 @@ class App extends React.Component {
   runTests() {
     let {model} = this.props;
     if (model.runningTestId) {
-      if (confirm("Are you sure you want to cancel running tests?")){
-        sfConn.rest(`/services/data/v${apiVersion}/query/?q=SELECT+Id,+ExtendedStatus,+Status+FROM+ApexTestQueueItem+WHERE+Status+!=+'Completed'+AND+ParentJobId+=+'${model.runningTestId}'`, {}).then(result => {
-          let composite = {"compositeRequest": result.records.map((r, i) => ({"method": "POST",
-            "url": `/services/data/v${apiVersion}/sobjects/ApexTestQueueItem/${r.Id}`,
-            "referenceId": `cancelTest${i}`,
-            "body": {"Status": "Aborted"}
-          }))};
-          sfConn.rest(`/services/data/v${apiVersion}/composite`, {method: "POST", body: composite, headers: {"Content-Type": "application/json"}}).then(() => {
-            model.runningTestId = null;
-          });
-        }).catch(error => {
-          console.error(error);
-        });
-      }
-      return;
-    }
-    if (confirm("Are you sure you want to run tests? This will run all tests in the org.")) {
-      model.testStatus = "STARTED";
-      let jsonBody = {
-        //"classNames": "comma-separated list of class names",
-        //"classids": "comma-separated list of class IDs",
-        //"suiteNames": "comma-separated list of test suite names",
-        //"suiteids": "comma-separated list of test suite IDs",
-        //"maxFailedTests": -1,
-        "testLevel": "RunLocalTests", //RunSpecifiedTests, RunAllTestsInOrg
-        //"skipCodeCoverage": "boolean value"
-      };
-      sfConn.rest("/services/data/v" + apiVersion + "/tooling/runTestsAsynchronous/", {method: "POST", body: jsonBody}).then(result => {
-        model.runningTestId = result;
-        model.testStatus = "RUNNING";
-      }).catch(error => {
-        if (error.message && error.message.startsWith("ALREADY_IN_PROCESS")) {
-          model.testStatus = error.message;
-          let qry = "SELECT Id, JobType, Status FROM AsyncApexJob WHERE JobType = 'TestRequest' and status IN ('Processing', 'Holding', 'Preparing')";
-          sfConn.rest(`/services/data/v${apiVersion}/query/?q=${encodeURIComponent(qry)}`, {}).then(result => {
-            if (result && result.records && result.records.length > 0) {
-              model.runningTestId = result;
-              model.testStatus = "RUNNING";
-            }
+      model.confirmPopup = {
+        text: "Are you sure you want to cancel running tests?",
+        onYes: () => {
+          sfConn.rest(`/services/data/v${apiVersion}/query/?q=SELECT+Id,+ExtendedStatus,+Status+FROM+ApexTestQueueItem+WHERE+Status+!=+'Completed'+AND+ParentJobId+=+'${model.runningTestId}'`, {}).then(result => {
+            let composite = {"compositeRequest": result.records.map((r, i) => ({"method": "POST",
+              "url": `/services/data/v${apiVersion}/sobjects/ApexTestQueueItem/${r.Id}`,
+              "referenceId": `cancelTest${i}`,
+              "body": {"Status": "Aborted"}
+            }))};
+            sfConn.rest(`/services/data/v${apiVersion}/composite`, {method: "POST", body: composite, headers: {"Content-Type": "application/json"}}).then(() => {
+              model.runningTestId = null;
+              model.didUpdate();
+            });
+          }).catch(error => {
+            console.error(error);
           });
         }
-        console.error(error);
-      });
+      };
       model.didUpdate();
+      return;
     }
+    model.confirmPopup = {
+      text: "Are you sure you want to run tests? This will run all tests in the org.",
+      onYes: () => {
+        model.testStatus = "STARTED";
+        let jsonBody = {
+          //"classNames": "comma-separated list of class names",
+          //"classids": "comma-separated list of class IDs",
+          //"suiteNames": "comma-separated list of test suite names",
+          //"suiteids": "comma-separated list of test suite IDs",
+          //"maxFailedTests": -1,
+          "testLevel": "RunLocalTests", //RunSpecifiedTests, RunAllTestsInOrg
+          //"skipCodeCoverage": "boolean value"
+        };
+        sfConn.rest("/services/data/v" + apiVersion + "/tooling/runTestsAsynchronous/", {method: "POST", body: jsonBody}).then(result => {
+          model.runningTestId = result;
+          model.testStatus = "RUNNING";
+          model.didUpdate();
+        }).catch(error => {
+          if (error.message && error.message.startsWith("ALREADY_IN_PROCESS")) {
+            model.testStatus = error.message;
+            let qry = "SELECT Id, JobType, Status FROM AsyncApexJob WHERE JobType = 'TestRequest' and status IN ('Processing', 'Holding', 'Preparing')";
+            sfConn.rest(`/services/data/v${apiVersion}/query/?q=${encodeURIComponent(qry)}`, {}).then(result => {
+              if (result && result.records && result.records.length > 0) {
+                model.runningTestId = result;
+                model.testStatus = "RUNNING";
+                model.didUpdate();
+              }
+            });
+          }
+          console.error(error);
+          model.didUpdate();
+        });
+        model.didUpdate();
+      }
+    };
+    model.didUpdate();
+  }
+  onConfirmPopupYesClick(e) {
+    e.preventDefault();
+    let {model} = this.props;
+    model.confirmPopupYes();
+    model.didUpdate();
+  }
+  onConfirmPopupNoClick(e) {
+    e.preventDefault();
+    let {model} = this.props;
+    model.confirmPopupNo();
+    model.didUpdate();
   }
   onResultsFilterInput(e) {
     let {model} = this.props;
@@ -1659,7 +1701,18 @@ class App extends React.Component {
         h("div", {className: "scrolltable-wrapper", hidden: (model.executeError != null || this.state.selectedTabId != 4)},
           h(ScrollTable, {model: model.tableCoverageModel})
         )
-      )
+      ),
+      model.confirmPopup ? h("div", {},
+        h("div", {id: "confirm-background"},
+          h("div", {id: "confirm-dialog"},
+            h("p", {}, model.confirmPopup.text),
+            h("div", {className: "dialog-buttons"},
+              h("button", {onClick: this.onConfirmPopupYesClick}, "OK"),
+              h("button", {onClick: this.onConfirmPopupNoClick, className: "cancel-btn"}, "Cancel")
+            )
+          )
+        )
+      ) : null
     );
   }
 }
