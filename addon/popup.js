@@ -190,7 +190,6 @@ class App extends React.PureComponent {
     this.onContextRecordChange = this.onContextRecordChange.bind(this);
     this.updateReleaseNotesViewed = this.updateReleaseNotesViewed.bind(this);
     this.onCloseBanner = this.onCloseBanner.bind(this);
-    this.clearOlderFlows = this.clearOlderFlows.bind(this);
     this.handleSecureWithConnectedApp = this.handleSecureWithConnectedApp.bind(this);
     this.onGetNewToken = this.onGetNewToken.bind(this);
     this.getBannerSecureApp = this.getBannerSecureApp.bind(this);
@@ -429,14 +428,6 @@ class App extends React.PureComponent {
         isInSetup: locationHref.includes("/lightning/setup/"),
         contextUrl: locationHref
       });
-    } else if (e.data.clearOlderFlows) {
-      this.clearOlderFlows(JSON.parse(e.data.clearOlderFlows));
-      return;
-    } else if (e.data.showFlowVersionDetails) {
-      this.showFlowVersionDetails(JSON.parse(e.data.showFlowVersionDetails));
-      return;
-    } else if (e.data.whereFlowIsUsed) {
-      this.whereFlowIsUsed(JSON.parse(e.data.whereFlowIsUsed));
     } else if (e.data.trackMouseMove != undefined) {
       if (e.data.trackMouseMove) {
         window.addEventListener("mousemove", this.onMouseMove);
@@ -457,77 +448,6 @@ class App extends React.PureComponent {
       isFieldsPresent: e.data.isFieldsPresent
     });
   }
-
-  async showFlowVersionDetails({contextUrl}) {
-    let flowId = await this.getFlowId(contextUrl);
-    if (!flowId) {
-      return;
-    }
-    sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+DefinitionId+FROM+Flow+WHERE+Id='" + flowId.replace(/([\\'])/g, "\\$1") + "'", {method: "GET"}).then(res => {
-      res.records.forEach(recentItem => {
-        let flowDefinitionId = recentItem.DefinitionId;
-        window.open("https://" + this.props.sfHost + "/lightning/setup/Flows/page?address=%2F" + flowDefinitionId, "_blank");
-      });
-    });
-  }
-  async whereFlowIsUsed({contextUrl}) {
-    let flowId = await this.getFlowId(contextUrl);
-    const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
-    sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Definition.DeveloperName+FROM+Flow+WHERE+Id='" + flowId + "'", {method: "GET"}).then(res => {
-      res.records.forEach(async recentItem => {
-        let flowName = recentItem.Definition.DeveloperName;
-        window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/dependency.html?name=${flowName}&type=Flow&host=${this.props.sfHost}`, "_blank");
-      });
-    });
-  }
-
-  async clearOlderFlows({contextUrl}) {
-    let keep = parseInt(localStorage.getItem("clearOlderFlowsKeep") || "5");
-    let {sfHost} = this.props;
-    if (!contextUrl || !keep) {
-      return;
-    }
-    try {
-      let recordId = await this.getFlowId(contextUrl);
-      if (!recordId) {
-        return;
-      }
-      const flowSelect = "SELECT FlowDefinitionViewId, FlowDefinitionView.VersionNumber FROM FlowVersionView where DurableId = '" + recordId.replace(/([\\'])/g, "\\$1") + "'";
-      const flowResults = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + flowSelect);
-      let flowDefinitionViewId;
-      let keepLatestVersionNumber;
-      flowResults.records.forEach(rec => {
-        flowDefinitionViewId = rec.FlowDefinitionViewId;
-        keepLatestVersionNumber = rec.FlowDefinitionView.VersionNumber - keep;
-      });
-      if (!flowDefinitionViewId || !keepLatestVersionNumber) {
-        return;
-      }
-      const flowToDeleteQuery = "SELECT Id, DurableId FROM FlowVersionView where FlowDefinitionViewId = '" + flowDefinitionViewId + "' and VersionNumber  <= " + keepLatestVersionNumber;
-      const flowToDeleteResults = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + flowToDeleteQuery);
-      let flowToDelete = "\"Id\"";
-      if (flowToDeleteResults.records.length === 0) {
-        console.log("No old versions to delete");
-        return;
-      }
-      flowToDeleteResults.records.forEach(rec => {
-        flowToDelete += "\r\n\"" + rec.DurableId + "\"";
-      });
-      let encodedData = window.btoa(flowToDelete);
-
-      let args = new URLSearchParams();
-      args.set("host", sfHost);
-      args.set("data", encodedData);
-      args.set("sobject", "Flow");
-      args.set("apitype", "Tooling");
-
-      window.open("data-import.html?" + args, "_blank");
-    } catch (err) {
-      console.error("Unable to clean old flow", err);
-      return;
-    }
-  }
-
 
   updateReleaseNotesViewed(version) {
     localStorage.setItem("latestReleaseNotesVersionViewed", version);
@@ -1458,6 +1378,9 @@ class AllDataBoxSObject extends React.PureComponent {
     this.getMatches = this.getMatches.bind(this);
     this.describeFlow = this.describeFlow.bind(this);
     this.onCloseFlowAnalysisModal = this.onCloseFlowAnalysisModal.bind(this);
+    this.whereFlowIsUsed = this.whereFlowIsUsed.bind(this);
+    this.showFlowVersionDetails = this.showFlowVersionDetails.bind(this);
+    this.clearOlderFlows = this.clearOlderFlows.bind(this);
     this.aiAssistant = new AIAssistant();
   }
 
@@ -1473,6 +1396,80 @@ class AllDataBoxSObject extends React.PureComponent {
     }
     const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
     window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/flow-analyze.html?flowId=${flowId}&host=${this.props.sfHost}`, "_blank");
+  }
+
+  async whereFlowIsUsed() {
+    const flowId = await this.getFlowId(this.props.contextUrl);
+    if (!flowId) {
+      return;
+    }
+    const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
+    sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Definition.DeveloperName+FROM+Flow+WHERE+Id='" + flowId + "'", {method: "GET"}).then(res => {
+      res.records.forEach(recentItem => {
+        let flowName = recentItem.Definition.DeveloperName;
+        window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/dependency.html?name=${flowName}&type=Flow&host=${this.props.sfHost}`, "_blank");
+      });
+    });
+  }
+
+  async showFlowVersionDetails() {
+    const flowId = await this.getFlowId(this.props.contextUrl);
+    if (!flowId) {
+      return;
+    }
+    sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+DefinitionId+FROM+Flow+WHERE+Id='" + flowId.replace(/([\\'])/g, "\\$1") + "'", {method: "GET"}).then(res => {
+      res.records.forEach(recentItem => {
+        let flowDefinitionId = recentItem.DefinitionId;
+        window.open("https://" + this.props.sfHost + "/lightning/setup/Flows/page?address=%2F" + flowDefinitionId, "_blank");
+      });
+    });
+  }
+
+  async clearOlderFlows() {
+    let keep = parseInt(localStorage.getItem("clearOlderFlowsKeep") || "5");
+    let {sfHost, contextUrl} = this.props;
+    if (!contextUrl || !keep) {
+      return;
+    }
+    try {
+      let recordId = await this.getFlowId(contextUrl);
+      if (!recordId) {
+        return;
+      }
+      const flowSelect = "SELECT FlowDefinitionViewId, FlowDefinitionView.VersionNumber FROM FlowVersionView where DurableId = '" + recordId.replace(/([\\'])/g, "\\$1") + "'";
+      const flowResults = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + flowSelect);
+      let flowDefinitionViewId;
+      let keepLatestVersionNumber;
+      flowResults.records.forEach(rec => {
+        flowDefinitionViewId = rec.FlowDefinitionViewId;
+        keepLatestVersionNumber = rec.FlowDefinitionView.VersionNumber - keep;
+      });
+      if (!flowDefinitionViewId || !keepLatestVersionNumber) {
+        return;
+      }
+      const flowToDeleteQuery = "SELECT Id, DurableId FROM FlowVersionView where FlowDefinitionViewId = '" + flowDefinitionViewId + "' and VersionNumber  <= " + keepLatestVersionNumber;
+      const flowToDeleteResults = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + flowToDeleteQuery);
+      let flowToDelete = "\"Id\"";
+      if (flowToDeleteResults.records.length === 0) {
+        console.log("No old versions to delete");
+        return;
+      }
+      flowToDeleteResults.records.forEach(rec => {
+        flowToDelete += "\r\n\"" + rec.DurableId + "\"";
+      });
+      let encodedData = window.btoa(flowToDelete);
+
+      let args = new URLSearchParams();
+      args.set("host", sfHost);
+      args.set("data", encodedData);
+      args.set("sobject", "Flow");
+      args.set("apitype", "Tooling");
+
+      window.open("data-import.html?" + args, "_blank");
+    } catch (err) {
+      console.error("Unable to clean old flow", err);
+      return;
+    }
   }
 
   async describeFlow() {
@@ -1774,7 +1771,7 @@ class AllDataBoxSObject extends React.PureComponent {
       h("div", {},
         h(AllDataSearch, {ref: "allDataSearch", sfHost, onDataSelect: this.onDataSelect, sobjectsList, getMatches: this.getMatches, inputSearchDelay: 0, placeholderText: "Record id, id prefix or object name", title: "Click to show recent items", resultRender: this.resultRender, filterOptions: this.sobjectFilterOptions, filterStorageKey: "allDataSearchFilters_sobject"}),
         selectedValue
-          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject, onDescribeFlow: this.describeFlow, onAnalyzeFlow: this.openAnalyzeFlow.bind(this), isOnFlowPage: this.isOnFlowPage(contextUrl)})
+          ? h(AllDataSelection, {ref: "allDataSelection", sfHost, showDetailsSupported, selectedValue, linkTarget, recordIdDetails, contextRecordId, isFieldsPresent, contextFilterName, contextSobject, onDescribeFlow: this.describeFlow, onAnalyzeFlow: this.openAnalyzeFlow.bind(this), onWhereFlowIsUsed: this.whereFlowIsUsed, onShowFlowVersionDetails: this.showFlowVersionDetails, onClearOlderFlows: this.clearOlderFlows, isOnFlowPage: this.isOnFlowPage(contextUrl)})
           : h("div", {className: "all-data-box-inner empty"}, "No record to display"),
         this.state.showFlowAnalysisModal && h("div", {},
           h("button", {className: "slds-button slds-button_icon slds-button_icon-small", title: "Close", onClick: this.onCloseFlowAnalysisModal},
@@ -2821,6 +2818,18 @@ class AllDataSelection extends React.PureComponent {
           className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
           onClick: this.props.onAnalyzeFlow
         }, "Analyze Flow") : null,
+        this.props.isOnFlowPage && this.props.onWhereFlowIsUsed ? h("button", {
+          className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
+          onClick: this.props.onWhereFlowIsUsed
+        }, "Where it is used") : null,
+        this.props.isOnFlowPage && this.props.onShowFlowVersionDetails ? h("button", {
+          className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
+          onClick: this.props.onShowFlowVersionDetails
+        }, "Version Details") : null,
+        this.props.isOnFlowPage && this.props.onClearOlderFlows ? h("button", {
+          className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
+          onClick: this.props.onClearOlderFlows
+        }, "Clear old flow versions") : null,
         buttons.map((button, index) => h("div", {key: button + "Div"}, h("a",
           {
             key: button,

@@ -10,6 +10,7 @@
 - Dependency viewer: fix the component search autocomplete occasionally showing stale results when typing fast triggered overlapping searches [issue 327](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/327)
 - Popup: fix "Objects"/"Users" search crashing and showing no results when the org has entities missing a name or label, and fix the entity list sometimes rendering before all pages had finished loading [issue 318](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/318)
 - data export: fix RecordType.Name value suggestions filtering on the top-level query's object instead of the actual parent object when RecordType is reached via a subquery or a linked/lookup field [issue 326](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/326)
+- Flow builder: move the "Where it is used", "Version Details" and "Clear old flow versions" links out of the injected page header and into simple popup buttons next to "Analyze Flow" and "Describe Flow with AI", so they no longer clutter the Flow Builder page [issue 186](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/186)
 - fix: revert default API version back to 67 (68 was rolled back) for [issue 323](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/323) [issue 322](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/322)
 
 ## Version 1.40

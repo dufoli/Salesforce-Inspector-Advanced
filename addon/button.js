@@ -109,39 +109,6 @@ function initButton(sfHost, inInspector) {
       // Check local storage for the checkbox state
       (checkboxState != null) ? (overflowCheckbox.checked = checkboxState) : (overflowCheckbox.checked = true);
 
-      // Create a new anchor to go to flow details
-      const whereItIsUsedButton = document.createElement("a");
-      whereItIsUsedButton.textContent = "Where it is used";
-      whereItIsUsedButton.classList.add("headerFixed");
-      whereItIsUsedButton.classList.add("whereItIsUsedButton");
-      if (currentUrl.includes("sandbox")){
-        whereItIsUsedButton.classList.add("whereItIsUsedButtonSandbox");
-      } else {
-        whereItIsUsedButton.classList.add("whereItIsUsedButtonProd");
-      }
-
-      // Create a new anchor to go to flow details
-      const versionDetailsButton = document.createElement("a");
-      versionDetailsButton.textContent = "Version Details";
-      versionDetailsButton.classList.add("headerFixed");
-      versionDetailsButton.classList.add("versionDetailsButton");
-      if (currentUrl.includes("sandbox")){
-        versionDetailsButton.classList.add("versionDetailsButtonSandbox");
-      } else {
-        versionDetailsButton.classList.add("versionDetailsButtonProd");
-      }
-
-      // Create a new button element to clear old flow
-      const clearFlowButton = document.createElement("a");
-      clearFlowButton.textContent = "Clear old flow versions";
-      clearFlowButton.classList.add("headerFixed");
-      clearFlowButton.classList.add("clearFlowButton");
-      if (currentUrl.includes("sandbox")){
-        clearFlowButton.classList.add("clearFlowButtonSandbox");
-      } else {
-        clearFlowButton.classList.add("clearFlowButtonProd");
-      }
-
       // Create a new label element for the checkbox
       const overflowLabel = document.createElement("label");
       overflowLabel.textContent = "Enable flow scrollability";
@@ -166,34 +133,11 @@ function initButton(sfHost, inInspector) {
       // Append the <style> element to the <head> element
       head.appendChild(style);
       // Append the checkbox and label elements to the body of the document
-      headerFlow.appendChild(whereItIsUsedButton);
-      headerFlow.appendChild(versionDetailsButton);
-      headerFlow.appendChild(clearFlowButton);
       headerFlow.appendChild(overflowCheckbox);
       headerFlow.appendChild(overflowLabel);
       // Set the overflow property to "auto"
       overflowCheckbox.checked ? style.textContent = ".canvas {overflow : auto!important ; }" : style.textContent = ".canvas {overflow : hidden!important ; }";
       const allowedOrigin = chrome.runtime.getURL("").replace(/\/$/, "");
-      whereItIsUsedButton.addEventListener("click", () => {
-        popupEl.contentWindow.postMessage({
-          whereFlowIsUsed: JSON.stringify({contextUrl: window.location.href})
-        }, allowedOrigin);
-      });
-
-      versionDetailsButton.addEventListener("click", () => {
-        popupEl.contentWindow.postMessage({
-          showFlowVersionDetails: JSON.stringify({contextUrl: window.location.href})
-        }, allowedOrigin);
-      });
-
-      clearFlowButton.addEventListener("click", () => {
-        let clearArgs = {
-          contextUrl: window.location.href
-        };
-        popupEl.contentWindow.postMessage({
-          clearOlderFlows: JSON.stringify(clearArgs)
-        }, allowedOrigin);
-      });
 
       // Listen for changes to the checkbox state
       overflowCheckbox.addEventListener("change", function() {
