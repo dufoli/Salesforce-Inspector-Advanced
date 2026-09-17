@@ -1319,8 +1319,8 @@ class Model {
     let queryMethod = useToolingApi ? "tooling/query" : this.queryAll ? "queryAll" : "query";
     let acQuery = "select " + contextValueField.field.name + " from " + contextValueField.sobjectDescribe.name;
     let filters = [];
-    if (contextValueField.sobjectDescribe.name === "RecordType" && sobjectName) {
-      filters.push("SobjectType = '" + sobjectName + "'");
+    if (contextValueField.sobjectDescribe.name === "RecordType" && contextValueField.objectName) {
+      filters.push("SobjectType = '" + contextValueField.objectName + "'");
     }
     if (searchTerm) {
       filters.push(contextValueField.field.name + " like '%" + searchTerm.replace(/([%_\\'])/g, "\\$1") + "%'");
@@ -1514,12 +1514,16 @@ class Model {
       }
     }
     let contextSobjectDescribes = new Enumerable([sobjectDescribe]);
+    // The sobject(s) that own the last relationship hop in contextPath, e.g. for "Account.RecordType."
+    // this is {Account}, not {RecordType}. Used to scope RecordType.Name value suggestions to the right object.
+    let parentSobjectDescribes = contextSobjectDescribes;
     let sobjectStatuses = new Map(); // Keys are error statuses, values are an object name with that status. Only one object name in the value, since we only show one error message.
     let lastIsPolymorph = false;
     if (contextPath) {
       let contextFields = contextPath.split(".");
       contextFields.pop(); // always empty
       for (let referenceFieldName of contextFields) {
+        parentSobjectDescribes = contextSobjectDescribes;
         let newContextSobjectDescribes = new Set();
         let refTos = contextSobjectDescribes
           .flatMap(contextSobjectDescribe => contextSobjectDescribe.fields)
@@ -1612,10 +1616,11 @@ class Model {
         return;
       }
       // Autocomplete field values
+      let parentObjectName = parentSobjectDescribes.toArray()[0]?.name ?? sobjectName;
       let contextValueFields = contextSobjectDescribes
         .flatMap(sobjectDescribe => sobjectDescribe.fields
           .filter(field => field.name.toLowerCase() == fieldName.toLowerCase())
-          .map(field => ({sobjectDescribe, field}))
+          .map(field => ({sobjectDescribe, field, objectName: parentObjectName}))
         )
         .toArray();
       if (contextValueFields.length == 0) {
