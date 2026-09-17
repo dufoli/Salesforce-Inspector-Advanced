@@ -768,8 +768,14 @@ class Model {
     }
     try {
       let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+      let languagesPromise = sfConn.soap(metadataApi, "listMetadata", {queries: [{type: "Translations"}]})
+        .catch(e => {
+          console.log(e);
+          this.translationLogMessages.push({level: "info", text: "(Translation disabled on org)"});
+          return [];
+        });
       let [languagesRes, sobjectsRes] = await Promise.all([
-        sfConn.soap(metadataApi, "listMetadata", {queries: [{type: "Translations"}]}),
+        languagesPromise,
         sfConn.rest("/services/data/v" + apiVersion + "/sobjects/", {})
       ]);
       let existingLanguageCodes = sfConn.asArray(languagesRes).map(l => l.fullName).filter(Boolean);
