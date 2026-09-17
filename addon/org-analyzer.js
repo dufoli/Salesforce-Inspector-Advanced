@@ -1033,9 +1033,9 @@ class AutomationAnalyzer {
 
     try {
       // Query Process Builder processes
-      // Process Builder processes are Flow records with ProcessType = 'AutoLaunchedFlow' and ProcessDefinitionId != null
+      // Process Builder processes are Flow records with ProcessType = 'Workflow' (legacy internal naming)
       if (processBuilderRule) {
-        let processBuilderQuery = "SELECT Id, MasterLabel, ProcessType, ProcessDefinitionId, LastModifiedDate, LastModifiedBy.Name, Status FROM Flow WHERE ProcessType = 'AutoLaunchedFlow' AND ProcessDefinitionId != null AND Status = 'Active' ORDER BY MasterLabel";
+        let processBuilderQuery = "SELECT Id, MasterLabel, ProcessType, LastModifiedDate, LastModifiedBy.Name, Status FROM Flow WHERE ProcessType = 'Workflow' AND Status = 'Active' ORDER BY MasterLabel";
         let processBuilderResult = {rows: []};
         await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(processBuilderQuery), {}), processBuilderResult)
           .catch(error => {
