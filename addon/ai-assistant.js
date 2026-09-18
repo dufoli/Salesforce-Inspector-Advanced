@@ -681,6 +681,139 @@ Instructions:
   }
 
   /**
+   * Generates a Salesforce formula based on a natural language description
+   * @param {string} description - Natural language description of the desired formula
+   * @param {string} provider - AI provider: 'openai', 'mistral', 'anthropic', 'agentforce'
+   * @param {string} apiKey - Provider API key (not required for agentforce)
+   * @param {Object} context - Additional context (objectName, availableFields, currentFormula, promptTemplateName, etc.)
+   * @returns {Promise<string>} - The generated formula
+   */
+  async generateFormula(description, provider, apiKey, context = {}) {
+    if (!this.providers[provider]) {
+      throw new Error(`Unrecognized AI provider: ${provider}`);
+    }
+
+    if (provider !== "agentforce") {
+      if (!apiKey || apiKey.trim() === "") {
+        throw new Error("API key not configured. Please configure your API key in the options.");
+      }
+    } else if (!context.promptTemplateName || context.promptTemplateName.trim() === "") {
+      throw new Error("Prompt template name not configured. Please configure it in the options.");
+    }
+
+    const providerConfig = this.providers[provider];
+    const prompt = this.buildFormulaGenPrompt(description, context);
+
+    try {
+      const formulaGenContext = {
+        systemMessage: "You are a Salesforce formula expert. You generate only valid Salesforce formula syntax, without explanation.",
+        maxTokens: 500
+      };
+
+      if (provider === "agentforce") {
+        return await this.callAgentForceFormulaGenAPI(context.promptTemplateName, description, context);
+      } else if (provider === "openai" || provider === "mistral") {
+        return this.cleanFormulaCodeFences(await this.callOpenAICompatibleAPI(providerConfig, apiKey, prompt, formulaGenContext));
+      } else if (provider === "anthropic") {
+        return this.cleanFormulaCodeFences(await this.callAnthropicAPI(providerConfig, apiKey, prompt, formulaGenContext));
+      }
+      throw new Error(`Unsupported AI provider: ${provider}`);
+    } catch (error) {
+      console.error("Error generating formula:", error);
+      throw new Error(`Generation error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Builds the prompt for formula generation
+   */
+  buildFormulaGenPrompt(description, context) {
+    let prompt = `You are a Salesforce formula expert. Generate a valid Salesforce formula based on the following description.
+
+Description: ${description}
+
+Instructions:
+- Generate ONLY the formula expression, without explanation, without comments, without markdown code
+- Use standard Salesforce formula syntax (functions like IF, ISBLANK, TEXT, CASE, etc.)
+- Make sure the formula is syntactically correct
+- If specific fields are mentioned, use them exactly as referenced below
+`;
+
+    if (context.objectName) {
+      prompt += `\nTarget object: ${context.objectName}\n`;
+    }
+
+    if (context.availableFields && context.availableFields.length > 0) {
+      prompt += "\n\nAvailable fields on the object:\n";
+      context.availableFields.forEach(field => {
+        prompt += `  - ${field.name} (${field.label}) - Type: ${field.type}\n`;
+      });
+    }
+
+    if (context.currentFormula) {
+      prompt += `\nCurrent formula (you can improve or modify it):\n${context.currentFormula}\n`;
+    }
+
+    prompt += "\nRespond ONLY with the formula expression, nothing else.";
+
+    return prompt;
+  }
+
+  /**
+   * Removes leftover markdown code-fence artifacts (e.g. a lone "formula" language tag left
+   * on its own line) that the generic ``` stripping in callOpenAICompatibleAPI/callAnthropicAPI
+   * doesn't account for, since it was only written to handle ```soql/```sql fences.
+   */
+  cleanFormulaCodeFences(code) {
+    if (!code) {
+      return code;
+    }
+    return code.trim().replace(/^formula\s*\n/i, "").trim();
+  }
+
+  /**
+   * Calls the AgentForce (Salesforce Einstein) API for formula generation
+   * @param {string} promptTemplateName - Name of the prompt template
+   * @param {string} description - Natural language description
+   * @param {Object} context - Additional context
+   * @returns {Promise<string>} - The generated formula
+   */
+  async callAgentForceFormulaGenAPI(promptTemplateName, description, context) {
+    const params = {description};
+
+    if (context.objectName) {
+      params.objectName = context.objectName;
+    }
+    if (context.availableFields && context.availableFields.length > 0) {
+      params.availableFields = JSON.stringify(context.availableFields);
+    }
+    if (context.currentFormula) {
+      params.currentFormula = context.currentFormula;
+    }
+
+    const response = await this.callAgentForce(params, promptTemplateName);
+
+    let formula = "";
+    if (response.outputParams && response.outputParams.valueMap) {
+      formula = response.outputParams.valueMap.formula || response.outputParams.valueMap.result || "";
+    } else if (response.result) {
+      formula = response.result;
+    } else if (typeof response === "string") {
+      formula = response;
+    } else {
+      formula = response.formula || JSON.stringify(response);
+    }
+
+    formula = this.cleanFormulaCodeFences(formula.replace(/```formula\n?/gi, "").replace(/```\n?/g, "").trim());
+
+    if (!formula) {
+      throw new Error("No formula generated by AgentForce");
+    }
+
+    return formula;
+  }
+
+  /**
    * Calls the AgentForce (Salesforce Einstein) API for Apex generation
    * @param {string} promptTemplateName - Name of the prompt template
    * @param {string} description - Natural language description

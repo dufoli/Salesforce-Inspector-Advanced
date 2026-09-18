@@ -814,6 +814,7 @@ class AIProviderOption extends React.Component {
     this.onChangeAgentForceTemplate = this.onChangeAgentForceTemplate.bind(this);
     this.onChangeAgentForceFlowTemplate = this.onChangeAgentForceFlowTemplate.bind(this);
     this.onChangeAgentForceApexTemplate = this.onChangeAgentForceApexTemplate.bind(this);
+    this.onChangeAgentForceFormulaTemplate = this.onChangeAgentForceFormulaTemplate.bind(this);
     this.onImportPromptTemplate = this.onImportPromptTemplate.bind(this);
     this.state = {
       selectedProvider: localStorage.getItem("aiProvider_selected") || "openai",
@@ -823,6 +824,7 @@ class AIProviderOption extends React.Component {
       agentForceTemplate: localStorage.getItem("aiProvider_agentforce_promptTemplateName") || "",
       agentForceFlowTemplate: localStorage.getItem("aiProvider_agentforce_flowPromptTemplateName") || "",
       agentForceApexTemplate: localStorage.getItem("aiProvider_agentforce_apexPromptTemplateName") || "",
+      agentForceFormulaTemplate: localStorage.getItem("aiProvider_agentforce_formulaPromptTemplateName") || "",
       importingTemplate: false,
       importError: null
     };
@@ -894,6 +896,16 @@ class AIProviderOption extends React.Component {
     }
   }
 
+  onChangeAgentForceFormulaTemplate(e) {
+    let templateName = e.target.value;
+    this.setState({agentForceFormulaTemplate: templateName});
+    if (templateName) {
+      localStorage.setItem("aiProvider_agentforce_formulaPromptTemplateName", templateName);
+    } else {
+      localStorage.removeItem("aiProvider_agentforce_formulaPromptTemplateName");
+    }
+  }
+
   async onImportPromptTemplate() {
     this.setState({importingTemplate: true, importError: null});
     this.model.didUpdate();
@@ -908,7 +920,7 @@ class AIProviderOption extends React.Component {
         currentBrowser = browser;
       }
 
-      const promptTemplateFiles = ["GenerateSOQL", "AnalyzeFlow", "GenerateApex"];
+      const promptTemplateFiles = ["GenerateSOQL", "AnalyzeFlow", "GenerateApex", "GenerateFormula"];
       const packageXmlContent = await (await fetch(currentBrowser.runtime.getURL("packages/package.xml"))).text();
       const templateContents = await Promise.all(promptTemplateFiles.map(async name => {
         const path = `packages/force-app/main/default/genAiPromptTemplates/${name}.genAiPromptTemplate-meta.xml`;
@@ -973,13 +985,15 @@ class AIProviderOption extends React.Component {
             this.setState({
               agentForceTemplate: "GenerateSOQL",
               agentForceFlowTemplate: "AnalyzeFlow",
-              agentForceApexTemplate: "GenerateApex"
+              agentForceApexTemplate: "GenerateApex",
+              agentForceFormulaTemplate: "GenerateFormula"
             });
             localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
             localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", "AnalyzeFlow");
             localStorage.setItem("aiProvider_agentforce_apexPromptTemplateName", "GenerateApex");
+            localStorage.setItem("aiProvider_agentforce_formulaPromptTemplateName", "GenerateFormula");
             this.model.didUpdate();
-            alert("Prompt templates 'GenerateSOQL', 'AnalyzeFlow' and 'GenerateApex' have been successfully imported and configured!");
+            alert("Prompt templates 'GenerateSOQL', 'AnalyzeFlow', 'GenerateApex' and 'GenerateFormula' have been successfully imported and configured!");
           } else {
             // Check if component already exists
             const details = statusResult.details || {};
@@ -993,13 +1007,15 @@ class AIProviderOption extends React.Component {
               this.setState({
                 agentForceTemplate: "GenerateSOQL",
                 agentForceFlowTemplate: "AnalyzeFlow",
-                agentForceApexTemplate: "GenerateApex"
+                agentForceApexTemplate: "GenerateApex",
+                agentForceFormulaTemplate: "GenerateFormula"
               });
               localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
               localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", "AnalyzeFlow");
               localStorage.setItem("aiProvider_agentforce_apexPromptTemplateName", "GenerateApex");
+              localStorage.setItem("aiProvider_agentforce_formulaPromptTemplateName", "GenerateFormula");
               this.model.didUpdate();
-              alert("Prompt templates 'GenerateSOQL', 'AnalyzeFlow' and 'GenerateApex' already exist. They have been configured.");
+              alert("Prompt templates 'GenerateSOQL', 'AnalyzeFlow', 'GenerateApex' and 'GenerateFormula' already exist. They have been configured.");
             } else {
               throw new Error(statusResult.statusMessage || "Deployment failed");
             }
@@ -1138,6 +1154,20 @@ class AIProviderOption extends React.Component {
             placeholder: "Prompt template name",
             value: cleanInputValue(this.state.agentForceApexTemplate),
             onChange: this.onChangeAgentForceApexTemplate
+          })
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "AgentForce Formula Generation Prompt Template Name")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "Prompt template name",
+            value: cleanInputValue(this.state.agentForceFormulaTemplate),
+            onChange: this.onChangeAgentForceFormulaTemplate
           })
         )
       ),

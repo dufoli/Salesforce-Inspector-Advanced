@@ -6,6 +6,7 @@ import {Editor} from "./editor.js";
 import {tokenize, analyzeFormula} from "./formula-parser.js";
 import {formatFormula} from "./formula-formatter.js";
 import {FORMULA_FUNCTIONS, FORMULA_OPERATORS, FORMULA_LITERALS} from "./formula-functions.js";
+import {AIAssistant} from "./ai-assistant.js";
 
 const SPINNER_GIF = "data:image/gif;base64,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";
 
@@ -85,6 +86,10 @@ class Model {
 
     this.problems = [];
     this.copyStatus = "";
+
+    this.aiAssistant = new AIAssistant();
+    this.aiGenerating = false;
+    this.aiError = null;
   }
 
   title() {
@@ -465,6 +470,67 @@ class Model {
       this.didUpdate();
     }, 1500);
   }
+
+  // --- AI generation ---
+
+  async generateFormulaWithAI(description) {
+    if (!description || description.trim() === "") {
+      this.aiError = "Please enter a description of the desired formula.";
+      this.didUpdate();
+      return;
+    }
+
+    const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
+    const apiKey = selectedProvider === "agentforce" ? null : localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
+    const promptTemplateName = selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_formulaPromptTemplateName") : null;
+
+    if (selectedProvider === "agentforce") {
+      if (!promptTemplateName || promptTemplateName.trim() === "") {
+        this.aiError = "Prompt template name not configured for AgentForce. Please configure it in the options.";
+        this.didUpdate();
+        return;
+      }
+    } else if (!apiKey || apiKey.trim() === "") {
+      this.aiError = `API key not configured for ${this.aiAssistant.providers[selectedProvider]?.name || selectedProvider}. Please configure it in the options.`;
+      this.didUpdate();
+      return;
+    }
+
+    this.aiGenerating = true;
+    this.aiError = null;
+    this.didUpdate();
+
+    try {
+      let availableFields = [];
+      if (this.selectedObject) {
+        let {sobjectStatus, sobjectDescribe} = this.describeInfo.describeSobject(false, this.selectedObject);
+        if (sobjectStatus == "ready" && sobjectDescribe) {
+          availableFields = sobjectDescribe.fields.slice(0, 100).map(f => ({name: f.name, label: f.label, type: f.type}));
+        }
+      }
+
+      const context = {
+        objectName: this.selectedObject,
+        availableFields,
+        currentFormula: this.editor ? this.editor.value : null,
+        promptTemplateName
+      };
+
+      const formula = await this.aiAssistant.generateFormula(description, selectedProvider, apiKey, context);
+
+      if (this.editor) {
+        this.applyEdit(formula, 0, this.editor.value.length, "end");
+      }
+
+      this.aiError = null;
+    } catch (error) {
+      console.error("Error generating formula:", error);
+      this.aiError = error.message || "Error generating formula.";
+    } finally {
+      this.aiGenerating = false;
+      this.didUpdate();
+    }
+  }
 }
 
 let h = React.createElement;
@@ -472,7 +538,13 @@ let h = React.createElement;
 class App extends React.Component {
   constructor(props) {
     super(props);
+    this.state = {showAIModal: false, aiDescription: ""};
     this.onClickSuggestion = this.onClickSuggestion.bind(this);
+    this.onGenerateWithAI = this.onGenerateWithAI.bind(this);
+    this.onAIDescriptionChange = this.onAIDescriptionChange.bind(this);
+    this.onAIDescriptionKeyDown = this.onAIDescriptionKeyDown.bind(this);
+    this.onCloseAIModal = this.onCloseAIModal.bind(this);
+    this.handleAIGenerate = this.handleAIGenerate.bind(this);
   }
   componentDidMount() {
     let {vm} = this.props;
@@ -483,6 +555,38 @@ class App extends React.Component {
     let {vm} = this.props;
     vm.autocompleteClick(r);
     vm.didUpdate();
+  }
+  onGenerateWithAI() {
+    let {vm} = this.props;
+    vm.aiError = null;
+    this.setState({showAIModal: true, aiDescription: ""});
+  }
+  onAIDescriptionChange(e) {
+    this.setState({aiDescription: e.target.value});
+  }
+  onAIDescriptionKeyDown(e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      this.handleAIGenerate();
+    } else if (e.key === "Escape") {
+      this.onCloseAIModal();
+    }
+  }
+  onCloseAIModal() {
+    this.setState({showAIModal: false, aiDescription: ""});
+    let {vm} = this.props;
+    vm.aiError = null;
+    vm.didUpdate();
+  }
+  async handleAIGenerate() {
+    let {vm} = this.props;
+    if (!this.state.aiDescription || this.state.aiDescription.trim() === "") {
+      return;
+    }
+    await vm.generateFormulaWithAI(this.state.aiDescription);
+    if (!vm.aiError) {
+      this.setState({showAIModal: false, aiDescription: ""});
+    }
   }
   render() {
     let {vm} = this.props;
@@ -505,7 +609,8 @@ class App extends React.Component {
           h("input", {id: "formula-object", list: "formula-object-list", value: vm.selectedObject, placeholder: "e.g. Account", onChange: e => vm.setObject(e.target.value)}),
           h("datalist", {id: "formula-object-list"}, vm.objectOptions().map(o => h("option", {value: o.name, key: o.name}))),
           h("button", {onClick: () => vm.formatCurrentFormula(), disabled: vm.problems.some(p => p.blocking), title: "Pretty-print the formula"}, "Format"),
-          h("button", {onClick: () => vm.copyResult()}, vm.copyStatus || "Copy result")
+          h("button", {onClick: () => vm.copyResult()}, vm.copyStatus || "Copy result"),
+          h("button", {onClick: this.onGenerateWithAI, title: "Generate formula with AI", className: "ai-generate-btn"}, "🤖 Generate with AI")
         ),
         h(Editor, {model: vm, keywordColor: FORMULA_KEYWORD_COLOR, keywordCaseSensitive: false, stringDelimiter: "\"", enableComments: false}),
         h("div", {className: "autocomplete-box"},
@@ -523,7 +628,43 @@ class App extends React.Component {
               "Line " + p.line + ":" + p.col + " — " + p.message)
           ))
         )
-      )
+      ),
+      this.state.showAIModal ? h("div", {className: "ai-modal-overlay", onClick: this.onCloseAIModal},
+        h("div", {className: "ai-modal area", onClick: e => e.stopPropagation()},
+          h("div", {className: "ai-modal-header"},
+            h("h2", {}, "Generate Formula with AI"),
+            h("button", {className: "ai-modal-close", onClick: this.onCloseAIModal, title: "Close"}, "×")
+          ),
+          h("div", {className: "ai-modal-body"},
+            h("p", {className: "ai-modal-description"},
+              "Describe in natural language the formula you want" + (vm.selectedObject ? " for " + vm.selectedObject : "") + ". For example: ",
+              h("em", {}, "\"Show 'N/A' if Name is blank, otherwise the name in uppercase\"")
+            ),
+            h("textarea", {
+              className: "ai-modal-input slds-textarea",
+              placeholder: "Ex: Show 'N/A' if Name is blank, otherwise the name in uppercase",
+              value: this.state.aiDescription,
+              onChange: this.onAIDescriptionChange,
+              onKeyDown: this.onAIDescriptionKeyDown,
+              rows: 4,
+              autoFocus: true
+            }),
+            vm.aiError ? h("div", {className: "ai-modal-error"}, vm.aiError) : null,
+            h("div", {className: "ai-modal-footer"},
+              h("button", {
+                className: "ai-modal-cancel cancel-btn",
+                onClick: this.onCloseAIModal
+              }, "Cancel"),
+              h("button", {
+                className: "highlighted",
+                disabled: !this.state.aiDescription.trim() || vm.aiGenerating,
+                onClick: this.handleAIGenerate
+              }, vm.aiGenerating ? "Generating..." : "Generate")
+            ),
+            h("p", {className: "ai-modal-hint"}, "Tip: Press Ctrl+Enter to generate quickly")
+          )
+        )
+      ) : null
     );
   }
 }
