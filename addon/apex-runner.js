@@ -100,7 +100,8 @@ class Model {
     this.scriptName = "";
     this.suggestionTop = 0;
     this.suggestionLeft = 0;
-    this.activeSuggestion = -1;
+    this.autoSelectFirstSuggestion = true; // unlike data export, always enabled here (not user-configurable)
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.autocompleteResultBox = null;
     this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
@@ -515,6 +516,7 @@ class Model {
   }
   showSuggestion() {
     this.displaySuggestion = true;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.didUpdate();
   }
   hideSuggestion() {
@@ -565,7 +567,7 @@ class Model {
 
     this.editor.focus();
     this.applyEdit(ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
-    this.activeSuggestion = -1;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler();
   }
   parseClass(source, clsName){

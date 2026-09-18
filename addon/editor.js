@@ -154,7 +154,7 @@ export class Editor extends React.Component {
       case "ArrowLeft":
         //naviguation reset active suggestion
         if (model.displaySuggestion && model.activeSuggestion != -1) {
-          model.activeSuggestion = -1;
+          model.activeSuggestion = model.autoSelectFirstSuggestion ? 0 : -1;
         }
         return;
       case "ArrowDown":
@@ -179,7 +179,7 @@ export class Editor extends React.Component {
         break;
       case "Escape":
         e.preventDefault();
-        model.activeSuggestion = -1;
+        model.activeSuggestion = model.autoSelectFirstSuggestion ? 0 : -1;
         model.hideSuggestion();
         return;
       case "Tab": {
@@ -215,7 +215,7 @@ export class Editor extends React.Component {
             model.editor.setRangeText(tabChar, lineStart + mod, lineStart + mod, "preserve");
             mod += tabChar.length;
           }
-        } else if (model.displaySuggestion && model.activeSuggestion) {
+        } else if (model.displaySuggestion && model.activeSuggestion > -1) {
           model.selectSuggestion();
         } else {
           model.editor.setRangeText(tabChar, selectionStart, selectionStart, "preserve");
@@ -299,14 +299,14 @@ export class Editor extends React.Component {
   handleMouseUp() {
     let {model} = this.props;
     if (!model.displaySuggestion) {
-      model.activeSuggestion = -1;
+      model.activeSuggestion = model.autoSelectFirstSuggestion ? 0 : -1;
       // disable show suggestion on click
       //model.showSuggestion();
     }
   }
   onBlur(e) {
     let {model} = this.props;
-    model.activeSuggestion = -1;
+    model.activeSuggestion = model.autoSelectFirstSuggestion ? 0 : -1;
     if (e.relatedTarget && e.relatedTarget.parentElement && e.relatedTarget.parentElement.classList.contains("autocomplete-result")) {
       model.displaySuggestion = false;//to avoid didUpdate that will be done in click of suggestion
     } else {

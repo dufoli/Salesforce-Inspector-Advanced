@@ -70,6 +70,7 @@ class Model {
     this.resultsFilterOperator = "contains";
     this.resultsFilterField = "";
     this.displayPerformance = localStorage.getItem("displayQueryPerformance") !== "false"; // default to true
+    this.autoSelectFirstSuggestion = localStorage.getItem("autoSelectFirstSuggestion") === "true"; // default to false
     this.performancePoints = [];
     this.startTime = null;
     this.lastStartTime = null;
@@ -81,7 +82,7 @@ class Model {
     this.suggestionTop = 0;
     this.suggestionLeft = 0;
     this.columnIndex = {fields: []};
-    this.activeSuggestion = -1;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.autocompleteResultBox = null;
     this.displaySuggestion = true;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
@@ -405,6 +406,7 @@ class Model {
 
   showSuggestion() {
     this.displaySuggestion = true;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler({newDescribe: true});
     this.didUpdate();
   }
@@ -494,7 +496,7 @@ class Model {
       this.applyEdit(contextPath + ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
       let caretPos = selStart + contextPath.length + ar[idx].nestOffset;
       this.editor.setSelectionRange(caretPos, caretPos);
-      this.activeSuggestion = -1;
+      this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
       this.editorAutocompleteHandler();
       return;
     }
@@ -502,7 +504,7 @@ class Model {
     if (ar[idx].value.startsWith("FIELDS") && !this.editor.value.toLowerCase().includes("limit")) {
       this.editor.value += " LIMIT 200";
     }
-    this.activeSuggestion = -1;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler();
   }
   setSuggestionPosition(top, left){

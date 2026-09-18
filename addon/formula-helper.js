@@ -76,7 +76,8 @@ class Model {
     this.autocompleteState = "";
     this.autocompleteResults = {title: " ", results: []};
     this.autocompleteClick = null;
-    this.activeSuggestion = -1;
+    this.autoSelectFirstSuggestion = true; // unlike data export, always enabled here (not user-configurable)
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.displaySuggestion = true;
     this.autocompleteResultBox = null;
     this.suggestionTop = 0;
@@ -207,6 +208,7 @@ class Model {
 
   showSuggestion() {
     this.displaySuggestion = true;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.didUpdate();
   }
 
@@ -276,7 +278,7 @@ class Model {
   // just placing the caret at the end like a plain field/operator insertion.
   insertSuggestion(r, selStart, selEnd) {
     this.applyEdit(r.value + (r.suffix || ""), selStart, selEnd, "end");
-    this.activeSuggestion = -1;
+    this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     if (r.autocompleteType == "function") {
       let placeholder = functionPlaceholderRange(r.suffix);
       if (placeholder) {
