@@ -101,12 +101,12 @@ class OptionsTabSelector extends React.Component {
         tabTitle: "Tab2",
         title: "API",
         content: [
-          {option: APIVersionOption, props: {key: 1}},
-          {option: APIKeyOption, props: {key: 2}},
-          {option: RestHeaderOption, props: {key: 3}},
-          {option: Option, props: {key: 4, type: "number", title: "Cache TTL (hours)", key: "cacheTTLHours", placeholder: "24 by default", default: 24}},
-          {option: ClearCacheOption, props: {key: 5}},
-          {option: AIProviderOption, props: {key: 6}}
+          {option: APIVersionOption, props: {key: "apiVersionOption"}},
+          {option: APIKeyOption, props: {key: "apiKeyOption"}},
+          {option: RestHeaderOption, props: {key: "restHeaderOption"}},
+          {option: Option, props: {key: "cacheTTLHours", type: "number", title: "Cache TTL (hours)", placeholder: "24 by default", default: 24}},
+          {option: ClearCacheOption, props: {key: "clearCacheOption"}},
+          {option: AIProviderOption, props: {key: "aiProviderOption"}}
         ]
       },
       {
@@ -191,7 +191,7 @@ class OptionsContainer extends React.Component {
   }
 
   render() {
-    return h("div", {id: this.props.id, className: this.getClass(), role: "tabpanel"}, this.props.content.map((c, i) => h(c.option, {key: "option-" +i, storageKey: c.props?.key, ...c.props, model: this.model})));
+    return h("div", {id: this.props.id, className: this.getClass(), role: "tabpanel"}, this.props.content.map((c, i) => h(c.option, {key: "option-" + i, storageKey: c.props?.key, ...c.props, model: this.model})));
   }
 
 }

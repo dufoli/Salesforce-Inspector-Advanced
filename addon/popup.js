@@ -1670,7 +1670,7 @@ class AllDataBoxSObject extends React.PureComponent {
     let queryKeyPrefix = query.substring(0, 3);
     let res = objectSchema
       ? sobjectsList
-        .filter(sobject => (sobject.name && sobject.name.toLowerCase().includes(query.toLowerCase())) || (sobject.label &&sobject.label.toLowerCase().includes(query.toLowerCase())) || (sobject.keyPrefix && sobject.keyPrefix == queryKeyPrefix))
+        .filter(sobject => (sobject.name && sobject.name.toLowerCase().includes(query.toLowerCase())) || (sobject.label && sobject.label.toLowerCase().includes(query.toLowerCase())) || (sobject.keyPrefix && sobject.keyPrefix == queryKeyPrefix))
         .map(sobject => ({
           recordId: null,
           sobject,

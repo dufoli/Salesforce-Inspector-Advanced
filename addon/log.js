@@ -1366,12 +1366,10 @@ class Model {
     if (this.logData == null) {
       return;
     }
-    let self = this;
     if (this.timeout) {
       clearTimeout(this.timeout);
     }
     this.timeout = setTimeout(() => {
-      //self.recalculculSearch();
       this.hideNodesBySearch(value);
       this.didUpdate();
     }, 500);
@@ -2178,7 +2176,7 @@ class LogViewer extends React.Component {
 
   render() {
     let {model} = this.props;
-//offsetHeight: model.scrollerOffsetHeight, scrollTop: model.scrollerScrollTop, maxHeight: (model.winInnerHeight - 210) + "px", lineHeight: model.lineHeight + "px"
+    //offsetHeight: model.scrollerOffsetHeight, scrollTop: model.scrollerScrollTop, maxHeight: (model.winInnerHeight - 210) + "px", lineHeight: model.lineHeight + "px"
     return h("div", {className: "editor", onScroll: this.onScroll, ref: "scroller", style: {maxHeight: (model.winInnerHeight - 210) + "px", lineHeight: model.lineHeight + "px"}},
       //h("div", {style: "overflow: hidden; position: relative; width: 3px; height: 0px; top: 540px; left: 335.4px;"},
       //h("textarea", {autocorrect: "off", autocapitalize: "off" spellcheck: "false", tabIndex: "0", style: "position: absolute; bottom: -1em; padding: 0px; width: 1000px; height: 1em; outline: none;"})

@@ -732,7 +732,7 @@ class App extends React.Component {
     model.toggleSavedOptions();
     model.didUpdate();
   }
-  onAddHttpHeader(e) {
+  onAddHttpHeader() {
     let {model} = this.props;
     model.addHeader();
     model.didUpdate();

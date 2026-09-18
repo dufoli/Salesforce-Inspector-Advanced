@@ -94,19 +94,19 @@ chrome.runtime.onInstalled.addListener(({reason}) => {
       url: "https://dufoli.github.io/Salesforce-Inspector-Advanced/welcome/"
     });
   }
-    });
+});
 if (chrome.commands) {
   chrome.commands.onCommand.addListener((command) => {
     //TODO home to open setup
     chrome.tabs.create({
       url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/${command}.html?host=${sfHost}`
     });
-});
+  });
 }
 if (chrome.action) {
   chrome.action.onClicked.addListener(() => {
     chrome.tabs.create({
       url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/options.html?host=${sfHost}`
     });
-});
+  });
 }
