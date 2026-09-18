@@ -817,7 +817,7 @@ class AIProviderOption extends React.Component {
     this.onChangeAgentForceFormulaTemplate = this.onChangeAgentForceFormulaTemplate.bind(this);
     this.onImportPromptTemplate = this.onImportPromptTemplate.bind(this);
     this.state = {
-      selectedProvider: localStorage.getItem("aiProvider_selected") || "openai",
+      selectedProvider: localStorage.getItem("aiProvider_selected") || "",
       openaiKey: localStorage.getItem("aiProvider_openai_apiKey") || "",
       mistralKey: localStorage.getItem("aiProvider_mistral_apiKey") || "",
       anthropicKey: localStorage.getItem("aiProvider_anthropic_apiKey") || "",
@@ -1057,6 +1057,7 @@ class AIProviderOption extends React.Component {
         ),
         h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
           h("select", {className: "slds-select", value: this.state.selectedProvider, onChange: this.onChangeProvider},
+            h("option", {value: ""}, "-- Select a provider --"),
             h("option", {value: "openai"}, "OpenAI (ChatGPT)"),
             h("option", {value: "mistral"}, "Mistral AI"),
             h("option", {value: "anthropic"}, "Anthropic (Claude)"),

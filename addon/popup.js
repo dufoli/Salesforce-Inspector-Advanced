@@ -1505,7 +1505,7 @@ class AllDataBoxSObject extends React.PureComponent {
       };
 
       // Get AI provider configuration
-      const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
+      const selectedProvider = localStorage.getItem("aiProvider_selected") || "";
       const promptTemplateName = selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_flowPromptTemplateName") : null;
 
       // Call AI to analyze the flow using the new method

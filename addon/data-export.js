@@ -2242,11 +2242,15 @@ class Model {
       return;
     }
 
-    const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
+    const selectedProvider = localStorage.getItem("aiProvider_selected") || "";
     const apiKey = selectedProvider === "agentforce" ? null : localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
     const promptTemplateName = selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_promptTemplateName") : null;
 
-    if (selectedProvider === "agentforce") {
+    if (!selectedProvider) {
+      this.aiError = "No AI provider configured. Please configure one in the options.";
+      this.didUpdate();
+      return;
+    } else if (selectedProvider === "agentforce") {
       if (!promptTemplateName || promptTemplateName.trim() === "") {
         this.aiError = "Prompt template name not configured for AgentForce. Please configure it in the options.";
         this.didUpdate();

@@ -903,12 +903,16 @@ ${JSON.stringify(Metadata, null, 2)}`;
    * @returns {Promise<string>} - The generated flow description
    */
   async generateFlowDescription(flowMetadata, provider, options = {}) {
-    if (!this.providers[provider]) {
-      throw new Error(`Unrecognized AI provider: ${provider}`);
+    // Get provider configuration from localStorage if not provided
+    const selectedProvider = provider || localStorage.getItem("aiProvider_selected") || "";
+
+    if (!selectedProvider) {
+      throw new Error("No AI provider configured. Please configure one in the options.");
+    }
+    if (!this.providers[selectedProvider]) {
+      throw new Error(`Unrecognized AI provider: ${selectedProvider}`);
     }
 
-    // Get provider configuration from localStorage if not provided
-    const selectedProvider = provider || localStorage.getItem("aiProvider_selected") || "openai";
     const apiKey = selectedProvider === "agentforce" ? null : localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
     const promptTemplateName = options.promptTemplateName || (selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_flowPromptTemplateName") : null);
 
