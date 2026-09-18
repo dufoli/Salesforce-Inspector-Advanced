@@ -11,23 +11,88 @@ Then you can check result on log and go to log analyzer to analyze it.
 
 ![image](screenshots/viewLog.png)
 
+The results area has 4 tabs: **Logs** (executed scripts and their logs), **Jobs** (batch/queueable jobs), **Tests** and **Coverage**.
+
+- Use **Delete all logs** to clear old ApexLogs from the org, and **Open empty logs** to open the log viewer without running anything.
+- Click **Run Unit Tests** to run all tests in the org (confirmation required); results appear in the Tests tab and code coverage per class in the Coverage tab, with lines highlighted in red where coverage is below 75%.
+
 ## Clone a User
 
 From the extension's Users tab, select an active user and click **Clone**. Enter a unique username, then enter the user's email address. The email prompt defaults to the username but can be changed independently. Complete the first-name and last-name prompts to create the user with the source user's writable fields and assignments.
 
+## Popup search filter checkboxes
+
+The Objects, Users and Shortcuts quick-search tabs in the popup each have filter checkboxes (all enabled by default) to narrow results:
+
+- Users: "Include inactive users" and "Include portal users".
+- Objects: "Object schema" and "Records" (recently viewed records for that object).
+- Shortcuts: "Flows", "Profiles", "Permission Sets", "Communities" and "Apex classes".
+
+## User tab actions
+
+Selecting a user in the popup's Users tab shows, in addition to Enable Log:
+
+- **Clone**: clone the current user with all permission set, permission set group, profile and role, a popup will ask you username.
+- **Login as Incognito**: opens a "Login As" session for that user in a new incognito/private window instead of the current one.
+- **Reset Password**: prompts for confirmation, then resets the user's password (shown only for active users).
+- **Enable/Disable LC debug mode**: toggles Lightning (Aura/LWC) component debug mode for that user.
+
+## Export a List View
+
+While viewing a list view in Salesforce, the popup shows an **Export List View** button (shortcut `L`) that downloads the list view's rows as CSV.
+
+## Convert a Salesforce Report to a SOQL query (Beta)
+
+While viewing a Report record in Salesforce, the popup's **Export** button opens Data Export pre-filled with an equivalent SOQL query built from the report's columns, filters and groupings, so you can tweak and re-run it directly.
+
 ## log analyzer
 
-The analyzer have 2 tabs. 
-The first tab display the raw log and permit to search keyword in it.
+The analyzer has 5 tabs:
 
-![image](screenshots/logViewer.png)
+- **Raw log**: displays the raw log and lets you search keywords in it.
 
-The second tab is a profilter and display a treeview to be able to analyze in detail
-It permit to troubleshoot any issue when you reach an org limit as DML, SOQL, callout, CPU time. 
-![image](screenshots/logProfiler.png)
+  ![image](screenshots/logViewer.png)
 
-and for cpu limit exception (duration over 10 seconds), you can check flame chart.
-![image](screenshots/flame_chart.png)
+- **Profiler**: a treeview to analyze the log in detail, useful to troubleshoot any issue when you reach an org limit such as DML, SOQL, callout or CPU time.
+
+  ![image](screenshots/logProfiler.png)
+
+- **Flame graph**: for CPU limit exceptions (duration over 10 seconds), visualize where time is spent.
+
+  ![image](screenshots/flame_chart.png)
+
+- **Apex**: pick an Apex class from the dropdown to view its source with line numbers; lines that produced log output are highlighted, click one to see the matching log lines on the right (and click a log line to jump back to it in the Raw log tab).
+- **Ressource**: lists every distinct SOQL, SOSL, DML and callout found in the log with an occurrence count; click one to jump to it in the Raw log tab. Use the filter dropdown to narrow it to one kind (CALLOUT/SOQL/SOSL/DML).
+
+## Org Analyzer
+
+Open it from the popup and go to the "Org Analyzer" button. It scans your org for security, code-quality, unused-resource, migration and maintainability issues (e.g. too many validation rules/triggers per object, SOQL/DML in loops, hardcoded IDs, SOQL injection risks, Apex classes without an explicit sharing model, unreferenced Apex classes, Process Builder/Workflow candidates for Flow migration, Visualforce/Aura candidates for LWC migration, too many system admins, deep role hierarchies, inactive users, over-permissioned Connected Apps, and more).
+
+1. Check/uncheck the rules you want to run (or "Select all"), then click **Analyze org**.
+2. Results stream in as each rule completes; use the priority dropdown (1-5) to filter, and **Stop** to cancel a long-running scan.
+3. Click the download icon to save the results as a CSV.
+
+> **Warning**
+> The Org Analyzer makes extensive API calls. Monitor your org's API limits and save results via the CSV download for later reference.
+
+## Flow Analyzer
+
+While viewing a Flow in Flow Builder, open the extension popup and click **Analyze Flow** to open a report of potential issues found in the flow's metadata: performance (DML/action calls in loops, Get Record fetching all fields), best practices (missing description, unused variables, unconnected elements, not using Auto Layout), security & reliability (hardcoded IDs/URLs, missing fault paths or null handlers), maintainability (high cyclomatic complexity, naming convention violations, old API version, too many versions) and logic issues (recursive triggers, same-record field updates). Each finding shows a severity (error/warning/info), a message and, where relevant, the list of affected elements.
+
+**Describe Flow with AI** (next to Analyze Flow in the popup) is a separate feature: it sends the flow's metadata to your configured AI provider to get a plain-language description — see [AI Assistant](#ai-assistant) below for setup.
+
+## Dependency Viewer
+
+Open it from the popup. Pick a metadata **Type**, then start typing in **Component Name** for autocomplete suggestions, then click **Get Parent Dependencies** (what uses this component) or **Get Child Dependencies** (what this component uses) to build a hierarchical dependency tree (flows are scanned for subflow references too, shown as a progress indicator while running). Once you have results, click **Export package.xml** to download a `package.xml` covering the whole dependency tree, ready for the sf CLI.
+
+## Platform Event Manager (Streaming)
+
+Open it from the popup ("Streaming" button). It has 4 tabs:
+
+- **Monitor**: shows every event received since the page opened. Filter results with the search box, narrow to one event type with the dropdown, and use the download icon to export captured events as CSV.
+- **Subscribe**: pick an event type (Platform Event, Generic Event, Change Data Capture, PushTopic, ...) and a topic/channel, then click **Subscribe**. Active subscriptions are listed below with a delete icon to unsubscribe.
+- **Publish**: pick a Platform Event or Generic Event channel, type a JSON payload and click **Publish**; the raw API response is shown below.
+- **Create**: register a new PlatformEventChannel, PlatformEventChannelMember or PushTopic (with its SOQL query and Create/Update/Undelete/Delete notification flags) without leaving the page.
 
 ## SOSL
 
@@ -37,6 +102,18 @@ In data Export, you run an SOSL query in order to retreive some data across mult
 ## Assignment rules
 
 In data import, you can choose to use assigment rules or not for lead, case and even Account (territory management).
+
+## Data import: Bulk API, hard delete and retrying failures
+
+- The **API Type** dropdown includes **Bulk**, for large import/update/delete jobs, in addition to the standard REST/Tooling APIs.
+- The **Action** dropdown includes **Hard Delete** (permanently deletes records, bypassing the recycle bin), available with the Bulk API.
+- After running an import, failed rows are marked in the results (with a status/error column); fix the data directly in the input and click **Retry Failed** to resubmit only the rows that failed.
+
+## Inspect: Field Usage Analysis and search keywords
+
+On the Inspect page, open an object then click the actions menu (the down-arrow button next to New/Export/More) and select **Show field usage** to see, for every field on the object, the percentage of records that have a value populated — useful for finding unused or underutilized fields.
+
+The field/object search box also matches against a field's formula or roll-up summary definition (so searching part of a formula finds the field that uses it), and supports the special keyword **Stored field** to list only plain fields (not formulas, not roll-up summaries).
 
 ## SOQL editor and data export
 
@@ -54,6 +131,37 @@ Technical column (done, count, object type) can be skipped with an option.
 
 Date format and date time format is now customizable in option. So data can fit directly to your need.
 By the way, Data import date format can be customized too.
+
+## AI Assistant
+
+Configure an AI provider from Options > API tab, "Integration with AI (SOQL Generation)": pick a **Default AI Provider** (OpenAI/ChatGPT, Mistral AI, Anthropic/Claude, or AgentForce/Salesforce Einstein) and enter that provider's API key (get one from the linked OpenAI/Mistral/Claude console pages). For AgentForce, Prompt Builder must be enabled in Setup; the option panel can auto-import and configure the two required prompt templates ("GenerateSOQL" and "AnalyzeFlow") for you, or you can point it at your own template names.
+
+Once configured, AI is available from:
+
+- Data Export: click **🤖 Generate with AI** next to the query editor to generate a SOQL query from a natural-language description.
+- Flow Builder (via the popup, on a flow page): click **Describe Flow with AI** to get a plain-language description of the open flow.
+
+## Batch/list query parameters, Bulk API and query tools
+
+In Data Export, next to the query editor:
+
+- **Format Query**, **Export Query** (copies a shareable query URL) and **Query Plan** (runs Salesforce's Query Plan API on the query) are available as buttons above the editor.
+- Click the toggle icon (title "Use list parameter in query") to open **Batch Parameters**: paste one value per line (quote text values), set a **Batch size**, then reference the pasted list as `$1` in the query, e.g. `...WHERE Id IN ($1)` — the query re-runs once per batch of pasted values.
+- The **API Type** dropdown next to the query lets you run the query via **Query** (standard REST), **Tooling** (metadata) or **Bulk** (for large datasets; download only, no inline result grid).
+
+## Query history and saved queries
+
+The **History** and **Favorite** dropdowns above the query editor (also available in Apex Runner) let you manage past and saved queries:
+
+- Click the pencil icon to **rename** an entry, the chevron to expand/collapse and preview its full query text, and the trash icon to delete it.
+- Add or remove **tags** on a saved query directly from the list (type a tag and press enter; click the "x" on a tag to remove it).
+- Type a **Query Label** and click **Save Query** to add the current query to Favorites.
+
+## Sort, filter and copy data export results
+
+- Click the sort icon (▼▲) in a column header to sort by that column; click again to reverse the order.
+- Click into the "Filter Results" box to reveal a field dropdown and an operator dropdown (Contains, Equal, Not equal, Starts With, Ends With) to filter the result grid on a specific column, including computed/non-queryable columns.
+- Selecting and copying result cells also copies an HTML representation, so pasting into Excel, Word, Jira and similar tools preserves the table structure (not just plain text).
 
 ## Data export inline edit and picklist
 
@@ -184,7 +292,7 @@ Go on a Salesforce flow and check / uncheck the checbox to update navigation scr
 
 ## Clear old Flow versions
 
-Go on a Salesforce flow and click on the `Clear old flow versions` button to delete flow versions older than `Number of flow version to keep` option on the Flow Builder on the header bar. You can modify `Number of flow version to keep` option on user experience tab.
+Go on a Salesforce flow, open the extension popup and click the `Clear old flow versions` button (next to `Analyze Flow`, `Where it is used` and `Version Details`) to delete flow versions older than the `Number of flow version to keep` option. You can modify `Number of flow version to keep` option on user experience tab.
 
 ![Checkbox is on header of each flow](screenshots/clearOldFlowVersions.png)
 
@@ -267,14 +375,16 @@ By default, when the SOQL/SOSL/GraphQL autocomplete list is displayed on the Dat
 To have the first suggestion highlighted automatically as soon as the list appears (so it can be picked directly with Enter or Tab), open the Options screen,
 select the Data Export tab, and enable "Auto-select first suggestion" (disabled by default).
 
-## Test GraphQL query
+## Explore API
 
-- Open popup and click on "Explore API" button.
-- Right click on the page and select "Inspect"
-- Execute the code in dev console:
+Open it from the popup ("Explore API" button). Pick an HTTP method and enter the API URL (e.g. `/services/data/v59.0/graphql`), set headers and a request body (JSON, raw or CSV depending on the call), then run the request — response time is measured and shown with the result.
 
-`var myQuery = { "query": "query accounts { uiapi { query { Account { edges { node { Id  Name { value } } } } } } }" };`
-`display(sfConn.rest("/services/data/v59.0/graphql", {method: "POST", body: myQuery}));`
+- The **Templates** dropdown has ready-made requests to start from: Services list, Update account (REST), a SOQL query, a GraphQL query, deploy status, Bulk API create/insert/finish job, Chatter news feed, Report data, and Platform Event Channel / Channel Member creation.
+- Past calls are kept in a **History**, and you can **save** a request for reuse later; small responses are stored with the history entry.
+
+Example GraphQL query to try (via the "GraphQL" template or pasted directly as the body with method POST):
+
+`{ "query": "query accounts { uiapi { query { Account { edges { node { Id  Name { value } } } } } } }" }`
 
 ![Explore API then run code in dev console and select raw json](screenshots/explore_api.gif)
 
@@ -291,11 +401,20 @@ You can choose to autogenerate color by environment. The same color will be used
 
 ![Option User experince tab](screenshots/options_ux_tab.png)
 
+## Metadata Retrieve
+
+Open it from the popup ("Download Metadata" button, shortcut `d`). The page is now split into four tabs:
+
+- **Download Metadata**: search & filter metadata to build a selection, then download it as a zip or as a `package.xml` for the sf CLI. Pick one or more metadata types (autosuggest), and optionally narrow the results by metadata name (contains), modified date range (from/to) and who last modified it (autosuggest on user name). Click **Search** to list the matching components, select the ones you want, then download the metadata zip or generate the `package.xml`. You can instead switch to "Upload a package.xml" to drop an existing `package.xml` and download that selection directly, without going through Search.
+- **Download Translation**: pick a language and one or more objects (search/select all supported) to download a `CustomObjectTranslation` + global Translations (custom labels, tabs, etc.) zip for that language, similar to Workbench's translation download. If Translations aren't enabled on the org, a warning is shown instead of failing the whole load.
+- **Upload Metadata**: drag & drop (or browse to) a metadata zip to deploy it to the org. Deploy Options let you check-only (validate without deploying), allow missing files, ignore warnings, perform a retrieve, and purge on delete.
+- **Data Model**: download a CSV export of all objects and fields in the org.
+
 ## Formula Helper
 
 A standalone tool for writing and cleaning up Salesforce formulas: syntax highlighting, line numbers, autocompletion of field names, objects and formula functions, and real-time error checks.
 
-- Open it from the floating Inspector button's toolbar (shortcut `y`), or navigate directly to `formula-helper.html?host=<your org>`.
+- Open it from the floating Inspector button's toolbar (shortcut `y`).
 - Pick an object at the top of the page to get field autocompletion (including relationship fields, e.g. typing `Owner.` suggests `User` fields) in addition to function/operator suggestions. Press `Ctrl+Space` to bring up suggestions.
 - The **Problems** panel below the editor lists client-side issues found as you type: unclosed/unmatched parentheses, unterminated strings, missing or misplaced commas, and function argument count mismatches. Click a problem to jump to its location in the editor. This is a local, best-effort check that complements — it does not call or replace — Salesforce's own "Check Syntax" button in Setup.
 - Click **Format** to pretty-print a nested formula (line breaks and indentation for deeply nested function calls); `Ctrl+Z` undoes it like any other edit.
