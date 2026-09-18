@@ -1462,8 +1462,11 @@ class Model {
     let fieldName = null;
     if (isFieldValue) {
       let fieldEnd = selStart - isFieldValue[0].length;
-      fieldName = query.substring(0, fieldEnd).match(/[a-zA-Z0-9_]+$/)[0];
-      contextEnd = fieldEnd - fieldName.length;
+      let fieldNameMatch = query.substring(0, fieldEnd).match(/[a-zA-Z0-9_]+$/);
+      if (fieldNameMatch) {
+        fieldName = fieldNameMatch[0];
+        contextEnd = fieldEnd - fieldName.length;
+      }
     }
     let isTypeOfWhen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+([a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+\S*$/i);
     let isTypeOfThen = !isAfterWhere && query.substring(0, selStart).match(/\s+TYPEOF\s+(?:[a-z0-9_]*)\s+(?:WHEN\s+[a-z0-9_-]*\s+THEN\s+[a-z0-9_.]*\s+)*WHEN\s+(\S*)\s+THEN\s+\S*$/i);
