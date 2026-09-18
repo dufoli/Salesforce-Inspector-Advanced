@@ -13,6 +13,8 @@
 - data export: add "Auto-select first suggestion" option (Options > Data Export, disabled by default) to automatically highlight the first suggestion when the autocomplete list is displayed or refreshed, so it can be picked with Enter/Tab without navigating first
 - Flow builder: move the "Where it is used", "Version Details" and "Clear old flow versions" links out of the injected page header and into simple popup buttons next to "Analyze Flow" and "Describe Flow with AI", so they no longer clutter the Flow Builder page [issue 186](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/186)
 - fix: revert default API version back to 67 (68 was rolled back) for [issue 323](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/323) [issue 322](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/322)
+- write a lot of documentation on tools : streaming, org analyzer, flow analyzer, dependency, formula helper, metadata...
+- write doc about main improvement : sort and filter on export, popup search filter, clone user, login incognito, reset password, bulk api support.
 
 ## Version 1.40
 
