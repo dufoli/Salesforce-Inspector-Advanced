@@ -3,6 +3,7 @@ import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {DescribeInfo} from "./data-load.js";
 import {clearAllCache} from "./cache.js";
+import {createZip, uint8ArrayToBase64} from "./zip-writer.js";
 
 function cleanInputValue(value) {
   return (value == undefined || value == null) ? "" : value;
@@ -812,6 +813,7 @@ class AIProviderOption extends React.Component {
     this.onChangeAnthropicKey = this.onChangeAnthropicKey.bind(this);
     this.onChangeAgentForceTemplate = this.onChangeAgentForceTemplate.bind(this);
     this.onChangeAgentForceFlowTemplate = this.onChangeAgentForceFlowTemplate.bind(this);
+    this.onChangeAgentForceApexTemplate = this.onChangeAgentForceApexTemplate.bind(this);
     this.onImportPromptTemplate = this.onImportPromptTemplate.bind(this);
     this.state = {
       selectedProvider: localStorage.getItem("aiProvider_selected") || "openai",
@@ -820,6 +822,7 @@ class AIProviderOption extends React.Component {
       anthropicKey: localStorage.getItem("aiProvider_anthropic_apiKey") || "",
       agentForceTemplate: localStorage.getItem("aiProvider_agentforce_promptTemplateName") || "",
       agentForceFlowTemplate: localStorage.getItem("aiProvider_agentforce_flowPromptTemplateName") || "",
+      agentForceApexTemplate: localStorage.getItem("aiProvider_agentforce_apexPromptTemplateName") || "",
       importingTemplate: false,
       importError: null
     };
@@ -881,12 +884,23 @@ class AIProviderOption extends React.Component {
     }
   }
 
+  onChangeAgentForceApexTemplate(e) {
+    let templateName = e.target.value;
+    this.setState({agentForceApexTemplate: templateName});
+    if (templateName) {
+      localStorage.setItem("aiProvider_agentforce_apexPromptTemplateName", templateName);
+    } else {
+      localStorage.removeItem("aiProvider_agentforce_apexPromptTemplateName");
+    }
+  }
+
   async onImportPromptTemplate() {
     this.setState({importingTemplate: true, importError: null});
     this.model.didUpdate();
 
     try {
-      // Load the existing ZIP file from addon folder
+      // Build the deployable Metadata API package on the fly from the source files in addon/packages/,
+      // rather than shipping a pre-built .zip (browser extension stores reject a zip containing a nested zip).
       let currentBrowser;
       if (typeof browser === "undefined") {
         currentBrowser = chrome;
@@ -894,24 +908,25 @@ class AIProviderOption extends React.Component {
         currentBrowser = browser;
       }
 
-      const zipUrl = currentBrowser.runtime.getURL("genAiPromptTemplates.zip");
+      const promptTemplateFiles = ["GenerateSOQL", "AnalyzeFlow", "GenerateApex"];
+      const packageXmlContent = await (await fetch(currentBrowser.runtime.getURL("packages/package.xml"))).text();
+      const templateContents = await Promise.all(promptTemplateFiles.map(async name => {
+        const path = `packages/force-app/main/default/genAiPromptTemplates/${name}.genAiPromptTemplate-meta.xml`;
+        const response = await fetch(currentBrowser.runtime.getURL(path));
+        if (!response.ok) {
+          throw new Error(`Failed to load ${name} prompt template: ${response.statusText}`);
+        }
+        return response.text();
+      }));
 
-      // Fetch the ZIP file and convert to base64
-      const response = await fetch(zipUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to load ZIP file: ${response.statusText}`);
-      }
-
-      const zipBlob = await response.blob();
-      const zipBase64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = reader.result.split(",")[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(zipBlob);
-      });
+      const zipBytes = createZip([
+        {name: "package.xml", content: packageXmlContent},
+        ...promptTemplateFiles.map((name, i) => ({
+          name: `genAiPromptTemplates/${name}.genAiPromptTemplate-meta.xml`,
+          content: templateContents[i]
+        }))
+      ]);
+      const zipBase64 = uint8ArrayToBase64(zipBytes);
 
       // Use Metadata API to deploy the prompt template
       const metadataApi = sfConn.wsdl(apiVersion, "Metadata");
@@ -954,15 +969,17 @@ class AIProviderOption extends React.Component {
 
         if (statusResult && statusResult.done === "true") {
           if (statusResult.status === "Succeeded") {
-            // Successfully deployed - configure both templates
+            // Successfully deployed - configure all templates
             this.setState({
               agentForceTemplate: "GenerateSOQL",
-              agentForceFlowTemplate: "AnalyzeFlow"
+              agentForceFlowTemplate: "AnalyzeFlow",
+              agentForceApexTemplate: "GenerateApex"
             });
             localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
             localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", "AnalyzeFlow");
+            localStorage.setItem("aiProvider_agentforce_apexPromptTemplateName", "GenerateApex");
             this.model.didUpdate();
-            alert("Prompt templates 'GenerateSOQL' and 'AnalyzeFlow' have been successfully imported and configured!");
+            alert("Prompt templates 'GenerateSOQL', 'AnalyzeFlow' and 'GenerateApex' have been successfully imported and configured!");
           } else {
             // Check if component already exists
             const details = statusResult.details || {};
@@ -975,12 +992,14 @@ class AIProviderOption extends React.Component {
               // Templates already exist, just fill the names
               this.setState({
                 agentForceTemplate: "GenerateSOQL",
-                agentForceFlowTemplate: "AnalyzeFlow"
+                agentForceFlowTemplate: "AnalyzeFlow",
+                agentForceApexTemplate: "GenerateApex"
               });
               localStorage.setItem("aiProvider_agentforce_promptTemplateName", "GenerateSOQL");
               localStorage.setItem("aiProvider_agentforce_flowPromptTemplateName", "AnalyzeFlow");
+              localStorage.setItem("aiProvider_agentforce_apexPromptTemplateName", "GenerateApex");
               this.model.didUpdate();
-              alert("Prompt templates 'GenerateSOQL' and 'AnalyzeFlow' already exist. They have been configured.");
+              alert("Prompt templates 'GenerateSOQL', 'AnalyzeFlow' and 'GenerateApex' already exist. They have been configured.");
             } else {
               throw new Error(statusResult.statusMessage || "Deployment failed");
             }
@@ -1006,9 +1025,9 @@ class AIProviderOption extends React.Component {
   render() {
     return h("div", {className: "slds-grid slds-grid_vertical slds-border_bottom slds-p-horizontal_small slds-p-vertical_xx-small"},
       h("div", {className: "slds-col slds-size_12-of-12 slds-m-bottom_small"},
-        h("h3", {className: "slds-text-title_bold"}, "Integration with AI (SOQL Generation)"),
+        h("h3", {className: "slds-text-title_bold"}, "Integration with AI (SOQL & Apex Generation)"),
         h("p", {className: "slds-text-body_small slds-m-top_x-small"},
-          "Configure your API keys to generate SOQL queries with AI. ",
+          "Configure your API keys to generate SOQL queries and Apex scripts with AI. ",
           h("a", {href: "https://platform.openai.com/api-keys", target: "_blank"}, "OpenAI"),
           " | ",
           h("a", {href: "https://console.mistral.ai/api-keys/", target: "_blank"}, "Mistral"),
@@ -1105,6 +1124,20 @@ class AIProviderOption extends React.Component {
             placeholder: "Prompt template name",
             value: cleanInputValue(this.state.agentForceFlowTemplate),
             onChange: this.onChangeAgentForceFlowTemplate
+          })
+        )
+      ),
+      h("div", {className: "slds-col slds-grid slds-wrap slds-border_bottom slds-p-vertical_xx-small"},
+        h("div", {className: "slds-col slds-size_4-of-12 text-align-middle"},
+          h("span", {}, "AgentForce Apex Generation Prompt Template Name")
+        ),
+        h("div", {className: "slds-col slds-size_8-of-12 slds-form-element"},
+          h("input", {
+            type: "text",
+            className: "slds-input",
+            placeholder: "Prompt template name",
+            value: cleanInputValue(this.state.agentForceApexTemplate),
+            onChange: this.onChangeAgentForceApexTemplate
           })
         )
       ),

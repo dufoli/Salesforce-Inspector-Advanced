@@ -2,6 +2,7 @@
 
 ## Version 1.41
 
+- Apex runner: add AI-generated Apex scripts, same as the existing SOQL generation in Data Export. Type `@` in the prompt to reference an Apex class or a Salesforce object by name, and the AI gets that class's source or that object's fields as context. Adds a "GenerateApex" prompt template for the AgentForce provider
 - Metadata retrieve: reworked into a tabbed layout with a new search tool to find metadata by who last modified it, by date, by name or by type, so you can select exactly what you need. You can still download the metadata or a package.xml for the sf CLI  [issue 324](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/324)
 - Metadata retrieve: show a warning instead of failing the whole load when Translations are disabled on the org
 - Apex runner: replace the native "Resume polling?" confirm dialog with an in-app popup, so resuming log polling works even when the apex runner tab isn't the active/focused tab

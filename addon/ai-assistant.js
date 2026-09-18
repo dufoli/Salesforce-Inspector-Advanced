@@ -584,6 +584,145 @@ Instructions:
   }
 
   /**
+   * Generates an anonymous Apex script based on a natural language description
+   * @param {string} description - Natural language description of what the user wants
+   * @param {string} provider - AI provider: 'openai', 'mistral', 'anthropic', 'agentforce'
+   * @param {string} apiKey - Provider API key (not required for agentforce)
+   * @param {Object} context - Additional context (mentionedClasses, mentionedObjects, currentScript, promptTemplateName, etc.)
+   * @returns {Promise<string>} - The generated Apex script
+   */
+  async generateApex(description, provider, apiKey, context = {}) {
+    if (!this.providers[provider]) {
+      throw new Error(`Unrecognized AI provider: ${provider}`);
+    }
+
+    if (provider !== "agentforce") {
+      if (!apiKey || apiKey.trim() === "") {
+        throw new Error("API key not configured. Please configure your API key in the options.");
+      }
+    } else if (!context.promptTemplateName || context.promptTemplateName.trim() === "") {
+      throw new Error("Prompt template name not configured. Please configure it in the options.");
+    }
+
+    const providerConfig = this.providers[provider];
+    const prompt = this.buildApexGenPrompt(description, context);
+
+    try {
+      const apexGenContext = {
+        systemMessage: "You are a Salesforce Apex expert. You generate only valid, compilable anonymous Apex scripts, without explanation.",
+        maxTokens: 1000
+      };
+
+      if (provider === "agentforce") {
+        return await this.callAgentForceApexGenAPI(context.promptTemplateName, description, context);
+      } else if (provider === "openai" || provider === "mistral") {
+        return this.cleanApexCodeFences(await this.callOpenAICompatibleAPI(providerConfig, apiKey, prompt, apexGenContext));
+      } else if (provider === "anthropic") {
+        return this.cleanApexCodeFences(await this.callAnthropicAPI(providerConfig, apiKey, prompt, apexGenContext));
+      }
+      throw new Error(`Unsupported AI provider: ${provider}`);
+    } catch (error) {
+      console.error("Error generating Apex script:", error);
+      throw new Error(`Generation error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Builds the prompt for Apex generation
+   */
+  buildApexGenPrompt(description, context) {
+    let prompt = `You are a Salesforce Apex expert. Generate a valid anonymous Apex script based on the following description.
+
+Description: ${description}
+
+Instructions:
+- Generate ONLY the Apex code, without explanation, without comments, without markdown code
+- Use standard Salesforce Apex syntax, suitable for execution as anonymous Apex
+- Make sure the code is syntactically correct and compilable
+- If specific classes or objects are mentioned, use them exactly as referenced below
+`;
+
+    if (context.mentionedClasses && context.mentionedClasses.length > 0) {
+      prompt += "\n\nReferenced Apex Classes:\n";
+      context.mentionedClasses.forEach(cls => {
+        prompt += `\nClass: ${cls.name}\n${cls.body}\n`;
+      });
+    }
+
+    if (context.mentionedObjects && context.mentionedObjects.length > 0) {
+      prompt += "\n\nReferenced Salesforce Objects and Fields:\n";
+      context.mentionedObjects.forEach(obj => {
+        prompt += `\nObject: ${obj.name} (${obj.label})\nFields:\n`;
+        obj.fields.forEach(field => {
+          prompt += `  - ${field.name} (${field.label}) - Type: ${field.type}\n`;
+        });
+      });
+    }
+
+    if (context.currentScript) {
+      prompt += `\nCurrent script (you can improve or modify it):\n${context.currentScript}\n`;
+    }
+
+    prompt += "\nRespond ONLY with the Apex code, nothing else.";
+
+    return prompt;
+  }
+
+  /**
+   * Removes leftover markdown code-fence artifacts (e.g. a lone "apex"/"java" language tag left
+   * on its own line) that the generic ``` stripping in callOpenAICompatibleAPI/callAnthropicAPI
+   * doesn't account for, since it was only written to handle ```soql/```sql fences.
+   */
+  cleanApexCodeFences(code) {
+    if (!code) {
+      return code;
+    }
+    return code.trim().replace(/^(apex|java)\s*\n/i, "").trim();
+  }
+
+  /**
+   * Calls the AgentForce (Salesforce Einstein) API for Apex generation
+   * @param {string} promptTemplateName - Name of the prompt template
+   * @param {string} description - Natural language description
+   * @param {Object} context - Additional context
+   * @returns {Promise<string>} - The generated Apex script
+   */
+  async callAgentForceApexGenAPI(promptTemplateName, description, context) {
+    const params = {description};
+
+    if (context.mentionedClasses && context.mentionedClasses.length > 0) {
+      params.mentionedClasses = JSON.stringify(context.mentionedClasses);
+    }
+    if (context.mentionedObjects && context.mentionedObjects.length > 0) {
+      params.mentionedObjects = JSON.stringify(context.mentionedObjects);
+    }
+    if (context.currentScript) {
+      params.currentScript = context.currentScript;
+    }
+
+    const response = await this.callAgentForce(params, promptTemplateName);
+
+    let apexCode = "";
+    if (response.outputParams && response.outputParams.valueMap) {
+      apexCode = response.outputParams.valueMap.apexCode || response.outputParams.valueMap.result || "";
+    } else if (response.result) {
+      apexCode = response.result;
+    } else if (typeof response === "string") {
+      apexCode = response;
+    } else {
+      apexCode = response.apexCode || response.script || JSON.stringify(response);
+    }
+
+    apexCode = this.cleanApexCodeFences(apexCode.replace(/```apex\n?/gi, "").replace(/```java\n?/gi, "").replace(/```\n?/g, "").trim());
+
+    if (!apexCode) {
+      throw new Error("No Apex script generated by AgentForce");
+    }
+
+    return apexCode;
+  }
+
+  /**
    * Validates that an API key is configured for a provider
    */
   isConfigured(provider) {

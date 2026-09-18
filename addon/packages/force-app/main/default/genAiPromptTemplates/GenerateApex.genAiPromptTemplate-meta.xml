@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiPromptTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+    <activeVersionIdentifier>SalesforceInspectorAdvancedGenerateApex_1</activeVersionIdentifier>
+    <description>Prompt used to generate an anonymous Apex script based on a description.</description>
+    <developerName>GenerateApex</developerName>
+    <masterLabel>Generate Apex</masterLabel>
+    <templateVersions>
+        <content>You are a Salesforce Apex expert. Generate a valid anonymous Apex script based on the following description.
+
+Description: {!$Input:Description}
+
+Referenced Apex classes (name and source, if any):
+{!$Input:MentionedClasses}
+
+Referenced Salesforce objects and fields (if any):
+{!$Input:MentionedObjects}
+
+Current script, to improve or modify if relevant:
+{!$Input:CurrentScript}
+
+Instructions:
+- Generate ONLY the Apex code, without explanation, without comments, without markdown code
+- Use standard Salesforce Apex syntax, suitable for execution as anonymous Apex
+- Make sure the code is syntactically correct and compilable
+- If specific classes or objects are referenced above, use them exactly</content>
+        <inputs>
+            <apiName>Description</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>Description</masterLabel>
+            <referenceName>Input:Description</referenceName>
+            <required>true</required>
+        </inputs>
+        <inputs>
+            <apiName>MentionedClasses</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>MentionedClasses</masterLabel>
+            <referenceName>Input:MentionedClasses</referenceName>
+            <required>false</required>
+        </inputs>
+        <inputs>
+            <apiName>MentionedObjects</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>MentionedObjects</masterLabel>
+            <referenceName>Input:MentionedObjects</referenceName>
+            <required>false</required>
+        </inputs>
+        <inputs>
+            <apiName>CurrentScript</apiName>
+            <definition>primitive://String</definition>
+            <masterLabel>CurrentScript</masterLabel>
+            <referenceName>Input:CurrentScript</referenceName>
+            <required>false</required>
+        </inputs>
+        <primaryModel>sfdc_ai__DefaultOpenAIGPT4</primaryModel>
+        <status>Published</status>
+        <versionIdentifier>SalesforceInspectorAdvancedGenerateApex_1</versionIdentifier>
+    </templateVersions>
+    <type>einstein_gpt__flex</type>
+    <visibility>Global</visibility>
+</GenAiPromptTemplate>

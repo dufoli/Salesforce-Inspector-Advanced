@@ -5,6 +5,7 @@ import {Enumerable, DescribeInfo} from "./data-load.js";
 import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
+import {AIAssistant} from "./ai-assistant.js";
 
 class Model {
   constructor({sfHost, args}) {
@@ -82,6 +83,9 @@ class Model {
     this.jobs = null;
     this.tests = null;
     this.coverages = null;
+    this.aiAssistant = new AIAssistant();
+    this.aiGenerating = false;
+    this.aiError = null;
     function compare(a, b) {
       return ((a.script == b.script && (!b.name || a.name == b.name)) || a.script == b.name + ":" + b.script);
     }
@@ -1271,6 +1275,123 @@ class Model {
       this.scriptHistory.add(newHistory);
     }
   }
+
+  /**
+   * Returns Apex class / SObject suggestions for the "@" mention autocomplete in the AI prompt box.
+   */
+  getMentionSuggestions(searchTerm) {
+    let {globalDescribe, globalStatus} = this.describeInfo.describeGlobal(false);
+    return new Enumerable(this.apexClasses.records)
+      .filter(c => !c.NamespacePrefix && c.Name.toLowerCase().includes(searchTerm.toLowerCase()))
+      .map(c => ({value: c.Name, title: c.Name, rank: 4, autocompleteType: "class"}))
+      .concat(
+        new Enumerable(globalStatus == "ready" ? globalDescribe.sobjects : [])
+          .filter(o => o.name.toLowerCase().includes(searchTerm.toLowerCase()))
+          .map(o => ({value: o.name, title: o.label && o.label != o.name ? `${o.name} (${o.label})` : o.name, rank: 6, autocompleteType: "object"}))
+      )
+      .toArray()
+      .sort(this.resultsSort(searchTerm))
+      .slice(0, 20);
+  }
+
+  /**
+   * Fetches the source body of the Apex classes referenced with "@" in the AI prompt, to give the AI real context.
+   */
+  async getApexClassBodies(classNames) {
+    if (!classNames || classNames.length === 0) {
+      return [];
+    }
+    try {
+      let query = "SELECT Id, Name, NamespacePrefix, Body FROM ApexClass WHERE Name in (" + classNames.map(c => "'" + c.replace(/'/g, "\\'") + "'").join(",") + ")";
+      let result = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query), {});
+      return (result.records || []).map(r => ({name: r.Name, body: r.Body}));
+    } catch (error) {
+      console.warn("Error fetching Apex class bodies for AI context:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Fetches field describe info for the SObjects referenced with "@" in the AI prompt, to give the AI real context.
+   */
+  async getObjectFieldsForContext(objectNames) {
+    const objectsWithFields = [];
+    for (const objectName of objectNames) {
+      try {
+        let describe = await this.describeInfo.describeSobjectPromise(false, objectName);
+        objectsWithFields.push({
+          name: objectName,
+          label: describe.label || objectName,
+          fields: describe.fields.slice(0, 100).map(f => ({name: f.name, label: f.label, type: f.type}))
+        });
+      } catch (error) {
+        console.warn(`Error getting fields for ${objectName}:`, error);
+      }
+    }
+    return objectsWithFields;
+  }
+
+  async generateApexWithAI(description, mentions = []) {
+    if (!description || description.trim() === "") {
+      this.aiError = "Please enter a description of the desired Apex script.";
+      this.didUpdate();
+      return;
+    }
+
+    const selectedProvider = localStorage.getItem("aiProvider_selected") || "openai";
+    const apiKey = selectedProvider === "agentforce" ? null : localStorage.getItem(`aiProvider_${selectedProvider}_apiKey`);
+    const promptTemplateName = selectedProvider === "agentforce" ? localStorage.getItem("aiProvider_agentforce_apexPromptTemplateName") : null;
+
+    if (selectedProvider === "agentforce") {
+      if (!promptTemplateName || promptTemplateName.trim() === "") {
+        this.aiError = "Prompt template name not configured for AgentForce. Please configure it in the options.";
+        this.didUpdate();
+        return;
+      }
+    } else if (!apiKey || apiKey.trim() === "") {
+      this.aiError = `API key not configured for ${this.aiAssistant.providers[selectedProvider]?.name || selectedProvider}. Please configure it in the options.`;
+      this.didUpdate();
+      return;
+    }
+
+    this.aiGenerating = true;
+    this.aiError = null;
+    this.didUpdate();
+
+    try {
+      let {globalDescribe, globalStatus} = this.describeInfo.describeGlobal(false);
+      let mentionedClassNames = mentions.filter(name => this.apexClasses.records.some(c => !c.NamespacePrefix && c.Name == name));
+      let mentionedObjectNames = mentions.filter(name => globalStatus == "ready" && globalDescribe.sobjects.some(o => o.name == name));
+
+      const [mentionedClasses, mentionedObjects] = await Promise.all([
+        this.getApexClassBodies(mentionedClassNames),
+        this.getObjectFieldsForContext(mentionedObjectNames)
+      ]);
+
+      const context = {
+        mentionedClasses,
+        mentionedObjects,
+        currentScript: this.editor ? this.editor.value : null,
+        promptTemplateName
+      };
+
+      const apexCode = await this.aiAssistant.generateApex(description, selectedProvider, apiKey, context);
+
+      if (this.editor) {
+        this.editor.value = apexCode;
+        this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+        this.editorAutocompleteHandler();
+      }
+
+      this.aiError = null;
+    } catch (error) {
+      console.error("Error generating Apex script:", error);
+      this.aiError = error.message || "Error generating Apex script.";
+    } finally {
+      this.aiGenerating = false;
+      this.didUpdate();
+    }
+  }
 }
 
 let h = React.createElement;
@@ -1303,8 +1424,23 @@ class App extends React.Component {
     this.onLoopContinueOnErrorChange = this.onLoopContinueOnErrorChange.bind(this);
     this.onConfirmPopupYesClick = this.onConfirmPopupYesClick.bind(this);
     this.onConfirmPopupNoClick = this.onConfirmPopupNoClick.bind(this);
+    this.onGenerateWithAI = this.onGenerateWithAI.bind(this);
+    this.onAIDescriptionChange = this.onAIDescriptionChange.bind(this);
+    this.onAIDescriptionKeyDown = this.onAIDescriptionKeyDown.bind(this);
+    this.onCloseAIModal = this.onCloseAIModal.bind(this);
+    this.onSelectMention = this.onSelectMention.bind(this);
+    this.onAITextareaRef = this.onAITextareaRef.bind(this);
+    this.handleAIGenerate = this.handleAIGenerate.bind(this);
+    this.aiTextareaRef = null;
     this.state = {
-      selectedTabId: 1
+      selectedTabId: 1,
+      showAIModal: false,
+      aiDescription: "",
+      showMentionSuggestions: false,
+      mentionSuggestions: [],
+      mentionActiveIndex: 0,
+      mentionStart: -1,
+      mentionQuery: ""
     };
   }
   onTabSelect(e) {
@@ -1517,6 +1653,95 @@ class App extends React.Component {
     model.openLogOnExecute = e.target.checked;
     model.didUpdate();
   }
+  onGenerateWithAI() {
+    let {model} = this.props;
+    model.aiError = null;
+    this.setState({showAIModal: true, aiDescription: "", showMentionSuggestions: false, mentionSuggestions: []});
+  }
+  onAITextareaRef(el) {
+    this.aiTextareaRef = el;
+  }
+  onAIDescriptionChange(e) {
+    let {model} = this.props;
+    let value = e.target.value;
+    let cursor = e.target.selectionStart;
+    let mentionMatch = value.substring(0, cursor).match(/@([a-zA-Z0-9_]*)$/);
+    if (mentionMatch) {
+      let searchTerm = mentionMatch[1];
+      this.setState({
+        aiDescription: value,
+        mentionStart: cursor - mentionMatch[0].length,
+        mentionQuery: searchTerm,
+        mentionSuggestions: model.getMentionSuggestions(searchTerm),
+        showMentionSuggestions: true,
+        mentionActiveIndex: 0
+      });
+    } else {
+      this.setState({aiDescription: value, showMentionSuggestions: false, mentionSuggestions: []});
+    }
+  }
+  onSelectMention(item) {
+    let {mentionStart, mentionQuery, aiDescription} = this.state;
+    let before = aiDescription.substring(0, mentionStart);
+    let after = aiDescription.substring(mentionStart + 1 + mentionQuery.length);
+    let inserted = "@" + item.value + " ";
+    let newValue = before + inserted + after;
+    let newCursor = before.length + inserted.length;
+    this.setState({aiDescription: newValue, showMentionSuggestions: false, mentionSuggestions: [], mentionQuery: ""});
+    if (this.aiTextareaRef) {
+      this.aiTextareaRef.focus();
+      // setSelectionRange must run after React applies the new value to the textarea.
+      setTimeout(() => {
+        if (this.aiTextareaRef) {
+          this.aiTextareaRef.setSelectionRange(newCursor, newCursor);
+        }
+      }, 0);
+    }
+  }
+  onAIDescriptionKeyDown(e) {
+    if (this.state.showMentionSuggestions && this.state.mentionSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.setState({mentionActiveIndex: (this.state.mentionActiveIndex + 1) % this.state.mentionSuggestions.length});
+        return;
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.setState({mentionActiveIndex: (this.state.mentionActiveIndex - 1 + this.state.mentionSuggestions.length) % this.state.mentionSuggestions.length});
+        return;
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        this.onSelectMention(this.state.mentionSuggestions[this.state.mentionActiveIndex]);
+        return;
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.setState({showMentionSuggestions: false, mentionSuggestions: []});
+        return;
+      }
+    }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      this.handleAIGenerate();
+    } else if (e.key === "Escape") {
+      this.onCloseAIModal();
+    }
+  }
+  onCloseAIModal() {
+    this.setState({showAIModal: false, aiDescription: "", showMentionSuggestions: false, mentionSuggestions: []});
+    let {model} = this.props;
+    model.aiError = null;
+    model.didUpdate();
+  }
+  async handleAIGenerate() {
+    let {model} = this.props;
+    if (!this.state.aiDescription || this.state.aiDescription.trim() === "") {
+      return;
+    }
+    let mentions = Array.from(new Set(Array.from(this.state.aiDescription.matchAll(/@([a-zA-Z0-9_]+)/g)).map(m => m[1])));
+    await model.generateApexWithAI(this.state.aiDescription, mentions);
+    if (!model.aiError) {
+      this.setState({showAIModal: false, aiDescription: ""});
+    }
+  }
   componentDidMount() {
     let {model} = this.props;
     model.autocompleteResultBox = this.refs.autocompleteResultBox;
@@ -1620,6 +1845,7 @@ class App extends React.Component {
               ),
               h("button", {tabIndex: 1, onClick: this.onExecute, title: "Ctrl+Enter / F5", className: "highlighted"}, "Run Execute"),
               h("button", {tabIndex: 2, onClick: this.onCopyScript, title: "Copy script url", className: "copy-id"}, "Export Script"),
+              h("button", {tabIndex: 3, onClick: this.onGenerateWithAI, title: "Generate Apex Script with AI", className: "ai-generate-btn"}, "🤖 Generate with AI"),
               h("button", {className: "variable-btn " + (model.showLoopParameter ? "toggle expand" : "toggle contract"), id: "variable-btn", title: "Loop parameter", onClick: this.onToggleLoopParameter},
                 h("div", {className: "icon"}),
                 h("div", {className: "button-toggle-icon"})
@@ -1712,6 +1938,58 @@ class App extends React.Component {
               h("button", {onClick: this.onConfirmPopupYesClick}, "OK"),
               h("button", {onClick: this.onConfirmPopupNoClick, className: "cancel-btn"}, "Cancel")
             )
+          )
+        )
+      ) : null,
+      this.state.showAIModal ? h("div", {className: "ai-modal-overlay", onClick: this.onCloseAIModal},
+        h("div", {className: "ai-modal area", onClick: e => e.stopPropagation()},
+          h("div", {className: "ai-modal-header"},
+            h("h2", {}, "Generate Apex Script with AI"),
+            h("button", {className: "ai-modal-close", onClick: this.onCloseAIModal, title: "Close"}, "×")
+          ),
+          h("div", {className: "ai-modal-body"},
+            h("p", {className: "ai-modal-description"},
+              "Describe in natural language the Apex script you want. Type ", h("code", {}, "@"), " to reference an Apex class or a Salesforce object as context. For example: ",
+              h("em", {}, "\"Update the Status field to Active on all @Account records with no @MyBatchClass running\"")
+            ),
+            h("div", {className: "ai-mention-wrapper"},
+              h("textarea", {
+                ref: this.onAITextareaRef,
+                className: "ai-modal-input slds-textarea",
+                placeholder: "Ex: Query all @Account with @MyApexClass logic applied and debug the result",
+                value: this.state.aiDescription,
+                onChange: this.onAIDescriptionChange,
+                onKeyDown: this.onAIDescriptionKeyDown,
+                rows: 6,
+                autoFocus: true
+              }),
+              this.state.showMentionSuggestions && this.state.mentionSuggestions.length > 0 ? h("div", {className: "ai-mention-results"},
+                this.state.mentionSuggestions.map((r, ri) =>
+                  h("div", {className: "autocomplete-result" + (ri == this.state.mentionActiveIndex ? " active" : ""), key: r.value},
+                    h("a", {
+                      tabIndex: 0,
+                      title: r.title,
+                      onMouseDown: e => { e.preventDefault(); this.onSelectMention(r); },
+                      href: "#",
+                      className: r.autocompleteType
+                    }, h("div", {className: "autocomplete-icon"}), r.title)
+                  )
+                )
+              ) : null
+            ),
+            model.aiError ? h("div", {className: "ai-modal-error conf-error"}, model.aiError) : null,
+            h("div", {className: "ai-modal-footer"},
+              h("button", {
+                className: "ai-modal-cancel cancel-btn",
+                onClick: this.onCloseAIModal
+              }, "Cancel"),
+              h("button", {
+                className: "highlighted",
+                disabled: !this.state.aiDescription.trim() || model.aiGenerating,
+                onClick: () => this.handleAIGenerate()
+              }, model.aiGenerating ? "Generating..." : "Generate")
+            ),
+            h("p", {className: "ai-modal-hint"}, "Tip: Press Ctrl+Enter to generate quickly")
           )
         )
       ) : null

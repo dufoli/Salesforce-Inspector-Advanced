@@ -26,7 +26,7 @@ fs.copySync("addon", target, {
       && !file.endsWith("-test.js") // Skip individual tests
       && !file.includes("addon/testing/") // Skip the testing folder
       // Skip files in .gitignore
-      && (!file.endsWith(".zip") || file === "addon/genAiPromptTemplates.zip")
+      && !file.endsWith(".zip")
       && !file.endsWith(".xpi")
       // Skip the manifest source file
       && file != "addon/manifest-template.json"

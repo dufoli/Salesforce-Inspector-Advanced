@@ -134,11 +134,12 @@ By the way, Data import date format can be customized too.
 
 ## AI Assistant
 
-Configure an AI provider from Options > API tab, "Integration with AI (SOQL Generation)": pick a **Default AI Provider** (OpenAI/ChatGPT, Mistral AI, Anthropic/Claude, or AgentForce/Salesforce Einstein) and enter that provider's API key (get one from the linked OpenAI/Mistral/Claude console pages). For AgentForce, Prompt Builder must be enabled in Setup; the option panel can auto-import and configure the two required prompt templates ("GenerateSOQL" and "AnalyzeFlow") for you, or you can point it at your own template names.
+Configure an AI provider from Options > API tab, "Integration with AI (SOQL & Apex Generation)": pick a **Default AI Provider** (OpenAI/ChatGPT, Mistral AI, Anthropic/Claude, or AgentForce/Salesforce Einstein) and enter that provider's API key (get one from the linked OpenAI/Mistral/Claude console pages). For AgentForce, Prompt Builder must be enabled in Setup; the option panel can auto-import and configure the three required prompt templates ("GenerateSOQL", "AnalyzeFlow" and "GenerateApex") for you, or you can point it at your own template names.
 
 Once configured, AI is available from:
 
 - Data Export: click **🤖 Generate with AI** next to the query editor to generate a SOQL query from a natural-language description.
+- Apex Runner: click **🤖 Generate with AI** next to the script editor to generate an anonymous Apex script from a natural-language description. Type `@` in the prompt to search and insert an Apex class or a Salesforce object by name; the AI is given that class's source (or that object's fields) as context so the generated script references it correctly.
 - Flow Builder (via the popup, on a flow page): click **Describe Flow with AI** to get a plain-language description of the open flow.
 
 ## Batch/list query parameters, Bulk API and query tools

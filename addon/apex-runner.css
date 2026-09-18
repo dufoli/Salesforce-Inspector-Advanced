@@ -32,3 +32,19 @@
 .dialog-buttons {
   text-align: center;
 }
+.ai-mention-wrapper {
+  position: relative;
+}
+.ai-mention-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 1;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #DDDBDA;
+  border-top: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
