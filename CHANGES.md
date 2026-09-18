@@ -16,6 +16,7 @@
 - fix: revert default API version back to 67 (68 was rolled back) for [issue 323](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/323) [issue 322](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/322)
 - write a lot of documentation on tools : streaming, org analyzer, flow analyzer, dependency, formula helper, metadata...
 - write doc about main improvement : sort and filter on export, popup search filter, clone user, login incognito, reset password, bulk api support.
+- Popup: fix context not refreshed when switching between object list view 
 
 ## Version 1.40
 
