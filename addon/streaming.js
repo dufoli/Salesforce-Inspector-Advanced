@@ -2,6 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 /* global initButton */
 import {ScrollTable, TableModel} from "./record-table.js";
+import {FlameChartComponent} from "./flamechart/wrappers/react/flame-chart-component.js";
 
 function RecordTable(vm) {
   function cellToString(cell) {
@@ -438,6 +439,12 @@ class StreamingTabSelector extends React.Component {
         tabTitle: "Tab4",
         title: "Create",
         content: Register
+      },
+      {
+        id: 5,
+        tabTitle: "Tab5",
+        title: "Graphic",
+        content: Graphic
       }
     ];
     this.onTabSelect = this.onTabSelect.bind(this);
@@ -530,6 +537,76 @@ class Monitor extends React.Component {
       ),
       h("textarea", {className: "result-text", readOnly: true, value: model.executeError || "", hidden: model.executeError == null}),
       h(ScrollTable, {model: model.tableModel})
+    );
+  }
+}
+class Graphic extends React.Component {
+  constructor(props) {
+    super(props);
+    this.model = props.model;
+    this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
+    this.onStartDateInput = this.onStartDateInput.bind(this);
+    this.onEndDateInput = this.onEndDateInput.bind(this);
+    this.onSelect = this.onSelect.bind(this);
+  }
+  onResultsFilterInput(e) {
+    let {model} = this.props;
+    model.setResultsFilter(e.target.value);
+    model.didUpdate();
+  }
+  onStartDateInput(e) {
+    let {model} = this.props;
+    model.setStartDate(e.target.value);
+    model.didUpdate();
+  }
+  onEndDateInput(e) {
+    let {model} = this.props;
+    model.setEndDate(e.target.value);
+    model.didUpdate();
+  }
+  onSelect({node}) {
+    console.log("Graphic tab: selected event", node.source);
+  }
+  toLeafNode(record) {
+    let createdDate = record?.data?.event?.createdDate || (new Date()).toISOString();
+    return {
+      name: record.channel || ((record?.event?.EventApiName) + "-" + (record?.data?.event?.replayId || record?.event?.replayId)),
+      start: new Date(createdDate).getTime(), // engine expects numeric ms, not an ISO string
+      duration: 10,
+      type: "event",
+      children: null
+    };
+  }
+  buildRootNode(leaves) {
+    if (leaves.length === 0) {
+      let now = Date.now();
+      return {name: "Events", start: now, duration: 1, type: "root", children: []};
+    }
+    let minStart = leaves[0].start;
+    let maxEnd = leaves[0].start + leaves[0].duration;
+    for (let i = 1; i < leaves.length; i++) {
+      if (leaves[i].start < minStart) { minStart = leaves[i].start; }
+      let end = leaves[i].start + leaves[i].duration;
+      if (end > maxEnd) { maxEnd = end; }
+    }
+    return {name: "Events", start: minStart, duration: Math.max(maxEnd - minStart, 1), type: "root", children: leaves};
+  }
+  render() {
+    let {model} = this.props;
+    let leaves = model.events.records.map(r => this.toLeafNode(r));
+    let data = [this.buildRootNode(leaves)];
+    let settings = {hotkeys: {active: true, scrollSpeed: 0.5, zoomSpeed: 0.001, fastMultiplayer: 5}, options: {timeUnits: "ms"}};
+    let colors = {event: "#4bc0c8", root: "#e9bd87"};
+    return h("div", {className: "area", id: "graphic-area", style: {height: "inherit"}},
+      h("div", {className: "result-bar"},
+        h("h1", {}, "Event Graphic"),
+        h("div", {className: "button-group"},
+          h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput}),
+          h("input", {type: "datetime-local", title: "Start date", value: model.startDate, onChange: this.onStartDateInput}),
+          h("input", {type: "datetime-local", title: "End date", value: model.endDate, onChange: this.onEndDateInput}),
+        ),
+      ),
+      h(FlameChartComponent, {data, settings, colors, onSelect: this.onSelect, className: "flameChart"})
     );
   }
 }

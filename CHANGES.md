@@ -7,6 +7,7 @@
 - Metadata retrieve: show a warning instead of failing the whole load when Translations are disabled on the org
 - Streaming: add "Real-Time event" as a Subscribe event type, listing entities with Real-Time Event Monitoring enabled (`RealTimeEvent` object) and subscribing to their `/event/<EntityName>` channel
 - Streaming: Monitor tab adds start/end date filters, restricting shown events to a `CreatedDate` range
+- Streaming: add a "Graphic" tab showing received events as a flame-graph timeline, reusing the flame-chart engine already used by the Apex log profiler
 - Apex runner: replace the native "Resume polling?" confirm dialog with an in-app popup, so resuming log polling works even when the apex runner tab isn't the active/focused tab
 - Org analyzer: fix the Process Builder rule's SOQL, which filtered on the wrong `ProcessType` and never matched any process, fix the record-triggered flow count, which relied on Flow tooling-API fields that don't hold that data; now resolved via `FlowDefinitionView`  [issue 328](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/328)
 - Org analyzer: shorten a few rule names that were too long to display properly

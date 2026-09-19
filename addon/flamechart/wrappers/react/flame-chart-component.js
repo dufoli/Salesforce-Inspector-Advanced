@@ -71,6 +71,19 @@ export class FlameChartComponent extends React.Component {
       }
     }
   }
+  componentDidUpdate(prevProps) {
+    if (!this.flameChart) {
+      return;
+    }
+    if (this.props.data && this.props.data !== prevProps.data) {
+      this.flameChart.setNodes(this.props.data);
+      this.flameChart.renderEngine.recalcChildrenLayout();
+      this.flameChart.render();
+    }
+    if (this.props.settings && this.props.settings !== prevProps.settings) {
+      this.flameChart.setSettings(this.props.settings);
+    }
+  }
   componentWillUnmount() {
     if (this.props.onSelect) {
       this.flameChart.removeListener("select", this.props.onSelect);
