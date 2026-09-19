@@ -90,7 +90,7 @@ Open it from the popup. Pick a metadata **Type**, then start typing in **Compone
 Open it from the popup ("Streaming" button). It has 4 tabs:
 
 - **Monitor**: shows every event received since the page opened. Filter results with the search box, narrow to one event type with the dropdown, and use the download icon to export captured events as CSV.
-- **Subscribe**: pick an event type (Platform Event, Generic Event, Change Data Capture, PushTopic, ...) and a topic/channel, then click **Subscribe**. Active subscriptions are listed below with a delete icon to unsubscribe.
+- **Subscribe**: pick an event type (Platform Event, Generic Event, Change Data Capture, PushTopic, Real-Time event, ...) and a topic/channel, then click **Subscribe**. Active subscriptions are listed below with a delete icon to unsubscribe. Real-Time event topics are fetched from the org's `RealTimeEvent` object, listing only entities with monitoring currently enabled.
 - **Publish**: pick a Platform Event or Generic Event channel, type a JSON payload and click **Publish**; the raw API response is shown below.
 - **Create**: register a new PlatformEventChannel, PlatformEventChannelMember or PushTopic (with its SOQL query and Create/Update/Undelete/Delete notification flags) without leaving the page.
 

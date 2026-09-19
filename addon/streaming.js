@@ -213,6 +213,12 @@ class Model {
         return [];
     }
   }
+  async getRealTimeEvents() {
+    let query = "SELECT Id, DurableId, EntityName, IsEnabled FROM RealTimeEvent"
+      + " WHERE IsEnabled = true";
+    let res = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query), {});
+    return res.records.map(c => ({label: c.EntityName, value: c.EntityName}));
+  }
   async publish(url, payload) {
     let res;
     res = await sfConn.rest(url, {method: "POST", body: payload});
@@ -512,6 +518,10 @@ class Subscribe extends React.Component {
       {
         label: "Generic event",
         value: "GenericEvent"
+      },
+      {
+        label: "Real-Time event",
+        value: "RealTimeEvent"
       }
     ];
     this.eventType = "";
@@ -565,6 +575,19 @@ class Subscribe extends React.Component {
           this.model.didUpdate();
         });
         break;
+      case "RealTimeEvent":
+        this.model.getRealTimeEvents().then(eventEntities => {
+          if (!eventEntities) {
+            return;
+          }
+          // /event/LoginEvent
+          this.topics = eventEntities;
+          if (eventEntities.length > 0){
+            this.selectedTopic = eventEntities[0].value;
+          }
+          this.model.didUpdate();
+        });
+        break;
       case "PlatformEventChannel":
       case "ChangeDataCaptureEventChannel":
         this.model.getChannels(this.eventType).then(eventChannels => {
@@ -602,6 +625,9 @@ class Subscribe extends React.Component {
         topic = "/data/";
         break;
       case "PlatformEvent":
+        topic = "/event/";
+        break;
+      case "RealTimeEvent":
         topic = "/event/";
         break;
       case "PlatformEventChannel":
