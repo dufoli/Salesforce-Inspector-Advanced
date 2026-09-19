@@ -6,6 +6,7 @@
 - Metadata retrieve: reworked into a tabbed layout with a new search tool to find metadata by who last modified it, by date, by name or by type, so you can select exactly what you need. You can still download the metadata or a package.xml for the sf CLI  [issue 324](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/324)
 - Metadata retrieve: show a warning instead of failing the whole load when Translations are disabled on the org
 - Streaming: add "Real-Time event" as a Subscribe event type, listing entities with Real-Time Event Monitoring enabled (`RealTimeEvent` object) and subscribing to their `/event/<EntityName>` channel
+- Streaming: Monitor tab adds start/end date filters, restricting shown events to a `CreatedDate` range
 - Apex runner: replace the native "Resume polling?" confirm dialog with an in-app popup, so resuming log polling works even when the apex runner tab isn't the active/focused tab
 - Org analyzer: fix the Process Builder rule's SOQL, which filtered on the wrong `ProcessType` and never matched any process, fix the record-triggered flow count, which relied on Flow tooling-API fields that don't hold that data; now resolved via `FlowDefinitionView`  [issue 328](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/328)
 - Org analyzer: shorten a few rule names that were too long to display properly

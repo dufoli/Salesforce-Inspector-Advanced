@@ -13,7 +13,21 @@ function RecordTable(vm) {
       return "" + cell;
     }
   }
-  let isVisible = (row, filter) => !filter || row.some(cell => cellToString(cell).toLowerCase().includes(filter.toLowerCase()));
+  let isVisible = (row, filter, startDate, endDate) => {
+    if (filter && !row.some(cell => cellToString(cell).toLowerCase().includes(filter.toLowerCase()))) {
+      return false;
+    }
+    if (startDate || endDate) {
+      let rowDate = new Date(row[2]);
+      if (startDate && rowDate < new Date(startDate)) {
+        return false;
+      }
+      if (endDate && rowDate > new Date(endDate)) {
+        return false;
+      }
+    }
+    return true;
+  };
   let rt = {
     records: [],
     table: [["Channel", "ReplayId", "CreatedDate", "Event type", "Payload"]],
@@ -31,19 +45,17 @@ function RecordTable(vm) {
       row[3] = record?.data?.event?.type || (record?.data?.event?.EventApiName) || (record?.event?.EventApiName);
       row[4] = JSON.stringify(record, null, "  ");
       rt.records.push(record);
-      let filter = vm.resultsFilter;
-      rt.rowVisibilities.push(isVisible(row, filter));
+      rt.rowVisibilities.push(isVisible(row, vm.resultsFilter, vm.startDate, vm.endDate));
       rt.table.push(row);
     },
     serialize: () => rt.getVisibleTable().map(row => row[4]).join("\r\n"),
     updateVisibility() {
-      let filter = vm.resultsFilter;
       for (let r = 1/* always show header */; r < rt.table.length; r++) {
-        rt.rowVisibilities[r] = isVisible(rt.table[r], filter);
+        rt.rowVisibilities[r] = isVisible(rt.table[r], vm.resultsFilter, vm.startDate, vm.endDate);
       }
     },
     getVisibleTable() {
-      if (vm.resultsFilter) {
+      if (vm.resultsFilter || vm.startDate || vm.endDate) {
         let filteredTable = [];
         for (let i = 0; i < rt.table.length; i++) {
           if (rt.rowVisibilities[i]) { filteredTable.push(rt.table[i]); }
@@ -67,6 +79,8 @@ class Model {
     this.errorMessages = [];
     this.args = args;
     this.resultsFilter = "";
+    this.startDate = "";
+    this.endDate = "";
     this.events = new RecordTable(this);
     this.isWorking = false;
     this.selectedEventType = "";
@@ -354,6 +368,22 @@ class Model {
     this.events.updateVisibility();
     this.updatedExportedData();
   }
+  setStartDate(value) {
+    this.startDate = value;
+    if (this.events == null) {
+      return;
+    }
+    this.events.updateVisibility();
+    this.updatedExportedData();
+  }
+  setEndDate(value) {
+    this.endDate = value;
+    if (this.events == null) {
+      return;
+    }
+    this.events.updateVisibility();
+    this.updatedExportedData();
+  }
   setEventType(value) {
     this.selectedEventType = value;
   }
@@ -448,12 +478,24 @@ class Monitor extends React.Component {
     super(props);
     this.model = props.model;
     this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
+    this.onStartDateInput = this.onStartDateInput.bind(this);
+    this.onEndDateInput = this.onEndDateInput.bind(this);
     this.onSelectType = this.onSelectType.bind(this);
     this.onDownloadCsv = this.onDownloadCsv.bind(this);
   }
   onResultsFilterInput(e) {
     let {model} = this.props;
     model.setResultsFilter(e.target.value);
+    model.didUpdate();
+  }
+  onStartDateInput(e) {
+    let {model} = this.props;
+    model.setStartDate(e.target.value);
+    model.didUpdate();
+  }
+  onEndDateInput(e) {
+    let {model} = this.props;
+    model.setEndDate(e.target.value);
     model.didUpdate();
   }
   onSelectType(e) {
@@ -482,6 +524,8 @@ class Monitor extends React.Component {
             )
           ),
           h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput}),
+          h("input", {type: "datetime-local", title: "Start date", value: model.startDate, onChange: this.onStartDateInput}),
+          h("input", {type: "datetime-local", title: "End date", value: model.endDate, onChange: this.onEndDateInput}),
         ),
       ),
       h("textarea", {className: "result-text", readOnly: true, value: model.executeError || "", hidden: model.executeError == null}),
