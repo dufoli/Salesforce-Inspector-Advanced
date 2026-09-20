@@ -91,11 +91,6 @@ class Model {
     this.pollId = 0;
     this.pollClientId = null;
     this.selectedTabId = 1;
-    this.events.addToTable({"event":{"EventApiName":"test1"}});
-    this.events.addToTable({"channel":"chan", "data":{"event":{"replayId":"1234", "createdDate":"2026-09-20T07:44:00"}}});
-    this.events.addToTable({"event":{"EventApiName":"test2"}, "data":{"event":{"replayId":"1234", "createdDate":"2026-09-20T07:48:00"}}});
-    this.events.addToTable({"event":{"EventApiName":"test3"}, "data":{"event":{"replayId":"1234", "createdDate":"2026-09-20T07:50:00"}}});
-    setTimeout(() => this.resultTableCallback(this.events), 1000);
     if (localStorage.getItem(sfHost + "_isSandbox") != "true") {
       //change background color for production
       document.body.classList.add("prod");
@@ -529,7 +524,7 @@ class Monitor extends React.Component {
     return h("div", {className: "area", id: "result-area"},
       h("div", {className: "result-bar"},
         h("h1", {}, "Export Result"),
-        h("div", {className: "button-group"},
+        h("div", {className: "slds-grid"},
           h("select", {value: model.selectedEventType, onChange: this.onSelectType, className: "query-history"},
             h("option", {value: "", disabled: true}, "Event Type"),
             Array.from(model.eventTypes).map(q => h("option", {key: q, value: q}, q))
@@ -539,9 +534,18 @@ class Monitor extends React.Component {
               h("use", {xlinkHref: "symbols.svg#download"})
             )
           ),
-          h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput}),
-          h("input", {type: "datetime-local", title: "Start date", value: model.startDate, onChange: this.onStartDateInput}),
-          h("input", {type: "datetime-local", title: "End date", value: model.endDate, onChange: this.onEndDateInput}),
+          h("div", {className: "slds-grid"},
+            h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right slds-m-right_x-small", role: "none"},
+              h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, className: "slds-input", onInput: this.onResultsFilterInput}),
+              h("span", {className: "slds-icon_container slds-icon-utility-search slds-input__icon slds-input__icon_right"},
+                h("svg", {className: "slds-icon slds-icon_x-small slds-icon-text-default", "aria-hidden": "true"},
+                  h("use", {xlinkHref: "symbols.svg#search"})
+                )
+              )
+            ),
+            h("input", {type: "datetime-local", title: "Start date", value: model.startDate, className: "slds-input slds-m-right_x-small",onChange: this.onStartDateInput}),
+            h("input", {type: "datetime-local", title: "End date", value: model.endDate, className: "slds-input slds-m-right_x-small",onChange: this.onEndDateInput}),
+          )
         ),
       ),
       h("textarea", {className: "result-text", readOnly: true, value: model.executeError || "", hidden: model.executeError == null}),
