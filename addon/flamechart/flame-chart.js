@@ -2,9 +2,10 @@ import { FlameChartContainer } from './flame-chart-container.js';
 import { TimeGridPlugin } from './plugins/time-grid-plugin.js';
 import { TimeframeSelectorPlugin } from './plugins/timeframe-selector-plugin.js';
 import { FlameChartPlugin } from './plugins/flame-chart-plugin.js';
+import { MarksPlugin } from './plugins/marks-plugin.js';
 const defaultSettings = {};
 export class FlameChart extends FlameChartContainer {
-    constructor({ canvas, data, colors, settings = defaultSettings, plugins = [], }) {
+    constructor({ canvas, data, marks, colors, settings = defaultSettings, plugins = [], }) {
         var _a;
         const activePlugins = [];
         const { headers: { flameChart: flameChartName = 'flame chart' } = {} } = settings;
@@ -13,6 +14,13 @@ export class FlameChart extends FlameChartContainer {
         activePlugins.push(timeGridPlugin);
         let timeframeSelectorPlugin;
         let flameChartPlugin;
+        let marksPlugin;
+        if (marks) {
+            marksPlugin = new MarksPlugin({ data: marks });
+            marksPlugin.on('select', (data) => this.emit('select', data));
+
+            activePlugins.push(marksPlugin);
+        }
         if (data) {
             flameChartPlugin = new FlameChartPlugin({ data, colors });
             flameChartPlugin.on('select', (data) => this.emit('select', data));
@@ -47,6 +55,13 @@ export class FlameChart extends FlameChartContainer {
                     flameChartPlugin.setPositionY(y);
                 }
                 this.renderEngine.render();
+            };
+        }
+        if (marksPlugin) {
+            this.setMarks = (data) => {
+                if (marksPlugin) {
+                    marksPlugin.setMarks(data);
+                }
             };
         }
     }

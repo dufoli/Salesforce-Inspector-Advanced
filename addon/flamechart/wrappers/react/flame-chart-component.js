@@ -5,7 +5,7 @@ let h = React.createElement;
 export class FlameChartComponent extends React.Component {
   constructor(props) {
     super(props);
-    const {data, settings, colors, plugins} = props;
+    const {data, marks, settings, colors, plugins} = props;
     if (this.canvasRef && this.boxRef) {
       const {width = 0, height = 0} = this.boxRef.getBoundingClientRect();
       this.canvasRef.width = width;
@@ -13,6 +13,7 @@ export class FlameChartComponent extends React.Component {
       this.flameChart = new FlameChart({
         canvas: this.canvasRef,
         data,
+        marks,
         settings,
         colors,
         plugins,
@@ -23,7 +24,7 @@ export class FlameChartComponent extends React.Component {
   componentDidMount() {
     this.boxRef = this.refs.boxRef;
     this.canvasRef = this.refs.canvasRef;
-    const {data, settings, colors, plugins} = this.props;
+    const {data, marks, settings, colors, plugins} = this.props;
     if (this.canvasRef && this.boxRef) {
       const {width = 0, height = 0} = this.boxRef.getBoundingClientRect();
       this.canvasRef.width = width;
@@ -31,6 +32,7 @@ export class FlameChartComponent extends React.Component {
       this.flameChart = new FlameChart({
         canvas: this.canvasRef,
         data,
+        marks,
         settings,
         colors,
         plugins,
@@ -51,6 +53,9 @@ export class FlameChartComponent extends React.Component {
     if (this.flameChart) {
       if (this.props.data) {
         this.flameChart.setNodes(this.props.data);
+      }
+      if (this.props.marks) {
+        this.flameChart.setMarks(this.props.marks);
       }
       if (this.props.settings && this.flameChart) {
         this.flameChart.setSettings(this.props.settings);
@@ -79,6 +84,9 @@ export class FlameChartComponent extends React.Component {
       this.flameChart.setNodes(this.props.data);
       this.flameChart.renderEngine.recalcChildrenLayout();
       this.flameChart.render();
+    }
+    if (this.props.marks && this.props.marks !== prevProps.marks) {
+      this.flameChart.setMarks(this.props.marks);
     }
     if (this.props.settings && this.props.settings !== prevProps.settings) {
       this.flameChart.setSettings(this.props.settings);

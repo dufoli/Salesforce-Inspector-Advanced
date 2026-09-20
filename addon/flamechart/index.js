@@ -1,6 +1,7 @@
 export {UIPlugin} from "./plugins/ui-plugin.js";
 export {FlameChartPlugin} from "./plugins/flame-chart-plugin.js";
 export {TimeGridPlugin} from "./plugins/time-grid-plugin.js";
+export {MarksPlugin} from './plugins/marks-plugin.js';
 export {TimeframeSelectorPlugin} from "./plugins/timeframe-selector-plugin.js";
 export {FlameChart} from "./flame-chart.js";
 export * from "./types.js";

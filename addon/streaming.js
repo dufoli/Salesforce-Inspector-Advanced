@@ -90,6 +90,12 @@ class Model {
     this.executeError = null;
     this.pollId = 0;
     this.pollClientId = null;
+    this.selectedTabId = 1;
+    this.events.addToTable({"event":{"EventApiName":"test1"}});
+    this.events.addToTable({"channel":"chan", "data":{"event":{"replayId":"1234", "createdDate":"2026-09-20T07:44:00"}}});
+    this.events.addToTable({"event":{"EventApiName":"test2"}, "data":{"event":{"replayId":"1234", "createdDate":"2026-09-20T07:48:00"}}});
+    this.events.addToTable({"event":{"EventApiName":"test3"}, "data":{"event":{"replayId":"1234", "createdDate":"2026-09-20T07:50:00"}}});
+    setTimeout(() => this.resultTableCallback(this.events), 1000);
     if (localStorage.getItem(sfHost + "_isSandbox") != "true") {
       //change background color for production
       document.body.classList.add("prod");
@@ -137,6 +143,10 @@ class Model {
 
   title() {
     return "Streaming";
+  }
+
+  selectTab(tabIndex) {
+    this.selectedTabId = tabIndex;
   }
 
   createChannel(chanName, chanLabel, eventType) {
@@ -412,9 +422,7 @@ class StreamingTabSelector extends React.Component {
     super(props);
     this.model = props.model;
     this.sfHost = this.model.sfHost;
-    this.state = {
-      selectedTabId: 1
-    };
+
     this.tabs = [
       {
         id: 1,
@@ -452,16 +460,17 @@ class StreamingTabSelector extends React.Component {
 
   onTabSelect(e) {
     e.preventDefault();
-    this.setState({selectedTabId: e.target.tabIndex});
+    this.model.selectTab(e.target.tabIndex);
+    this.model.didUpdate();
   }
 
   render() {
     return h("div", {className: "slds-tabs_default flex-area", style: {height: "inherit"}},
       h("ul", {className: "options-tab-container slds-tabs_default__nav", role: "tablist"},
-        this.tabs.map((tab) => h(StreamingTab, {key: tab.id, id: tab.id, title: tab.title, content: tab.content, onTabSelect: this.onTabSelect, selectedTabId: this.state.selectedTabId, model: this.model}))
+        this.tabs.map((tab) => h(StreamingTab, {key: tab.id, id: tab.id, title: tab.title, content: tab.content, onTabSelect: this.onTabSelect, selectedTabId: this.model.selectedTabId, model: this.model}))
       ),
       this.tabs
-        .filter((tab) => tab.id == this.state.selectedTabId)
+        .filter((tab) => tab.id == this.model.selectedTabId)
         .map((tab) => h(tab.content, {key: tab.id, id: tab.id, model: this.model}))
     );
   }
@@ -545,8 +554,6 @@ class Graphic extends React.Component {
     super(props);
     this.model = props.model;
     this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
-    this.onStartDateInput = this.onStartDateInput.bind(this);
-    this.onEndDateInput = this.onEndDateInput.bind(this);
     this.onSelect = this.onSelect.bind(this);
   }
   onResultsFilterInput(e) {
@@ -554,59 +561,59 @@ class Graphic extends React.Component {
     model.setResultsFilter(e.target.value);
     model.didUpdate();
   }
-  onStartDateInput(e) {
-    let {model} = this.props;
-    model.setStartDate(e.target.value);
-    model.didUpdate();
-  }
-  onEndDateInput(e) {
-    let {model} = this.props;
-    model.setEndDate(e.target.value);
-    model.didUpdate();
-  }
   onSelect({node}) {
-    console.log("Graphic tab: selected event", node.source);
+    let {model} = this.props;
+    if (!node.timestamp) return;
+    let dt = new Date();
+    dt.setTime(node.timestamp);
+    let isoDate = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().substring(0,16);
+    dt.setMinutes(dt.getMinutes()+1);
+    let endDate = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().substring(0,16);
+    model.setStartDate(isoDate);
+    model.setEndDate(endDate);
+    model.selectTab(1);
+    model.didUpdate();
+    model.events.updateVisibility();
+    model.updatedExportedData();
+    
   }
-  toLeafNode(record) {
+  toMark(record) {
     let createdDate = record?.data?.event?.createdDate || (new Date()).toISOString();
     return {
-      name: record.channel || ((record?.event?.EventApiName) + "-" + (record?.data?.event?.replayId || record?.event?.replayId)),
-      start: new Date(createdDate).getTime(), // engine expects numeric ms, not an ISO string
-      duration: 10,
-      type: "event",
-      children: null
+      shortName: record?.data?.event?.replayId || record?.event?.replayId || "",
+      fullName: record.channel || ((record?.event?.EventApiName) + "-" + (record?.data?.event?.replayId || record?.event?.replayId || "")),
+      timestamp: new Date(createdDate).getTime(),
+      color: "rgba(215, 76, 76, 0.7)"
     };
   }
-  buildRootNode(leaves) {
-    if (leaves.length === 0) {
-      let now = Date.now();
-      return {name: "Events", start: now, duration: 1, type: "root", children: []};
-    }
-    let minStart = leaves[0].start;
-    let maxEnd = leaves[0].start + leaves[0].duration;
-    for (let i = 1; i < leaves.length; i++) {
-      if (leaves[i].start < minStart) { minStart = leaves[i].start; }
-      let end = leaves[i].start + leaves[i].duration;
-      if (end > maxEnd) { maxEnd = end; }
-    }
-    return {name: "Events", start: minStart, duration: Math.max(maxEnd - minStart, 1), type: "root", children: leaves};
-  }
+
   render() {
     let {model} = this.props;
-    let leaves = model.events.records.map(r => this.toLeafNode(r));
-    let data = [this.buildRootNode(leaves)];
+    let marks = model.events.records.map(r => this.toMark(r));
+    
+    let root = marks.reduce((acc, mark) => {
+      if (acc.start === null || mark.timestamp < acc.start) {
+        acc.start = mark.timestamp;
+      }
+      if (acc.end === null || mark.timestamp > acc.end) {
+        acc.end = mark.timestamp;
+      }
+      return acc;
+    }, {start: null, end: null, children: [], type:"root", name: "Events", duration: 0});
+    if (root.start !== null && root.end !== null) {
+      root.duration = root.end - root.start + 50000;
+    }
+    let data = [root];
     let settings = {hotkeys: {active: true, scrollSpeed: 0.5, zoomSpeed: 0.001, fastMultiplayer: 5}, options: {timeUnits: "ms"}};
     let colors = {event: "#4bc0c8", root: "#e9bd87"};
     return h("div", {className: "area", id: "graphic-area", style: {height: "inherit"}},
       h("div", {className: "result-bar"},
         h("h1", {}, "Event Graphic"),
         h("div", {className: "button-group"},
-          h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput}),
-          h("input", {type: "datetime-local", title: "Start date", value: model.startDate, onChange: this.onStartDateInput}),
-          h("input", {type: "datetime-local", title: "End date", value: model.endDate, onChange: this.onEndDateInput}),
+          h("input", {placeholder: "Filter Results", type: "search", value: model.resultsFilter, onInput: this.onResultsFilterInput})
         ),
       ),
-      h(FlameChartComponent, {data, settings, colors, onSelect: this.onSelect, className: "flameChart"})
+      h(FlameChartComponent, {data, marks, settings, colors, onSelect: this.onSelect, className: "flameChart"})
     );
   }
 }
