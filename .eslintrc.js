@@ -28,7 +28,9 @@ module.exports = {
         "addon/react.js",
         "addon/react.min.js",
         // Node.js support for ES modules is still experimental. See https://nodejs.org/dist/latest-v12.x/docs/api/esm.html
-        "scripts/*"
+        "scripts/*",
+        "test/unit/**",
+        "playwright.config.js"
       ]
     }
   ],

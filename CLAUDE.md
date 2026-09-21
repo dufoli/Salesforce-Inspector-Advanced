@@ -19,7 +19,7 @@ npm run chrome-release-build   # full release zip in target/chrome/
 npm run firefox-release-build  # full release zip in target/firefox/
 ```
 
-There is no `npm test` script — see "Unit tests" below, they run in-browser, not via Node.
+There is no `npm test` script — see "Unit tests" below, they run in-browser, not via Node. `npm run test:unit` drives that same in-browser suite headlessly through Playwright, for local use or CI (see "CI unit tests" below).
 
 ### Loading the extension locally
 
@@ -31,12 +31,21 @@ There is no `npm test` script — see "Unit tests" below, they run in-browser, n
 
 Tests run inside a real Salesforce org via the browser, not Node/Jest/etc.
 
-1. Set up a Developer Edition org: deploy `test/` metadata (`sf deploy metadata -d test/ -o [org-alias]`), set user language to English, enable "Allow users to relate a contact to multiple accounts", ensure no namespace prefix, assign the `SfInspector` permission set.
+1. Set up a Developer Edition org: deploy the sfdx package metadata under `test/package/` (`sf deploy metadata -d test/package -o [org-alias]`), set user language to English, enable "Allow users to relate a contact to multiple accounts", ensure no namespace prefix, assign the `SfInspector` permission set.
 2. Navigate to `chrome-extension://<id>/test-framework.html?host=<org-domain>` (replace the filename of any extension page with `test-framework.html`).
-3. `test-framework.js` (`addon/test-framework.js`) auto-runs every suite registered in its `availableTests` map (currently `popupTest`, `csvParseTest`, `dataImportTest`, `dataExportTest`, `flowAnalyzeTest`, from the sibling `*-test.js` files) unless a `?test=`/`?tests=` query param names a subset. Watch the browser devtools console for failures; success prints "Salesforce Inspector unit test finished successfully".
+3. `test-framework.js` (`addon/test-framework.js`) auto-runs every suite registered in its `availableTests` map (currently `popupTest`, `csvParseTest`, `dataImportTest`, `dataExportTest`, `flowAnalyzeTest`, `mockExampleTest`, from the sibling `*-test.js` files) unless a `?test=`/`?tests=` query param names a subset. Watch the browser devtools console for failures; success prints "Salesforce Inspector unit test finished successfully".
 4. `*-test.js` files are stripped out of release builds (see filter in `scripts/release-build.js`) — they only ship in dev builds.
 
 When adding a feature, add/extend the matching `<feature>-test.js` file and register it in `test-framework.js`'s `availableTests` map if it's a new suite.
+
+### CI unit tests
+
+`.github/workflows/unit-tests.yml` runs the same suite headlessly via `scripts/run-unit-tests.js` (Playwright + headless Chromium loading the unpacked `addon/` extension). Two jobs:
+
+- `integration`: authenticates to a real Salesforce org (`sf org login sfdx-url` with the `SF_AUTH_URL` secret) and runs the full suite. Only runs on push/`workflow_dispatch`/same-repo PRs, since secrets aren't available on fork PRs.
+- `test-mocked`: runs on every PR including forks. No org or secrets needed — `sfConn` (`addon/inspector.js`) makes all its network calls through plain `XMLHttpRequest`, so Playwright's `context.route()` intercepts them at the network layer and serves canned responses instead. Response sequences are defined in `test/unit/mocks/*.mock.js` (ordered arrays of `{status, headers, body|bodyFile}`, see `test/unit/mock-route.js`); large bodies can point at a fixture file under `test/unit/fixtures/`. Only `addon/mock-example-test.js` runs this way today — migrating the heavier suites (`dataExportTest`, `dataImportTest`, `flowAnalyzeTest`) to mocked fixtures is a separate, not-yet-done effort, since it requires capturing the exact sequence of calls each suite currently makes against a real org.
+
+`scripts/run-unit-tests.js` seeds `sfConn.getSession()`'s access-token localStorage key before navigating (`<sfHost>_access__token`) so the suite skips the interactive OAuth/cookie flow entirely — no production code changes were needed for either the real-org or mocked path.
 
 ### Linting
 

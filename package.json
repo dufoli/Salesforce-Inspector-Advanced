@@ -6,9 +6,11 @@
     "chrome-dev-build": "node scripts/dev-build.js chrome",
     "firefox-release-build": "node scripts/release-build.js firefox",
     "chrome-release-build": "node scripts/release-build.js chrome",
-    "test:unit": "npm run chrome-dev-build && node scripts/run-unit-tests.js"
+    "test:integration": "npm run chrome-dev-build && node scripts/run-unit-tests.js",
+    "test:mocked": "npm run chrome-dev-build && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "eslint": "^8.56.0",
     "fs-extra": "11.2.0",
     "playwright": "^1.48.0",

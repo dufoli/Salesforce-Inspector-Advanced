@@ -14,3 +14,5 @@ venv/
 .sf/
 .vscode/
 .DS_Store
+test-results/
+playwright-report/

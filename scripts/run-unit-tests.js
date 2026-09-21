@@ -1,7 +1,10 @@
 /* eslint-env node */
-// Runs the in-browser unit test suite (addon/test-framework.js) headlessly, for use in CI.
-// It loads the unpacked extension into headless Chromium via Playwright, points it at a
-// Salesforce org, and fails the process if the suite reports an error.
+// Runs the in-browser unit test suite (addon/test-framework.js) headlessly against a real
+// Salesforce org, for use in CI. It loads the unpacked extension into headless Chromium via
+// Playwright and fails the process if the suite reports an error.
+//
+// Mocked, network-independent tests are separate: see test/unit/ (run via "npm run test:mocked",
+// a real @playwright/test suite), not this script.
 //
 // Required env vars:
 //   SF_HOST          My Domain hostname of the org to test against, e.g. "my-org.my.salesforce.com"
@@ -19,6 +22,13 @@ const {chromium} = require("playwright");
 const addonPath = path.resolve(__dirname, "..", "addon");
 const manifestPath = path.join(addonPath, "manifest.json");
 const resultTimeoutMs = 10 * 60 * 1000;
+const failureDir = path.resolve(__dirname, "..", "test-results");
+
+async function saveFailureArtifacts(page, consoleLog) {
+  fs.mkdirSync(failureDir, {recursive: true});
+  fs.writeFileSync(path.join(failureDir, "console.log"), consoleLog.join("\n"));
+  await page.screenshot({path: path.join(failureDir, "failure.png"), fullPage: true}).catch(() => {});
+}
 
 async function main() {
   if (!fs.existsSync(manifestPath)) {
@@ -35,6 +45,10 @@ async function main() {
 
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "sfi-ext-"));
   const context = await chromium.launchPersistentContext(userDataDir, {
+    // headless:true alone launches the extension-less "chrome-headless-shell" binary.
+    // channel:"chromium" forces the full Chromium build, which supports extensions
+    // when combined with the new headless mode below.
+    channel: "chromium",
     headless,
     args: [
       "--headless=new",
@@ -43,6 +57,8 @@ async function main() {
     ]
   });
 
+  const consoleLog = [];
+  let page;
   try {
     let [serviceWorker] = context.serviceWorkers();
     if (!serviceWorker) {
@@ -50,14 +66,27 @@ async function main() {
     }
     const extensionId = new URL(serviceWorker.url()).host;
 
-    const page = await context.newPage();
-    page.on("console", msg => console.log(`[browser] ${msg.text()}`));
-    page.on("pageerror", err => console.error("[browser error]", err));
+    page = await context.newPage();
+    page.on("console", msg => {
+      const line = `[browser] ${msg.text()}`;
+      consoleLog.push(line);
+      console.log(line);
+    });
+    page.on("pageerror", err => {
+      consoleLog.push(`[browser error] ${err}`);
+      console.error("[browser error]", err);
+    });
 
     // Seed the access token so sfConn.getSession() (addon/inspector.js) finds an existing
     // "<sfHost>_access__token" entry in localStorage and skips the interactive OAuth/cookie flow.
+    // test-framework.js navigates its result iframe to a data: URL once done, where
+    // localStorage throws - addInitScript runs on every navigation, so guard it.
     await page.addInitScript(({host, token}) => {
-      localStorage.setItem(`${host}_access__token`, token);
+      try {
+        localStorage.setItem(`${host}_access__token`, token);
+      } catch {
+        // Not a real page (e.g. a data: URL) - nothing to seed.
+      }
     }, {host: sfHost, token: accessToken});
 
     const params = new URLSearchParams({host: sfHost});
@@ -81,6 +110,11 @@ async function main() {
     if (!background.includes("green")) {
       throw new Error("Unit tests failed: " + text);
     }
+  } catch (err) {
+    if (page) {
+      await saveFailureArtifacts(page, consoleLog);
+    }
+    throw err;
   } finally {
     await context.close();
     fs.rmSync(userDataDir, {recursive: true, force: true});

@@ -1,7 +1,7 @@
 {
   "packageDirectories": [
     {
-      "path": "test",
+      "path": "test/package",
       "default": true
     }
   ],

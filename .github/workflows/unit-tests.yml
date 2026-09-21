@@ -5,54 +5,98 @@ on:
       - master
       - main
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  test:
-    # Secrets aren't available on pull_request runs from forks, so this job is a no-op there.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+  # Runs on every PR, including forks: no Salesforce org or secrets needed.
+  # sfConn (addon/inspector.js) makes all its network calls over plain XMLHttpRequest,
+  # so Playwright's context.route() intercepts them and serves fixed responses instead
+  # (see test/unit/mock-route.js and test/unit/mocks/*.mock.js), driven by real
+  # @playwright/test specs (test/unit/*.spec.js) against the actual rendered pages.
+  test-mocked:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:mocked
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-mocked
+          path: playwright-report/
+          retention-days: 14
+
+  # Runs against a real Salesforce org (addon/test-framework.js). Secrets aren't
+  # available on pull_request runs from forks, so this job is skipped there.
+  integration:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
       - run: npm ci
       - run: npm run chrome-dev-build
       - run: npx playwright install --with-deps chromium
       - run: npm install --global @salesforce/cli
       - name: Authenticate to Salesforce
         env:
-          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
-          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
-          SF_USERNAME: ${{ secrets.SF_USERNAME }}
-          SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL }}
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          echo "$SF_JWT_KEY" > server.key
-          sf org login jwt \
-            --client-id "$SF_CLIENT_ID" \
-            --jwt-key-file server.key \
-            --username "$SF_USERNAME" \
-            --instance-url "${SF_LOGIN_URL:-https://login.salesforce.com}" \
-            --alias ci-org \
-            --set-default
-          rm server.key
+          set -euo pipefail
+          if [ -z "${SF_AUTH_URL:-}" ]; then
+            echo "::error::Missing SF_AUTH_URL secret."
+            exit 1
+          fi
+          echo "$SF_AUTH_URL" > ./sfdx-auth-url.txt
+          sf org login sfdx-url --sfdx-url-file ./sfdx-auth-url.txt --alias ci-org --set-default
+          rm ./sfdx-auth-url.txt
       - name: Deploy test metadata
-        run: sf project deploy start --source-dir test --target-org ci-org
+        run: sf project deploy start --source-dir test/package --target-org ci-org
       - name: Assign SfInspector permission set
         run: sf org assign permset --name SfInspector --target-org ci-org
       - name: Resolve org credentials
         id: org
         run: |
-          sf org display --target-org ci-org --verbose --json > org.json
-          HOST=$(jq -r '.result.instanceUrl' org.json | sed -E 's#https?://##; s#/$##')
-          TOKEN=$(jq -r '.result.accessToken' org.json)
+          set -euo pipefail
+          ORG_INFO=$(sf org display --target-org ci-org --json)
+          INSTANCE_URL=$(echo "$ORG_INFO" | jq -r '.result.instanceUrl // empty')
+          if [ -z "$INSTANCE_URL" ]; then
+            echo "::error::Could not determine the org's instance URL from 'sf org display'."
+            exit 1
+          fi
+          HOST=$(echo "$INSTANCE_URL" | sed -E 's#^https?://##; s#/$##')
+
+          # sf org display redacts the access token in recent CLI versions;
+          # it must be fetched from the dedicated command instead.
+          TOKEN_INFO=$(sf org auth show-access-token --target-org ci-org --json --no-prompt)
+          TOKEN=$(echo "$TOKEN_INFO" | jq -r '.result.accessToken // empty')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "[REDACTED]" ]; then
+            echo "::error::Could not retrieve an access token from 'sf org auth show-access-token'."
+            exit 1
+          fi
+
           echo "::add-mask::$TOKEN"
           echo "host=$HOST" >> "$GITHUB_OUTPUT"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
-          rm org.json
       - name: Run unit tests
         env:
           SF_HOST: ${{ steps.org.outputs.host }}
           SF_ACCESS_TOKEN: ${{ steps.org.outputs.token }}
         run: node scripts/run-unit-tests.js
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-failure-integration
+          path: test-results/
+          retention-days: 14
