@@ -1,0 +1,58 @@
+name: unit-tests
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    # Secrets aren't available on pull_request runs from forks, so this job is a no-op there.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run chrome-dev-build
+      - run: npx playwright install --with-deps chromium
+      - run: npm install --global @salesforce/cli
+      - name: Authenticate to Salesforce
+        env:
+          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
+          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_LOGIN_URL: ${{ secrets.SF_LOGIN_URL }}
+        run: |
+          echo "$SF_JWT_KEY" > server.key
+          sf org login jwt \
+            --client-id "$SF_CLIENT_ID" \
+            --jwt-key-file server.key \
+            --username "$SF_USERNAME" \
+            --instance-url "${SF_LOGIN_URL:-https://login.salesforce.com}" \
+            --alias ci-org \
+            --set-default
+          rm server.key
+      - name: Deploy test metadata
+        run: sf project deploy start --source-dir test --target-org ci-org
+      - name: Assign SfInspector permission set
+        run: sf org assign permset --name SfInspector --target-org ci-org
+      - name: Resolve org credentials
+        id: org
+        run: |
+          sf org display --target-org ci-org --verbose --json > org.json
+          HOST=$(jq -r '.result.instanceUrl' org.json | sed -E 's#https?://##; s#/$##')
+          TOKEN=$(jq -r '.result.accessToken' org.json)
+          echo "::add-mask::$TOKEN"
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          rm org.json
+      - name: Run unit tests
+        env:
+          SF_HOST: ${{ steps.org.outputs.host }}
+          SF_ACCESS_TOKEN: ${{ steps.org.outputs.token }}
+        run: node scripts/run-unit-tests.js

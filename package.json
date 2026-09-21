@@ -5,11 +5,13 @@
     "firefox-dev-build": "node scripts/dev-build.js firefox",
     "chrome-dev-build": "node scripts/dev-build.js chrome",
     "firefox-release-build": "node scripts/release-build.js firefox",
-    "chrome-release-build": "node scripts/release-build.js chrome"
+    "chrome-release-build": "node scripts/release-build.js chrome",
+    "test:unit": "npm run chrome-dev-build && node scripts/run-unit-tests.js"
   },
   "devDependencies": {
     "eslint": "^8.56.0",
     "fs-extra": "11.2.0",
+    "playwright": "^1.48.0",
     "replace-in-file": "7.1.0",
     "zip-dir": "2.0.0"
   }
