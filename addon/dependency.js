@@ -217,7 +217,9 @@ class Model {
           recordsByCallerId.delete(flowDetail.Id);
         }
       });
-      this.flowScanProgress.done++;
+      if (this.flowScanProgress) {
+        this.flowScanProgress.done++;
+      }
       this.didUpdate();
     }
     this.flowScanProgress = null;
