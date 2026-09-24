@@ -68,12 +68,18 @@ The analyzer has 5 tabs:
 
 Open it from the popup and go to the "Org Analyzer" button. It scans your org for security, code-quality, unused-resource, migration and maintainability issues (e.g. too many validation rules/triggers per object, SOQL/DML in loops, hardcoded IDs, SOQL injection risks, Apex classes without an explicit sharing model, unreferenced Apex classes, Process Builder/Workflow candidates for Flow migration, active Flows on an old API version, Visualforce/Aura candidates for LWC migration, too many system admins, deep role hierarchies, inactive users, over-permissioned Connected Apps, and more).
 
-1. Check/uncheck the rules you want to run (or "Select all"), then click **Analyze org**. Rules that need many API calls (field analysis, Apex source scanning) are grouped under **High API usage** and marked with a warning icon: uncheck them on orgs close to their API limit.
-2. Results stream in as each rule completes; use the rule and priority (1-5) dropdowns to filter, and **Stop** to cancel a long-running scan.
-3. Click the download icon to save the results as a CSV.
+1. Check/uncheck the rules you want to run, then click **Analyze org**. Rules are grouped by category (Objects & Fields, Security, Apex, Users, Automation & UI), each with its own checkbox to select the whole category. Hover a rule to see what it checks and its threshold. Your selection is remembered for the next time.
+2. Rules that need many API calls (field analysis, Apex source scanning) are marked with a warning icon: uncheck them on orgs close to their API limit. A warning banner is shown while such a rule is selected.
+3. Results stream in as each rule completes, colored by priority (1 - Critical to 5 - Info). Click a priority in the summary bar above the results (or use the priority and rule dropdowns) to filter them.
+4. Each result has a `setupLink` column: click the ↗ icon to open the Setup page where the issue is fixed (the object's validation rules, the Apex class, the connected app, the Migrate to Flow tool, ...).
+5. If a rule can't be evaluated (e.g. a query not supported by the org), a **Rule failed** result with the error is shown instead of silently returning nothing.
+6. Once the analysis is over, the number of API requests it used (org-wide daily counter, approximate) and the remaining ones are shown next to the status.
+7. Click the download icon to save the results as a CSV (including the Setup links).
 
 > **Warning**
 > The Org Analyzer makes extensive API calls. Monitor your org's API limits and save results via the CSV download for later reference.
+
+Any results table (Data Export, Inspect, ...) shows a ↗ icon next to cells containing an `http(s)://` URL to open it in a new tab; clicking the text still copies it and double-clicking still edits it.
 
 ## Flow Analyzer
 

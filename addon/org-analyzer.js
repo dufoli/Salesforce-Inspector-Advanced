@@ -54,14 +54,14 @@ class ApexAnalyzer {
     try {
       if (apexLowCoverageRule) {
         let logs = [];
-        let queryCoverage = "SELECT ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered FROM ApexCodeCoverageAggregate WHERE ApexClassOrTriggerId != NULL AND ApexClassOrTrigger.Name != NULL AND (NumLinesCovered > 0 OR NumLinesUncovered > 0) AND NumLinesCovered != NULL AND NumLinesUncovered != NULL ORDER BY ApexClassOrTrigger.Name";
+        let queryCoverage = "SELECT ApexClassOrTriggerId, ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered FROM ApexCodeCoverageAggregate WHERE ApexClassOrTriggerId != NULL AND ApexClassOrTrigger.Name != NULL AND (NumLinesCovered > 0 OR NumLinesUncovered > 0) AND NumLinesCovered != NULL AND NumLinesUncovered != NULL ORDER BY ApexClassOrTrigger.Name";
         let result = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryCoverage), {}), result).catch(error => {
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryCoverage), {}), result, "Apex Class with poor code coverage").catch(error => {
           console.error(error);
         });
         for (let coverage of result.rows) {
           if (coverage.NumLinesCovered * 100 / (coverage.NumLinesCovered + coverage.NumLinesUncovered) < 75){
-            logs.push({reference: coverage.ApexClassOrTrigger.Name, name: "Apex Class with poor code coverage", description: "This Apex class has a code coverage below 75%. Consider improving the test coverage to meet Salesforce deployment requirements.", priority: 3});
+            logs.push({reference: coverage.ApexClassOrTrigger.Name, name: "Apex Class with poor code coverage", description: "This Apex class has a code coverage below 75%. Consider improving the test coverage to meet Salesforce deployment requirements.", priority: 3, setupLink: this.model.apexSetupLink(coverage.ApexClassOrTriggerId)});
           }
         }
         this.recordTable.addToTable(logs, {column: "priority"});
@@ -75,17 +75,17 @@ class ApexAnalyzer {
     try {
       if (apexOldApiVersionRule || apexNeedRecompilationRule) {
         let logs = [];
-        let queryApexClass = "SELECT Name, ApiVersion, IsValid, Status, NamespacePrefix FROM ApexClass";
+        let queryApexClass = "SELECT Id, Name, ApiVersion, IsValid, Status, NamespacePrefix FROM ApexClass";
         let result = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryApexClass), {}), result).catch(error => {
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryApexClass), {}), result, "Apex Class with old API Version / need recompilation").catch(error => {
           console.error(error);
         });
         for (let apexClass of result.rows) {
           if (apexOldApiVersionRule && apexClass.ApiVersion < 50){
-            logs.push({reference: (apexClass.NamespacePrefix ? apexClass.NamespacePrefix + "." : "") + apexClass.Name, name: "Apex Class with old API Version", description: "This Apex class is using an old API version (" + apexClass.ApiVersion + "). Consider updating it to a more recent version to take advantage of new features and improvements.", priority: apexClass.ApiVersion < 30 ? 1 : (apexClass.ApiVersion < 40 ? 2 : 3)});
+            logs.push({reference: (apexClass.NamespacePrefix ? apexClass.NamespacePrefix + "." : "") + apexClass.Name, name: "Apex Class with old API Version", description: "This Apex class is using an old API version (" + apexClass.ApiVersion + "). Consider updating it to a more recent version to take advantage of new features and improvements.", priority: apexClass.ApiVersion < 30 ? 1 : (apexClass.ApiVersion < 40 ? 2 : 3), setupLink: this.model.apexSetupLink(apexClass.Id)});
           }
           if (apexNeedRecompilationRule && !apexClass.IsValid){
-            logs.push({reference: (apexClass.NamespacePrefix ? apexClass.NamespacePrefix + "." : "") + apexClass.Name, name: "Apex Class need recompilation", description: "This Apex class is invalid and needs recompilation. Please recompile the class to ensure it functions correctly.", priority: 1});
+            logs.push({reference: (apexClass.NamespacePrefix ? apexClass.NamespacePrefix + "." : "") + apexClass.Name, name: "Apex Class need recompilation", description: "This Apex class is invalid and needs recompilation. Please recompile the class to ensure it functions correctly.", priority: 1, setupLink: this.model.apexSetupLink(apexClass.Id)});
           }
         }
         this.recordTable.addToTable(logs, {column: "priority"});
@@ -105,7 +105,7 @@ class ApexAnalyzer {
         if (apexHardcodedIdRule || apexSoqlInLoopRule || apexDmlInLoopRule || apexWithoutSharingRule || apexClassNotReferencedRule || apexBatchableWithoutJobsRule || apexSoqlInjectionRule) {
           let queryApexClass = "SELECT Id, Name, Body, NamespacePrefix FROM ApexClass WHERE Status = 'Active' AND NamespacePrefix = null";
           let apexClassResult = {rows: []};
-          await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryApexClass), {}), apexClassResult)
+          await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryApexClass), {}), apexClassResult, "Apex code rules (ApexClass source)")
             .catch(error => {
               console.error(error);
             });
@@ -114,7 +114,7 @@ class ApexAnalyzer {
           let queryApexTrigger = "SELECT Id, Name, Body, TableEnumOrId, NamespacePrefix FROM ApexTrigger WHERE Status = 'Active' AND NamespacePrefix = null";
           let apexTriggerResult = {rows: []};
           if (apexTriggerWithLogicRule) {
-            await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryApexTrigger), {}), apexTriggerResult)
+            await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryApexTrigger), {}), apexTriggerResult, "Apex trigger with SOQL/DML instead of service class")
               .catch(error => {
                 console.error(error);
               });
@@ -138,7 +138,7 @@ class ApexAnalyzer {
             // Query MetadataComponentDependency to find class references
             let dependencyQuery = "SELECT MetadataComponentName, RefMetadataComponentName FROM MetadataComponentDependency WHERE RefMetadataComponentType = 'ApexClass'";
             let dependencyResult = {rows: []};
-            await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(dependencyQuery), {}), dependencyResult)
+            await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(dependencyQuery), {}), dependencyResult, "Apex class not referenced (not REST Apex)")
               .catch(error => {
                 console.error(error);
               });
@@ -163,7 +163,7 @@ class ApexAnalyzer {
             // Use LAST_N_DAYS:365 for last year
             let jobQuery = "SELECT ApexClass.Name FROM AsyncApexJob WHERE CreatedDate = LAST_N_DAYS:365 AND (JobType = 'BatchApex' OR JobType = 'Queueable' OR JobType = 'ScheduledApex')";
             let jobResult = {rows: []};
-            await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(jobQuery), {}), jobResult)
+            await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(jobQuery), {}), jobResult, "Apex job schedulable with no jobs in 365 days")
               .catch(error => {
                 console.error(error);
               });
@@ -190,7 +190,8 @@ class ApexAnalyzer {
                   reference: className,
                   name: "Apex hardcoded id in code instead of label",
                   description: `This Apex class contains ${matches.length} hardcoded Salesforce ID(s). Use custom labels or custom metadata instead of hardcoded IDs to improve maintainability and support multiple orgs.`,
-                  priority: matches.length > 5 ? 2 : 3
+                  priority: matches.length > 5 ? 2 : 3,
+                  setupLink: this.model.apexSetupLink(apexClass.Id)
                 });
               }
             }
@@ -283,7 +284,8 @@ class ApexAnalyzer {
                   reference: className,
                   name: "Apex SOQL in loop",
                   description: "This Apex class contains SOQL queries inside loops. This can lead to governor limit issues. Consider querying data outside the loop and storing it in collections." + lineNumbersText,
-                  priority: 1
+                  priority: 1,
+                  setupLink: this.model.apexSetupLink(apexClass.Id)
                 });
               }
             }
@@ -323,7 +325,8 @@ class ApexAnalyzer {
                   reference: className,
                   name: "Apex DML in loop",
                   description: "This Apex class contains DML operations (insert, update, delete, upsert) inside loops. This can lead to governor limit issues. Consider collecting records and performing bulk DML operations outside the loop." + lineNumbersText,
-                  priority: 1
+                  priority: 1,
+                  setupLink: this.model.apexSetupLink(apexClass.Id)
                 });
               }
             }
@@ -339,7 +342,8 @@ class ApexAnalyzer {
                   reference: className,
                   name: "Apex class without explicit sharing",
                   description: "This Apex class does not have an explicit sharing declaration (with sharing or without sharing). It's recommended to explicitly declare sharing model for security and clarity.",
-                  priority: 3
+                  priority: 3,
+                  setupLink: this.model.apexSetupLink(apexClass.Id)
                 });
               }
             }
@@ -353,7 +357,8 @@ class ApexAnalyzer {
                     reference: className,
                     name: "Apex class not referenced (not REST Apex)",
                     description: "This Apex class does not appear to be referenced by other classes and is not a REST Apex class. Consider reviewing if this class is still needed or if it should be removed.",
-                    priority: 4
+                    priority: 4,
+                    setupLink: this.model.apexSetupLink(apexClass.Id)
                   });
                 }
               }
@@ -370,7 +375,8 @@ class ApexAnalyzer {
                   reference: className,
                   name: "Apex job schedulable with no jobs in 365 days",
                   description: `This Apex class implements ${type} but has no jobs executed in the last 365 days. Consider reviewing if this class is still needed or if it should be scheduled/executed.`,
-                  priority: 4
+                  priority: 4,
+                  setupLink: this.model.setupLink("/lightning/setup/ScheduledJobs/home")
                 });
               }
             }
@@ -385,7 +391,8 @@ class ApexAnalyzer {
                   reference: className,
                   name: "Apex SOQL injection: missing escape on parameter",
                   description: "This Apex class contains SOQL queries with string concatenation that may be vulnerable to SOQL injection. Use bind variables or String.escapeSingleQuotes() to safely handle user input.",
-                  priority: 1
+                  priority: 1,
+                  setupLink: this.model.apexSetupLink(apexClass.Id)
                 });
               }
             }
@@ -410,7 +417,8 @@ class ApexAnalyzer {
                   reference: triggerName + (apexTrigger.TableEnumOrId ? " (" + apexTrigger.TableEnumOrId + ")" : ""),
                   name: "Apex trigger with SOQL/DML instead of service class",
                   description: "This Apex trigger contains SOQL queries or DML operations directly instead of delegating to a service class. Consider refactoring to use a trigger handler pattern with service classes for better maintainability and testability.",
-                  priority: 2
+                  priority: 2,
+                  setupLink: this.model.apexSetupLink(apexTrigger.Id)
                 });
               }
             }
@@ -445,9 +453,10 @@ class SecurityAnalyzer {
     try {
       if (orgWithoutIpRangeRule) {
         let queryApp = "SELECT Id, Start, End FROM IPRange";
-        let data = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryApp), {});
-        if (!data.records || data.records.length == 0){
-          logs.push({reference: "", name: "No IP Range defined", description: "No IP Ranges are defined in your Salesforce org. It is recommended to set up IP Ranges to restrict access and enhance security.", priority: 2});
+        let ipRangeResult = {rows: []};
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(queryApp), {}), ipRangeResult, "No IP Range defined");
+        if (!ipRangeResult.failed && ipRangeResult.rows.length == 0){
+          logs.push({reference: "", name: "No IP Range defined", description: "No IP Ranges are defined in your Salesforce org. It is recommended to set up IP Ranges to restrict access and enhance security.", priority: 2, setupLink: this.model.setupLink("/lightning/setup/NetworkAccess/home")});
         }
         this.recordTable.addToTable(logs, {column: "priority"});
         this.model.resultTableModel.dataChange(this.recordTable);
@@ -485,7 +494,7 @@ class SecurityAnalyzer {
       // Get all applications found in LoginHistory (shared between connected apps and external client apps)
       let allAppsInLoginHistoryQuery = "SELECT Application FROM LoginHistory GROUP BY Application ORDER BY Application";
       let loginHistoryResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(allAppsInLoginHistoryQuery), {}), loginHistoryResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(allAppsInLoginHistoryQuery), {}), loginHistoryResult, "Connected App / External client app rules (LoginHistory)")
         .catch(error => {
           console.error(error);
         });
@@ -497,7 +506,7 @@ class SecurityAnalyzer {
       if (appNotUsedRule || extAppNotUsedRule) {
         let oAuthTokenQuery = "SELECT AppName, User.Name, LastUsedDate FROM OAuthToken WHERE AppName != null ORDER BY AppName, LastUsedDate DESC";
         let oAuthTokenResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(oAuthTokenQuery), {}), oAuthTokenResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(oAuthTokenQuery), {}), oAuthTokenResult, "Connected App / External client app rules (OAuthToken)")
           .catch(error => {
             console.error(error);
           });
@@ -518,7 +527,7 @@ class SecurityAnalyzer {
       // Get all Connected Apps
       let queryApp = "SELECT Id,Name,CreatedBy.Name,CreatedDate,LastModifiedBy.Name,LastModifiedDate,OptionsAllowAdminApprovedUsersOnly FROM ConnectedApplication ORDER BY Name";
       let allConnectedAppsResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryApp), {}), allConnectedAppsResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryApp), {}), allConnectedAppsResult, "Connected App rules")
         .catch(error => {
           console.error(error);
         });
@@ -529,7 +538,7 @@ class SecurityAnalyzer {
       if (appAdminPreAuthTooManyPermsRule || appAdminPreAuthNoPermsRule) {
         let appAccessQuery = "SELECT SetupEntityId FROM SetupEntityAccess WHERE SetupEntityType = 'ConnectedApplication'";
         let appAccessResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appAccessQuery), {}), appAccessResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appAccessQuery), {}), appAccessResult, "Connected app admin pre auth rules")
           .catch(error => {
             console.error(error);
           });
@@ -545,14 +554,13 @@ class SecurityAnalyzer {
       if (appUsedNotInstalledRule) {
         let appMenuItemQuery = "SELECT ApplicationId FROM AppMenuItem WHERE Type = 'ConnectedApplication'";
         let appMenuItemResult = {rows: []};
-        let appMenuItemFailed = false;
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appMenuItemQuery), {}), appMenuItemResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appMenuItemQuery), {}), appMenuItemResult, "Connected App is used but not installed")
           .catch(error => {
-            appMenuItemFailed = true;
+            appMenuItemResult.failed = true;
             console.error(error);
           });
-        // batchHandler swallows SalesforceRestError and returns null, so an empty result may mean a failed query
-        if (!appMenuItemFailed && appMenuItemResult.rows.length > 0) {
+        // An empty result may also mean a failed query: never flag every used app in that case
+        if (!appMenuItemResult.failed && appMenuItemResult.rows.length > 0) {
           installedAppIds = new Set(appMenuItemResult.rows.filter(item => item.ApplicationId).map(item => item.ApplicationId.substring(0, 15)));
         }
       }
@@ -560,6 +568,7 @@ class SecurityAnalyzer {
       // Analyze each connected app
       for (let connectedApp of allConnectedAppsResult.rows) {
         let appName = connectedApp.Name;
+        let connectedAppLink = this.model.setupLink("/lightning/setup/ConnectedApplication/page?address=%2F" + connectedApp.Id);
         let loginHistoryFound = allAppsInLoginHistoryNames.has(appName);
         let severity = "log";
         let reason = "Found in Login History";
@@ -611,7 +620,8 @@ class SecurityAnalyzer {
             reference: appName,
             name: "Connected App OAuth Token not used recently",
             description,
-            priority: 3
+            priority: 3,
+            setupLink: connectedAppLink
           });
         }
 
@@ -621,7 +631,8 @@ class SecurityAnalyzer {
             reference: appName,
             name: "Connected App allows self-authorization",
             description: "This connected app allows users to self-authorize. Consider restricting authorization to admin-approved users only to enhance security. (Click on [Manage Policies]>[Admin Users are pre-approved] > save + Select profiles/permission sets allowed",
-            priority: 2
+            priority: 2,
+            setupLink: connectedAppLink
           });
         }
 
@@ -631,7 +642,8 @@ class SecurityAnalyzer {
             reference: appName,
             name: "Connected App is used but not installed",
             description: "This connected app has OAuth tokens in use but is not listed among installed connected apps. Investigate this discrepancy to ensure proper management of connected apps.",
-            priority: 1
+            priority: 1,
+            setupLink: connectedAppLink
           });
         }
 
@@ -645,7 +657,8 @@ class SecurityAnalyzer {
               reference: appName,
               name: "Connected app admin pre auth with too many permission",
               description: `This connected app has admin pre-approved users enabled and is granted to ${permissionCount} profiles/permission sets. Granting access too broadly increases security risk. Consider reviewing and reducing the profiles/permission sets allowed to follow the principle of least privilege.`,
-              priority: permissionCount > 15 ? 1 : (permissionCount > 12 ? 2 : 3)
+              priority: permissionCount > 15 ? 1 : (permissionCount > 12 ? 2 : 3),
+              setupLink: connectedAppLink
             });
           }
         }
@@ -656,7 +669,8 @@ class SecurityAnalyzer {
             reference: appName,
             name: "Connected app admin pre auth without permission",
             description: "This connected app has admin pre-approved users enabled but no profile or permission set is granted access, so no user can use it. Consider either assigning the appropriate profiles/permission sets or disabling admin pre-approval if not needed.",
-            priority: 3
+            priority: 3,
+            setupLink: connectedAppLink
           });
         }
       }
@@ -665,7 +679,7 @@ class SecurityAnalyzer {
       if (extAppSelfAuthRule || extAppNotUsedRule) {
         let extAppQuery = "SELECT Id, DeveloperName, CreatedBy.Name, CreatedDate, LastModifiedBy.Name, LastModifiedDate FROM ExternalClientApplication ORDER BY DeveloperName";
         let extAppResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(extAppQuery), {}), extAppResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(extAppQuery), {}), extAppResult, "External client app rules")
           .catch(error => {
             console.error(error);
           });
@@ -675,7 +689,7 @@ class SecurityAnalyzer {
         if (extAppSelfAuthRule) {
           let extAppPolicyQuery = "SELECT ExternalClientApplicationId, PermittedUsersPolicyType FROM ExtlClntAppOauthPlcyCnfg WHERE ExternalClientApplicationId != null";
           let extAppPolicyResult = {rows: []};
-          await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(extAppPolicyQuery), {}), extAppPolicyResult)
+          await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(extAppPolicyQuery), {}), extAppPolicyResult, "External client app allows self-authorization")
             .catch(error => {
               console.error(error);
             });
@@ -698,7 +712,8 @@ class SecurityAnalyzer {
                 reference: appName,
                 name: "External client app allows self-authorization",
                 description: "This external client app allows users to self-authorize. Consider restricting authorization to admin-approved users only to enhance security.",
-                priority: 2
+                priority: 2,
+                setupLink: this.model.setupLink("/lightning/setup/ManageExternalClientApplication/home")
               });
             }
           }
@@ -746,7 +761,8 @@ class SecurityAnalyzer {
                 reference: appName,
                 name: "External client app OAuth Token not used recently",
                 description,
-                priority: 3
+                priority: 3,
+                setupLink: this.model.setupLink("/lightning/setup/ManageExternalClientApplication/home")
               });
             }
           }
@@ -778,7 +794,7 @@ class UserAnalyzer {
       let logs = [];
       let query = "SELECT Id, LastLoginDate, LastName, FirstName, Profile.UserLicense.Name, Profile.Name, Username, Profile.UserLicense.LicenseDefinitionKey, IsActive, CreatedDate FROM User WHERE IsActive = true";
       let result = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query), {}), result)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query), {}), result, "User rules")
         .catch(error => {
           console.error(error);
         });
@@ -808,7 +824,8 @@ class UserAnalyzer {
             reference: "System Administrator Profile",
             name: "Too many System Administrators",
             description: `Your org has ${systemAdminCount} System Administrators out of ${totalActiveUsers} active users (${percentage}%). Having too many System Administrators increases security risk. Consider using Permission Sets or custom profiles with limited administrative access for users who don't need full system administrator privileges.`,
-            priority: systemAdminCount > 20 ? 1 : (systemAdminCount > 15 ? 2 : 3)
+            priority: systemAdminCount > 20 ? 1 : (systemAdminCount > 15 ? 2 : 3),
+            setupLink: this.model.setupLink("/lightning/setup/ManageUsers/home")
           });
         }
       }
@@ -827,6 +844,7 @@ class UserAnalyzer {
           let lastLoginDate = user.LastLoginDate ? new Date(user.LastLoginDate) : null;
           let userName = (user.FirstName ? user.FirstName + " " : "") + (user.LastName || "");
           let userReference = user.Username || user.Id;
+          let userLink = this.model.setupLink("/lightning/setup/ManageUsers/page?address=%2F" + user.Id + "%3Fnoredirect%3D1");
 
           if (!lastLoginDate) {
             // User has never logged in - check if created more than 3 months ago
@@ -838,14 +856,16 @@ class UserAnalyzer {
                   reference: userReference,
                   name: "Inactive user",
                   description: `User ${userName} (${user.Username}) has never logged in and was created ${Math.floor(daysSinceCreation / oneMonthInDays)} months ago. Consider deactivating if no longer needed.`,
-                  priority: 3
+                  priority: 3,
+                  setupLink: userLink
                 });
               } else if (daysSinceCreation > oneMonthInDays) {
                 logs.push({
                   reference: userReference,
                   name: "Inactive user",
                   description: `User ${userName} (${user.Username}) has never logged in and was created ${Math.floor(daysSinceCreation / oneMonthInDays)} months ago.`,
-                  priority: 5
+                  priority: 5,
+                  setupLink: userLink
                 });
               }
             } else {
@@ -854,7 +874,8 @@ class UserAnalyzer {
                 reference: userReference,
                 name: "Inactive user",
                 description: `User ${userName} (${user.Username}) has never logged in. Consider deactivating if no longer needed.`,
-                priority: 5
+                priority: 5,
+                setupLink: userLink
               });
             }
           } else {
@@ -865,14 +886,16 @@ class UserAnalyzer {
                 reference: userReference,
                 name: "Inactive user",
                 description: `User ${userName} (${user.Username}) has not logged in for ${Math.floor(daysSinceLastLogin / oneMonthInDays)} months (last login: ${lastLoginDate.toLocaleDateString()}). Consider deactivating if no longer needed.`,
-                priority: 3
+                priority: 3,
+                setupLink: userLink
               });
             } else if (daysSinceLastLogin > oneMonthInDays) {
               logs.push({
                 reference: userReference,
                 name: "Inactive user",
                 description: `User ${userName} (${user.Username}) has not logged in for ${Math.floor(daysSinceLastLogin / oneMonthInDays)} months (last login: ${lastLoginDate.toLocaleDateString()}).`,
-                priority: 5
+                priority: 5,
+                setupLink: userLink
               });
             }
           }
@@ -883,7 +906,7 @@ class UserAnalyzer {
       if (tooManyRoleLevelsRule) {
         let roleQuery = "SELECT Id, Name, ParentRoleId FROM UserRole ORDER BY Name";
         let roleResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(roleQuery), {}), roleResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(roleQuery), {}), roleResult, "Role Hierarchy with too many levels")
           .catch(error => {
             console.error(error);
           });
@@ -942,7 +965,8 @@ class UserAnalyzer {
             reference: "Role Hierarchy",
             name: "Role Hierarchy with too many levels",
             description: `Your org's role hierarchy has ${maxDepth} levels. Having too many levels in the role hierarchy can make it difficult to manage and understand access control. Consider flattening the hierarchy or restructuring roles to reduce complexity. Salesforce recommends keeping role hierarchies manageable.`,
-            priority: maxDepth > 15 ? 1 : (maxDepth > 12 ? 2 : 3)
+            priority: maxDepth > 15 ? 1 : (maxDepth > 12 ? 2 : 3),
+            setupLink: this.model.setupLink("/lightning/setup/Roles/home")
           });
         }
       }
@@ -975,7 +999,7 @@ class InterfaceAnalyzer {
       if (vfPageRule) {
         let vfPageQuery = "SELECT Id, Name, ApiVersion, LastModifiedDate, LastModifiedBy.Name FROM ApexPage WHERE NamespacePrefix = null ORDER BY Name";
         let vfPageResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(vfPageQuery), {}), vfPageResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(vfPageQuery), {}), vfPageResult, "Visualforce Page not migrated to LWC")
           .catch(error => {
             console.error(error);
           });
@@ -985,7 +1009,8 @@ class InterfaceAnalyzer {
             reference: vfPage.Name,
             name: "Visualforce Page not migrated to LWC",
             description: `This Visualforce page (API Version: ${vfPage.ApiVersion || "N/A"}) should be migrated to Lightning Web Component (LWC) for better performance and modern UI capabilities. Last modified: ${vfPage.LastModifiedDate ? new Date(vfPage.LastModifiedDate).toLocaleDateString() : "N/A"} by ${vfPage.LastModifiedBy?.Name || "N/A"}.`,
-            priority: 4
+            priority: 4,
+            setupLink: this.model.setupLink("/lightning/setup/ApexPages/page?address=%2F" + vfPage.Id)
           });
         }
       }
@@ -994,7 +1019,7 @@ class InterfaceAnalyzer {
       if (auraComponentRule) {
         let auraComponentQuery = "SELECT Id, DeveloperName, ApiVersion, LastModifiedDate, LastModifiedBy.Name FROM AuraDefinitionBundle WHERE NamespacePrefix = null ORDER BY DeveloperName";
         let auraComponentResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(auraComponentQuery), {}), auraComponentResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(auraComponentQuery), {}), auraComponentResult, "Aura Component not migrated to LWC")
           .catch(error => {
             console.error(error);
           });
@@ -1004,7 +1029,8 @@ class InterfaceAnalyzer {
             reference: auraComponent.DeveloperName,
             name: "Aura Component not migrated to LWC",
             description: `This Aura component (API Version: ${auraComponent.ApiVersion || "N/A"}) should be migrated to Lightning Web Component (LWC) for better performance and modern UI capabilities. Last modified: ${auraComponent.LastModifiedDate ? new Date(auraComponent.LastModifiedDate).toLocaleDateString() : "N/A"} by ${auraComponent.LastModifiedBy?.Name || "N/A"}.`,
-            priority: 4
+            priority: 4,
+            setupLink: this.model.setupLink("/lightning/setup/LightningComponentBundles/home")
           });
         }
       }
@@ -1039,7 +1065,7 @@ class AutomationAnalyzer {
       if (processBuilderRule) {
         let processBuilderQuery = "SELECT Id, MasterLabel, ProcessType, LastModifiedDate, LastModifiedBy.Name, Status FROM Flow WHERE ProcessType = 'Workflow' AND Status = 'Active' ORDER BY MasterLabel";
         let processBuilderResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(processBuilderQuery), {}), processBuilderResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(processBuilderQuery), {}), processBuilderResult, "Process Builder to migrate to Flow")
           .catch(error => {
             console.error(error);
           });
@@ -1049,7 +1075,8 @@ class AutomationAnalyzer {
             reference: processBuilder.MasterLabel,
             name: "Process Builder to migrate to Flow",
             description: `This Process Builder process should be migrated to a Flow. Process Builder is being deprecated in favor of Flow Builder, which provides better performance and more capabilities. Last modified: ${processBuilder.LastModifiedDate ? new Date(processBuilder.LastModifiedDate).toLocaleDateString() : "N/A"} by ${processBuilder.LastModifiedBy?.Name || "N/A"}.`,
-            priority: 2
+            priority: 2,
+            setupLink: this.model.setupLink("/lightning/setup/MigrateToFlowTool/home")
           });
         }
       }
@@ -1060,7 +1087,7 @@ class AutomationAnalyzer {
         // one record at a time. So all non-managed rules are reported, active or not.
         let workflowQuery = "SELECT Id, Name, TableEnumOrId, LastModifiedDate, LastModifiedBy.Name FROM WorkflowRule WHERE NamespacePrefix = null ORDER BY Name";
         let workflowResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(workflowQuery), {}), workflowResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(workflowQuery), {}), workflowResult, "Workflow Rule to migrate to Flow")
           .catch(error => {
             console.error(error);
           });
@@ -1070,7 +1097,8 @@ class AutomationAnalyzer {
             reference: workflow.Name + (workflow.TableEnumOrId ? " (" + workflow.TableEnumOrId + ")" : ""),
             name: "Workflow Rule to migrate to Flow",
             description: `This Workflow Rule should be migrated to a Flow, or deleted if it is inactive. Workflow Rules are being deprecated in favor of Flow Builder, which provides better performance, more capabilities, and better debugging tools. Last modified: ${workflow.LastModifiedDate ? new Date(workflow.LastModifiedDate).toLocaleDateString() : "N/A"} by ${workflow.LastModifiedBy?.Name || "N/A"}.`,
-            priority: 2
+            priority: 2,
+            setupLink: this.model.setupLink("/lightning/setup/MigrateToFlowTool/home")
           });
         }
       }
@@ -1081,7 +1109,7 @@ class AutomationAnalyzer {
       if (flowOldApiVersionRule) {
         let flowQuery = "SELECT Id, MasterLabel, ApiVersion, ProcessType, VersionNumber, Definition.DeveloperName, Definition.NamespacePrefix FROM Flow WHERE Status = 'Active' AND ProcessType != 'Workflow' AND ApiVersion < 50 ORDER BY MasterLabel";
         let flowResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(flowQuery), {}), flowResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(flowQuery), {}), flowResult, "Flow with old API Version")
           .catch(error => {
             console.error(error);
           });
@@ -1094,7 +1122,8 @@ class AutomationAnalyzer {
             reference: (flow.Definition?.DeveloperName || flow.MasterLabel) + " (v" + flow.VersionNumber + ")",
             name: "Flow with old API Version",
             description: `This active ${flow.ProcessType} flow is using an old API version (${flow.ApiVersion}). Flow runtime behavior depends on the API version: consider saving a new version with a recent API version and testing it.`,
-            priority: flow.ApiVersion < 30 ? 1 : (flow.ApiVersion < 40 ? 2 : 3)
+            priority: flow.ApiVersion < 30 ? 1 : (flow.ApiVersion < 40 ? 2 : 3),
+            setupLink: this.model.setupLink("/builder_platform_interaction/flowBuilder.app?flowId=" + flow.Id)
           });
         }
       }
@@ -1133,17 +1162,18 @@ class EntityAnalyzer {
 
     let query;
     let tableFields = new Map();
+    let entityDurableIds = new Map(); // entity API name -> EntityDefinition DurableId
     let logs = [];
     if (objWithoutDescRule) {
-      query = "SELECT QualifiedApiName FROM EntityDefinition WHERE PublisherId != 'System' and Description = null ORDER BY QualifiedApiName";
+      query = "SELECT DurableId, QualifiedApiName FROM EntityDefinition WHERE PublisherId != 'System' and Description = null ORDER BY QualifiedApiName";
       let result = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {}), result)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {}), result, "Custom SObject without description")
         .catch(error => {
           console.log(error);
         });
       for (let i = 0; i < result.rows.length; i++) {
         let entity = result.rows[i];
-        logs.push({reference: entity.QualifiedApiName, name: "Custom SObject without description", description: "Add description from SETUP > Object Manager > (select entity) > Edit", priority: 5});//5 low
+        logs.push({reference: entity.QualifiedApiName, name: "Custom SObject without description", description: "Add description from SETUP > Object Manager > (select entity) > Edit", priority: 5, setupLink: this.model.objectSetupLink(entity.DurableId, "Details")});//5 low
       }
       this.recordTable.addToTable(logs, {column: "priority"});
       this.model.resultTableModel.dataChange(this.recordTable);
@@ -1160,7 +1190,7 @@ class EntityAnalyzer {
     for (let index = 0; index < objectList.length; index += 50) {
       let entityNames = objectList.slice(index, index + 50).map(e => "'" + e.name + "'");
       let fieldsFesult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query.replace("[RANGE]", entityNames.join(", "))), {}), fieldsFesult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(query.replace("[RANGE]", entityNames.join(", "))), {}), fieldsFesult, "Field rules (FieldDefinition)")
         .catch(error => {
           console.log(error);
         });
@@ -1175,9 +1205,12 @@ class EntityAnalyzer {
             fieldMap.set(fieldDurableId, field);
           }
         }
+        // DurableId is "<entity durable id>.<field durable id>", as used by getFieldDefinitionSetupLinks (setup-links.js)
+        let [entityDurableId, fieldDurableIdPart] = field.DurableId.split(".");
         if (!field.Description && fieldWithoutDescRule){
-          logs2.push({reference: field.EntityDefinition.QualifiedApiName + "." + field.QualifiedApiName, name: "Custom Field without description", description: "Add description from SETUP > Object Manager > (select entity) > Fields & Relationships > (select field) > Edit", priority: 5});//5 low
+          logs2.push({reference: field.EntityDefinition.QualifiedApiName + "." + field.QualifiedApiName, name: "Custom Field without description", description: "Add description from SETUP > Object Manager > (select entity) > Fields & Relationships > (select field) > Edit", priority: 5, setupLink: this.model.objectSetupLink(entityDurableId, "FieldsAndRelationships/" + fieldDurableIdPart)});//5 low
         }
+        entityDurableIds.set(field.EntityDefinition.QualifiedApiName, entityDurableId);
         let cnt = tableFields.get(field.EntityDefinition.QualifiedApiName);
         if (!cnt){
           cnt = 0;
@@ -1198,7 +1231,7 @@ class EntityAnalyzer {
       // Query MetadataComponentDependency for CustomField references
       let dependencyQuery = "SELECT RefMetadataComponentId FROM MetadataComponentDependency WHERE RefMetadataComponentType = 'CustomField'";
       let dependencyResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(dependencyQuery), {}), dependencyResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(dependencyQuery), {}), dependencyResult, "Custom Field not referenced")
         .catch(error => {
           console.error(error);
         });
@@ -1219,7 +1252,8 @@ class EntityAnalyzer {
             reference: fieldFullName,
             name: "Custom Field not referenced",
             description: "This custom field does not appear to be referenced in any metadata components (Apex classes, Flows, Process Builders, etc.). Consider reviewing if this field is still needed or if it should be removed.",
-            priority: 4
+            priority: 4,
+            setupLink: this.model.objectSetupLink(field.DurableId.split(".")[0], "FieldsAndRelationships/" + fieldDurableId)
           });
         }
       }
@@ -1233,7 +1267,7 @@ class EntityAnalyzer {
     if (objWithManyFieldsDescRule){
       for (let [key, value] of tableFields) {
         if (value > 100){
-          logs3.push({reference: key, name: "Entity with too many fields", description: "Consider reducing the number of fields on this entity. Salesforce recommends no more than " + (value > 200 ? "200" : "100") + " fields per object to ensure optimal performance.", priority: (value > 200 ? 3 : 4)});
+          logs3.push({reference: key, name: "Entity with too many fields", description: "Consider reducing the number of fields on this entity. Salesforce recommends no more than " + (value > 200 ? "200" : "100") + " fields per object to ensure optimal performance.", priority: (value > 200 ? 3 : 4), setupLink: this.model.objectSetupLink(entityDurableIds.get(key) || key, "FieldsAndRelationships")});
         }
       }
     }
@@ -1249,7 +1283,7 @@ class EntityAnalyzer {
       // objects and the 01I id for custom ones, resolved below only for the objects over the threshold.
       let validationRuleQuery = "SELECT Id, EntityDefinitionId FROM ValidationRule";
       let validationRuleResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(validationRuleQuery), {}), validationRuleResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(validationRuleQuery), {}), validationRuleResult, "Entity with too many validation rules")
         .catch(error => {
           console.error(error);
         });
@@ -1272,7 +1306,7 @@ class EntityAnalyzer {
       if (customEntityIds.length > 0) {
         let entityQuery = "SELECT DurableId, QualifiedApiName FROM EntityDefinition WHERE DurableId IN (" + customEntityIds.map(entityId => "'" + entityId.substring(0, 15) + "'").join(", ") + ")";
         let entityResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(entityQuery), {}), entityResult)
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(entityQuery), {}), entityResult, "Entity with too many validation rules")
           .catch(error => {
             console.error(error);
           });
@@ -1286,7 +1320,9 @@ class EntityAnalyzer {
           reference: objectName,
           name: "Entity with too many validation rules",
           description: `This entity has ${count} validation rules. Consider consolidating or reviewing validation rules to improve maintainability and performance. Salesforce recommends keeping validation rules manageable per object.`,
-          priority: count > 25 ? 2 : 3
+          priority: count > 25 ? 2 : 3,
+          // EntityDefinitionId is already the API name (standard) or the DurableId (custom) Object Manager expects
+          setupLink: this.model.objectSetupLink(entityId, "ValidationRules")
         });
       }
 
@@ -1303,7 +1339,7 @@ class EntityAnalyzer {
       // Query Apex Triggers
       let apexTriggerQuery = "SELECT Id, Name, TableEnumOrId, Status FROM ApexTrigger WHERE Status = 'Active' AND TableEnumOrId != null ORDER BY TableEnumOrId";
       let apexTriggerResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(apexTriggerQuery), {}), apexTriggerResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(apexTriggerQuery), {}), apexTriggerResult, "Entity with too many triggers")
         .catch(error => {
           console.error(error);
         });
@@ -1322,7 +1358,7 @@ class EntityAnalyzer {
       // a flow triggers on is exposed via FlowDefinitionView (standard API), as TriggerObjectOrEventLabel.
       let flowTriggerQuery = "SELECT Id, Label, TriggerObjectOrEventLabel FROM FlowDefinitionView WHERE IsActive = true AND TriggerObjectOrEventLabel != null ORDER BY Label";
       let flowTriggerResult = {rows: []};
-      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(flowTriggerQuery), {}), flowTriggerResult)
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(flowTriggerQuery), {}), flowTriggerResult, "Entity with too many triggers")
         .catch(error => {
           console.error(error);
         });
@@ -1355,7 +1391,8 @@ class EntityAnalyzer {
             reference: objectName,
             name: "Entity with too many triggers",
             description: `This entity has ${count} active triggers (Apex triggers and/or Flow triggers). Consider consolidating triggers or using a trigger framework to improve maintainability and avoid execution order issues. Salesforce recommends keeping the number of triggers per object manageable.`,
-            priority: count > 10 ? 2 : 3
+            priority: count > 10 ? 2 : 3,
+            setupLink: this.model.objectSetupLink(objectName, "ApexTriggers")
           });
         }
       }
@@ -1368,6 +1405,7 @@ class EntityAnalyzer {
 }
 class Model {
   constructor(sfHost) {
+    this.sfHost = sfHost;
     this.reactCallback = null;
     this.spinnerCount = 0;
     this.sfLink = "https://" + sfHost;
@@ -1383,10 +1421,15 @@ class Model {
     });
     this.describeInfo.describeGlobal(false);
     // Processed data and UI state
-    this.resultTableModel = new TableModel(sfHost, this.didUpdate.bind(this), {});
+    this.resultTableModel = new TableModel(sfHost, this.didUpdate.bind(this), {
+      cellBackgroundColor: (column, value) => (column == "priority" ? priorityColors[value] : null)
+    });
     this.resultError = null;
     this.analyzeStatus = "Ready";
-    this.recordTable = new RecordTable(st => { this.analyzeStatus = st; });
+    // Filter status of the table, kept apart from analyzeStatus which drives the Analyze/Stop buttons
+    this.recordTable = new RecordTable(st => { this.resultStatus = st; });
+    this.resultStatus = "";
+    this.apiUsage = null;
     this.recordTable.describeInfo = this.describeInfo;
     this.recordTable.sfHost = sfHost;
     this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
@@ -1395,41 +1438,42 @@ class Model {
     }));
     // highApiUsage: the rule needs many API calls (chunked FieldDefinition queries, full Apex source download, ...)
     this.rules = [
-      {name: "Custom SObject without description", selected: true},
-      {name: "Custom Field without description", selected: true, highApiUsage: true},
+      {name: "Custom SObject without description", category: "Objects & Fields", selected: true, help: "Custom objects with an empty description."},
+      {name: "Custom Field without description", category: "Objects & Fields", selected: true, highApiUsage: true, help: "Custom fields with an empty description. Queries the fields of every object (one call per 50 objects)."},
       //TODO not working seems metadata component dependency is not working
-      //{name: "Custom Field not referenced", selected: true, highApiUsage: true},
-      {name: "Entity with too many fields", selected: true, highApiUsage: true},
-      {name: "Entity with too many validation rules", selected: true},
-      {name: "Entity with too many triggers", selected: true},
-      {name: "Connected App OAuth Token not used recently", selected: true},
-      {name: "Connected App allows self-authorization", selected: true},
-      {name: "Connected App is used but not installed", selected: true},
-      {name: "Connected app admin pre auth with too many permission", selected: true},
-      {name: "Connected app admin pre auth without permission", selected: true},
-      {name: "External client app allows self-authorization", selected: true},
-      {name: "External client app OAuth Token not used recently", selected: true},
-      {name: "No IP Range defined", selected: true},
-      {name: "Apex Class with poor code coverage", selected: true},
-      {name: "Apex Class with old API Version", selected: true},
-      {name: "Apex Class need recompilation", selected: true},
-      {name: "Apex hardcoded id in code instead of label", selected: true, highApiUsage: true},
-      {name: "Apex SOQL in loop", selected: true, highApiUsage: true},
-      {name: "Apex DML in loop", selected: true, highApiUsage: true},
-      {name: "Apex class without explicit sharing", selected: true, highApiUsage: true},
-      {name: "Apex trigger with SOQL/DML instead of service class", selected: true, highApiUsage: true},
-      {name: "Apex class not referenced (not REST Apex)", selected: true, highApiUsage: true},
-      {name: "Apex job schedulable with no jobs in 365 days", selected: true, highApiUsage: true},
-      {name: "Apex SOQL injection: missing escape on parameter", selected: true, highApiUsage: true},
-      {name: "Inactive user", selected: true},
-      {name: "Too many System Administrators", selected: true},
-      {name: "Role Hierarchy with too many levels", selected: true},
-      {name: "Visualforce Page not migrated to LWC", selected: true},
-      {name: "Aura Component not migrated to LWC", selected: true},
-      {name: "Process Builder to migrate to Flow", selected: true},
-      {name: "Workflow Rule to migrate to Flow", selected: true},
-      {name: "Flow with old API Version", selected: true},
+      //{name: "Custom Field not referenced", category: "Objects & Fields", selected: true, highApiUsage: true},
+      {name: "Entity with too many fields", category: "Objects & Fields", selected: true, highApiUsage: true, help: "Objects with more than 100 fields (higher priority above 200). Queries the fields of every object (one call per 50 objects)."},
+      {name: "Entity with too many validation rules", category: "Objects & Fields", selected: true, help: "Objects with more than 15 validation rules (higher priority above 25)."},
+      {name: "Entity with too many triggers", category: "Objects & Fields", selected: true, help: "Objects with more than 5 active Apex triggers and record-triggered flows (higher priority above 10)."},
+      {name: "Connected App OAuth Token not used recently", category: "Security", selected: true, help: "Connected apps absent from Login History and without OAuth token used in the last 6 months."},
+      {name: "Connected App allows self-authorization", category: "Security", selected: true, help: "Connected apps that users can self-authorize, instead of admin pre-approval."},
+      {name: "Connected App is used but not installed", category: "Security", selected: true, help: "Connected apps with OAuth tokens in use but not installed."},
+      {name: "Connected app admin pre auth with too many permission", category: "Security", selected: true, help: "Admin pre-approved connected apps granted to more than 10 profiles/permission sets."},
+      {name: "Connected app admin pre auth without permission", category: "Security", selected: true, help: "Admin pre-approved connected apps granted to no profile/permission set: no user can use them."},
+      {name: "External client app allows self-authorization", category: "Security", selected: true, help: "External client apps whose OAuth policy lets users self-authorize."},
+      {name: "External client app OAuth Token not used recently", category: "Security", selected: true, help: "External client apps absent from Login History and without OAuth token used in the last 6 months."},
+      {name: "No IP Range defined", category: "Security", selected: true, help: "No trusted IP range defined in Network Access."},
+      {name: "Apex Class with poor code coverage", category: "Apex", selected: true, help: "Apex classes and triggers with less than 75% code coverage."},
+      {name: "Apex Class with old API Version", category: "Apex", selected: true, help: "Apex classes with an API version below 50 (higher priority below 40 and 30)."},
+      {name: "Apex Class need recompilation", category: "Apex", selected: true, help: "Invalid Apex classes that need recompilation."},
+      {name: "Apex hardcoded id in code instead of label", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed Apex classes containing hardcoded Salesforce Ids. Downloads the source of every Apex class."},
+      {name: "Apex SOQL in loop", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed Apex classes with a SOQL query inside a loop. Downloads the source of every Apex class."},
+      {name: "Apex DML in loop", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed Apex classes with a DML operation inside a loop. Downloads the source of every Apex class."},
+      {name: "Apex class without explicit sharing", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed Apex classes declared without \"with sharing\" nor \"without sharing\". Downloads the source of every Apex class."},
+      {name: "Apex trigger with SOQL/DML instead of service class", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed Apex triggers running SOQL/DML directly instead of calling a service or handler class. Downloads the source of every Apex trigger."},
+      {name: "Apex class not referenced (not REST Apex)", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed, non-test, non-REST Apex classes not referenced by other metadata. Downloads the source of every Apex class."},
+      {name: "Apex job schedulable with no jobs in 365 days", category: "Apex", selected: true, highApiUsage: true, help: "Batchable, Queueable or Schedulable Apex classes without any job in the last 365 days. Downloads the source of every Apex class."},
+      {name: "Apex SOQL injection: missing escape on parameter", category: "Apex", selected: true, highApiUsage: true, help: "Non-managed Apex classes building a SOQL WHERE clause by string concatenation. Downloads the source of every Apex class."},
+      {name: "Inactive user", category: "Users", selected: true, help: "Active users who never logged in or not for more than 1 month (higher priority above 3 months)."},
+      {name: "Too many System Administrators", category: "Users", selected: true, help: "More System Administrators than 10 or 10% of active users, whichever is higher."},
+      {name: "Role Hierarchy with too many levels", category: "Users", selected: true, help: "Role hierarchy deeper than 10 levels."},
+      {name: "Visualforce Page not migrated to LWC", category: "Automation & UI", selected: true, help: "Non-managed Visualforce pages."},
+      {name: "Aura Component not migrated to LWC", category: "Automation & UI", selected: true, help: "Non-managed Aura components."},
+      {name: "Process Builder to migrate to Flow", category: "Automation & UI", selected: true, help: "Active Process Builder processes."},
+      {name: "Workflow Rule to migrate to Flow", category: "Automation & UI", selected: true, help: "Non-managed Workflow Rules, active or not (the active flag can't be queried in bulk)."},
+      {name: "Flow with old API Version", category: "Automation & UI", selected: true, help: "Active non-managed flows with an API version below 50 (higher priority below 40 and 30)."},
     ];
+    this.loadRuleSelection();
   }
   applyResultFilter() {
     let filters = [];
@@ -1441,6 +1485,47 @@ class Model {
     }
     this.recordTable.updateVisibility(filters.length ? filters : null);
     this.resultTableModel.dataChange(this.recordTable);
+  }
+  // Unselected rules are stored (not selected ones) so that a new rule is selected by default
+  loadRuleSelection() {
+    try {
+      let unselected = JSON.parse(localStorage.getItem(unselectedRulesStorageKey));
+      if (Array.isArray(unselected)) {
+        for (let rule of this.rules) {
+          rule.selected = !unselected.includes(rule.name);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load the org analyzer rule selection", e);
+    }
+  }
+  saveRuleSelection() {
+    try {
+      localStorage.setItem(unselectedRulesStorageKey, JSON.stringify(this.rules.filter(rule => !rule.selected).map(rule => rule.name)));
+    } catch (e) {
+      console.warn("Could not save the org analyzer rule selection", e);
+    }
+  }
+  async getDailyApiRequests() {
+    try {
+      let limits = await sfConn.rest("/services/data/v" + apiVersion + "/limits");
+      return limits.DailyApiRequests;
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  }
+  // Link to a Setup page, shown in the setupLink column of a result
+  setupLink(path) {
+    return "https://" + this.sfHost + path;
+  }
+  // Setup page of an Apex class (01p) or trigger (01q)
+  apexSetupLink(id) {
+    return this.setupLink((id.startsWith("01q") ? "/lightning/setup/ApexTriggers/page?address=%2F" : "/lightning/setup/ApexClasses/page?address=%2F") + id);
+  }
+  // entity: API name, or EntityDefinition DurableId for custom objects
+  objectSetupLink(entity, page) {
+    return this.setupLink("/lightning/setup/ObjectManager/" + encodeURIComponent(entity) + "/" + page + "/view");
   }
   isRuleEnable(ruleName) {
     return this.rules.some(rule => rule.name == ruleName && rule.selected);
@@ -1502,7 +1587,9 @@ class Model {
     return "(Loading) Running Org Analyzer";
   }
 
-  async batchHandler(batch, options) {
+  // ruleName: when set, a SalesforceRestError is reported as a "Rule failed" result instead of only being logged,
+  // so that a broken query doesn't look like a healthy org. options.failed is set in that case.
+  async batchHandler(batch, options, ruleName) {
     return batch.catch(err => {
       if (err.name == "AbortError") {
         return {records: [], done: true, totalSize: -1};
@@ -1511,7 +1598,7 @@ class Model {
     }).then(data => {
       options.rows = options.rows.concat(data.records);
       if (!data.done) {
-        let pr = this.batchHandler(sfConn.rest(data.nextRecordsUrl, {}), options);
+        let pr = this.batchHandler(sfConn.rest(data.nextRecordsUrl, {}), options, ruleName);
         return pr;
       }
       return null;
@@ -1520,8 +1607,16 @@ class Model {
         throw err; // not a SalesforceRestError
       }
       console.log(err);
+      options.failed = true;
+      if (ruleName) {
+        this.reportRuleFailure(ruleName, err.message);
+      }
       return null;
     });
+  }
+  reportRuleFailure(ruleName, message) {
+    this.recordTable.addToTable([{reference: ruleName, name: "Rule failed", description: "This rule could not be evaluated, its result is incomplete: " + message, priority: 1}], {column: "priority"});
+    this.resultTableModel.dataChange(this.recordTable);
   }
   async startAnalyze(){
     //this.logs = [];
@@ -1529,7 +1624,9 @@ class Model {
     this.progressCurrent = 0;
     this.progressTotal = 6; // Total number of analyzers
     this.progressCurrentStep = "";
+    this.apiUsage = null;
     this.didUpdate();
+    let apiRequestsBefore = await this.getDailyApiRequests();
 
     let analyser = new EntityAnalyzer(this, this.recordTable);
     this.progressCurrentStep = "Analyzing Entities...";
@@ -1567,6 +1664,12 @@ class Model {
     this.didUpdate();
     await analyser.analyse();
 
+    // Org-wide counter: other integrations running meanwhile are counted too
+    let apiRequestsAfter = await this.getDailyApiRequests();
+    if (apiRequestsBefore && apiRequestsAfter) {
+      this.apiUsage = {used: apiRequestsBefore.Remaining - apiRequestsAfter.Remaining, remaining: apiRequestsAfter.Remaining, max: apiRequestsAfter.Max};
+    }
+
     this.analyzeStatus = "Ready";
     this.progressCurrentStep = "";
     this.progressCurrent = 0;
@@ -1589,6 +1692,11 @@ class Model {
 
 let h = React.createElement;
 
+const unselectedRulesStorageKey = "orgAnalyzerUnselectedRules";
+const ruleCategories = ["Objects & Fields", "Security", "Apex", "Users", "Automation & UI"];
+const priorityLabels = {1: "Critical", 2: "High", 3: "Medium", 4: "Low", 5: "Info"};
+const priorityColors = {1: "#f9d2cf", 2: "#fde0c5", 3: "#fff1c2", 4: "#dcecf9", 5: "#eeeeee"};
+
 class App extends React.Component {
   constructor(props) {
     super(props);
@@ -1598,6 +1706,13 @@ class App extends React.Component {
     this.onSelectRuleFilter = this.onSelectRuleFilter.bind(this);
     this.onSelectAllChange = this.onSelectAllChange.bind(this);
     this.onDownloadCsv = this.onDownloadCsv.bind(this);
+    this.onPrioritySummaryClick = this.onPrioritySummaryClick.bind(this);
+  }
+  onPrioritySummaryClick(priority) {
+    let {model} = this.props;
+    // Clicking the active priority again clears the filter
+    model.priorityFilter = model.priorityFilter == priority ? "" : priority;
+    model.applyResultFilter();
   }
   onStartClick() {
     let {model} = this.props;
@@ -1626,6 +1741,7 @@ class App extends React.Component {
     if (model.selectAll && model.rules) {
       model.selectAll.indeterminate = (model.rules.some(rule => rule.selected) && model.rules.some(rule => !rule.selected));
     }
+    model.saveRuleSelection();
     model.didUpdate();
   }
   onDownloadCsv() {
@@ -1652,8 +1768,11 @@ class App extends React.Component {
     hostArg.set("host", model.sfHost);
     hostArg.set("tab", 5);
     let selectAllChecked = model.rules && model.rules.every(rule => rule.selected);
-    let standardRules = model.rules.filter(rule => !rule.highApiUsage);
-    let highApiUsageRules = model.rules.filter(rule => rule.highApiUsage);
+    let highApiUsageSelected = model.rules.some(rule => rule.highApiUsage && rule.selected);
+    let priorityCounts = new Map();
+    for (let record of model.recordTable.records) {
+      priorityCounts.set(record.priority, (priorityCounts.get(record.priority) || 0) + 1);
+    }
     let resultRuleNames = [...new Set(model.recordTable.records.map(record => record.name))].sort();
 
     return (
@@ -1679,14 +1798,14 @@ class App extends React.Component {
           ),
         ),
         h("div", {className: "area"},
-          h("div", {className: "slds-notification slds-notification_alert", role: "alert", style: {backgroundColor: "#FFB75D", color: "#080707", padding: "12px", marginBottom: "16px", borderRadius: "4px", border: "1px solid #DDDBDA"}},
+          h("div", {className: "slds-notification slds-notification_alert", role: "alert", hidden: !highApiUsageSelected, style: {backgroundColor: "#FFB75D", color: "#080707", padding: "12px", marginBottom: "16px", borderRadius: "4px", border: "1px solid #DDDBDA"}},
             h("div", {style: {display: "flex", alignItems: "center"}},
               h("svg", {style: {width: "20px", height: "20px", marginRight: "8px", flexShrink: 0}, viewBox: "0 0 24 24", fill: "currentColor"},
                 h("path", {d: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"})
               ),
               h("div", {style: {flex: 1}},
                 h("strong", {style: {display: "block", marginBottom: "4px"}}, "Warning: High API Usage"),
-                h("span", {style: {fontSize: "12px"}}, "The Org Analyzer makes extensive API calls to analyze your org. Please monitor your org's API limits and save results using the CSV download feature for future reference.")
+                h("span", {style: {fontSize: "12px"}}, "Some selected rules (marked with ", h(HighApiUsageIcon), ") make many API calls to analyze your org. Please monitor your org's API limits and save results using the CSV download feature for future reference.")
               )
             )
           ),
@@ -1697,13 +1816,8 @@ class App extends React.Component {
               h("input", {type: "checkbox", className: "checkbox-control", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange}),
               "Select all"
             ),
-            h("br", {}),
-            h("div", {className: "slds-grid slds-wrap"},
-              standardRules.map(rule => h(RuleSelector, {key: rule.name, model, rule}))
-            ),
-            h("h2", {className: "rule-group-title"}, h(HighApiUsageIcon), "High API usage"),
-            h("div", {className: "slds-grid slds-wrap"},
-              highApiUsageRules.map(rule => h(RuleSelector, {key: rule.name, model, rule}))
+            h("div", {className: "rule-categories"},
+              ruleCategories.map(category => h(RuleCategory, {key: category, model, category, rules: model.rules.filter(rule => rule.category == category)}))
             )
           ),
           h("div", {className: "autocomplete-header"},
@@ -1724,18 +1838,23 @@ class App extends React.Component {
               h("option", {value: ""}, "All rules"),
               resultRuleNames.map(ruleName => h("option", {key: ruleName, value: ruleName}, ruleName))
             ),
-            h("select", {value: model.priorityFilter || "", onChange: this.onSelectPriorityFilter, className: "priority-filter select-control"},
-              h("option", {value: ""}, "All priorities"),
-              h("option", {key: "1", value: 1}, "1"),
-              h("option", {key: "2", value: 2}, "2"),
-              h("option", {key: "3", value: 3}, "3"),
-              h("option", {key: "4", value: 4}, "4"),
-              h("option", {key: "5", value: 5}, "5"),
-            ),
             h("span", {className: "result-status flex-right"},
-              h("span", {}, model.analyzeStatus),
+              model.apiUsage ? h("span", {className: "api-usage", title: "Org-wide daily API requests: calls made meanwhile by other users or integrations are counted too"}, `~${model.apiUsage.used} API requests used, ${model.apiUsage.remaining} / ${model.apiUsage.max} remaining today`) : null,
+              h("span", {}, model.analyzeStatus == "Ready" ? model.resultStatus : model.analyzeStatus),
               h("button", {className: "cancel-btn", hidden: (model.analyzeStatus == "Ready"), onClick: this.onStopAnalyze}, "Stop"),
             ),
+          ),
+          h("div", {className: "priority-summary", hidden: priorityCounts.size == 0},
+            Object.entries(priorityLabels).map(([priority, label]) =>
+              h("button", {
+                key: priority,
+                className: "priority-summary-item" + (model.priorityFilter == priority ? " active" : ""),
+                style: {backgroundColor: priorityColors[priority]},
+                disabled: !priorityCounts.get(Number(priority)),
+                title: "Show only " + label + " results (click again to show all)",
+                onClick: () => this.onPrioritySummaryClick(priority)
+              }, h("strong", {}, priorityCounts.get(Number(priority)) || 0), " " + label)
+            )
           ),
           h("div", {hidden: (model.analyzeStatus == "Ready" || model.progressTotal == 0), style: {marginTop: "12px", marginBottom: "8px", padding: "0 16px"}},
             h("div", {style: {display: "flex", justifyContent: "space-between", marginBottom: "4px", fontSize: "12px", color: "#706e6b"}},
@@ -1771,15 +1890,44 @@ class RuleSelector extends React.Component {
     if (model.selectAll && model.rules) {
       model.selectAll.indeterminate = (model.rules.some(r => r.selected) && model.rules.some(r => !r.selected));
     }
+    model.saveRuleSelection();
     model.didUpdate();
   }
   render() {
     let {rule} = this.props;
-    return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: rule.name + (rule.highApiUsage ? " (high API usage)" : "")},
+    return h("div", {className: "rule-item"}, h("label", {title: rule.help + (rule.highApiUsage ? " (high API usage)" : "")},
       h("input", {type: "checkbox", className: "checkbox-control", checked: rule.selected, onChange: this.onChange}),
       rule.highApiUsage ? h(HighApiUsageIcon) : null,
       rule.name
     ));
+  }
+}
+class RuleCategory extends React.Component {
+  constructor(props) {
+    super(props);
+    this.onChange = this.onChange.bind(this);
+  }
+  onChange(e) {
+    let {rules, model} = this.props;
+    for (let rule of rules) {
+      rule.selected = e.target.checked;
+    }
+    model.saveRuleSelection();
+    model.didUpdate();
+  }
+  render() {
+    let {rules, model, category} = this.props;
+    return h("div", {className: "rule-category"},
+      h("h2", {className: "rule-group-title"},
+        h("label", {},
+          h("input", {type: "checkbox", className: "checkbox-control", checked: rules.every(rule => rule.selected), onChange: this.onChange}),
+          category
+        )
+      ),
+      h("div", {className: "rule-list"},
+        rules.map(rule => h(RuleSelector, {key: rule.name, model, rule}))
+      )
+    );
   }
 }
 function HighApiUsageIcon() {

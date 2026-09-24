@@ -628,7 +628,12 @@ export class TableModel {
     }
   }
   getBackgroundColor(rowIdx, cellIdx) {
-    return this.bgColors.get(`${rowIdx}-${cellIdx}`);
+    let color = this.bgColors.get(`${rowIdx}-${cellIdx}`);
+    // Optional per-value coloring, e.g. a priority column
+    if (color == null && this.options.cellBackgroundColor && this.data) {
+      color = this.options.cellBackgroundColor(this.data.table[0][cellIdx], this.data.table[rowIdx]?.[cellIdx]);
+    }
+    return color;
   }
   doSaveAll(){
     let cnt = this.editedRows.size;
@@ -1055,6 +1060,10 @@ export class TableModel {
           dataCell.objectTypes = [];
           dataCell.label = cell;
           dataCell.linkable = true;
+        } else if (typeof cell == "string" && this.isUrl(cell)) {
+          // Not linkable: the text keeps its copy/edit behavior, the url is opened from a dedicated icon
+          dataCell.url = cell;
+          dataCell.label = cell;
         } else if (cell == null) {
           dataCell.label = "";
         } else {
@@ -1151,6 +1160,10 @@ export class TableModel {
     // contains only alphanumeric characters, with at least one alpha
     // and the 3 character object key prefix is not all zeroes.
     return /^[a-z0-9]{15,18}$/i.exec(recordId) && !recordId.startsWith("000") && !/^[0-9]*$/.exec(recordId);
+  }
+  isUrl(text) {
+    // Only http(s): a data value such as "javascript:..." must never become a link
+    return /^https?:\/\/[^\s/]+\S*$/i.test(text);
   }
   isEventLogFile(text) {
     // test the text to identify if this is a path to an eventLogFile
@@ -1483,7 +1496,12 @@ class ScrollTableCell extends React.Component {
         className += " scrolltable-cell-diff";
       }
       return h("td", {className, style: cellStyle},
-        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel) : h("div", {title: "Click to copy, double-click to edit", style: {height: "100%", width: "100%"}, onClick: this.onCopyCellValue, onDoubleClick: this.onTryEdit}, cellLabel),
+        cell.linkable ? h("a", {href: "about:blank", title: "Show all data", onClick: this.onClick, onDoubleClick: this.onTryEdit}, cellLabel)
+        : cell.url ? h("div", {className: "url-cell"},
+          h("div", {title: "Click to copy, double-click to edit", className: "url-cell-text", onClick: this.onCopyCellValue, onDoubleClick: this.onTryEdit}, cellLabel),
+          h("a", {href: cell.url, target: "_blank", rel: "noopener noreferrer", className: "url-link", title: "Open in new tab"}, "↗")
+        )
+        : h("div", {title: "Click to copy, double-click to edit", style: {height: "100%", width: "100%"}, onClick: this.onCopyCellValue, onDoubleClick: this.onTryEdit}, cellLabel),
         cell.showMenu ? h("div", {className: "pop-menu"},
           cell.links.map((l, idx) => {
             let arr = [];

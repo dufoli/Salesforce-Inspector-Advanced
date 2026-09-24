@@ -8,6 +8,12 @@
 - Org analyzer: fix the "Entity with too many validation rules" rule, whose query failed after the first batch (`EntityDefinition does not support queryMore()`) and silently counted only part of the validation rules
 - Org analyzer: fix the Connected App query, which requested non-existent `OAuthScopes`/`Permissions` fields and silently disabled every Connected App rule; the admin pre-authorization rules now count the profiles/permission sets granted access to the app
 - Org analyzer: fix the "Connected App is used but not installed" rule, whose `AppMenuItem` query used a non-existent `ConnectedApplication` relationship; it no longer flags every used app when the installed apps can't be retrieved
+- Org analyzer: each result links to the Setup page where it is fixed (object validation rules/fields/triggers, Apex class, connected app, user, Migrate to Flow tool, Flow Builder, ...)
+- Org analyzer: a rule whose query fails now shows a "Rule failed" result with the error instead of silently returning nothing
+- Org analyzer: rules grouped by category with a per-category checkbox, a tooltip describing each rule and its threshold, and a selection remembered between sessions; the high API usage warning is only shown when such a rule is selected
+- Org analyzer: results colored by priority with named priorities (Critical to Info), a clickable summary of results per priority, and the number of API requests used by the analysis
+- Org analyzer: fix the "Analyze org" button disappearing after filtering the results, and the options link opening without the org host
+- Results table (data export, inspect, org analyzer): cells containing an http(s) URL show an icon to open it in a new tab
 - Org analyzer: fix the "Workflow Rule to migrate to Flow" rule, whose query filtered on a non-existent `Active` field and never returned anything; it now reports every non-managed Workflow Rule, active or not (the active flag isn't queryable in bulk)
 
 ## Version 1.41

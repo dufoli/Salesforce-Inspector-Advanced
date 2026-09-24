@@ -59,6 +59,24 @@ td.scrolltable-cell-diff {
   text-decoration-style: dotted;
 }
 
+.url-cell {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.url-cell-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scrolltable-cell a.url-link {
+  flex-shrink: 0;
+  margin-left: 4px;
+  text-decoration: none;
+}
+
 .pop-menu {
   position: absolute;
   padding: 7px 0;

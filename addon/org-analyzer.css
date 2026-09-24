@@ -14,3 +14,73 @@
 .rule-filter {
   max-width: 300px;
 }
+
+/* One column per theme, rules listed vertically below its title; columns wrap on narrow screens */
+.rule-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.rule-category {
+  flex: 1 1 220px;
+  min-width: 220px;
+}
+
+.rule-category .rule-group-title {
+  border-bottom: 1px solid #dddbda;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.rule-category .rule-group-title label {
+  cursor: pointer;
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rule-item label {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.rule-item .checkbox-control {
+  flex-shrink: 0;
+}
+
+.priority-summary {
+  display: flex;
+  gap: 8px;
+  margin: 8px 16px;
+}
+
+.priority-summary-item {
+  border: 1px solid #dddbda;
+  border-radius: 4px;
+  padding: 4px 12px;
+  color: #080707;
+  cursor: pointer;
+}
+
+.priority-summary-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.priority-summary-item.active {
+  border-color: #0070d2;
+  box-shadow: 0 0 0 1px #0070d2;
+}
+
+.api-usage {
+  margin-right: 12px;
+  font-size: 12px;
+  color: #706e6b;
+}
