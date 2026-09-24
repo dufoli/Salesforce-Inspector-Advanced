@@ -66,10 +66,10 @@ The analyzer has 5 tabs:
 
 ## Org Analyzer
 
-Open it from the popup and go to the "Org Analyzer" button. It scans your org for security, code-quality, unused-resource, migration and maintainability issues (e.g. too many validation rules/triggers per object, SOQL/DML in loops, hardcoded IDs, SOQL injection risks, Apex classes without an explicit sharing model, unreferenced Apex classes, Process Builder/Workflow candidates for Flow migration, Visualforce/Aura candidates for LWC migration, too many system admins, deep role hierarchies, inactive users, over-permissioned Connected Apps, and more).
+Open it from the popup and go to the "Org Analyzer" button. It scans your org for security, code-quality, unused-resource, migration and maintainability issues (e.g. too many validation rules/triggers per object, SOQL/DML in loops, hardcoded IDs, SOQL injection risks, Apex classes without an explicit sharing model, unreferenced Apex classes, Process Builder/Workflow candidates for Flow migration, active Flows on an old API version, Visualforce/Aura candidates for LWC migration, too many system admins, deep role hierarchies, inactive users, over-permissioned Connected Apps, and more).
 
-1. Check/uncheck the rules you want to run (or "Select all"), then click **Analyze org**.
-2. Results stream in as each rule completes; use the priority dropdown (1-5) to filter, and **Stop** to cancel a long-running scan.
+1. Check/uncheck the rules you want to run (or "Select all"), then click **Analyze org**. Rules that need many API calls (field analysis, Apex source scanning) are grouped under **High API usage** and marked with a warning icon: uncheck them on orgs close to their API limit.
+2. Results stream in as each rule completes; use the rule and priority (1-5) dropdowns to filter, and **Stop** to cancel a long-running scan.
 3. Click the download icon to save the results as a CSV.
 
 > **Warning**

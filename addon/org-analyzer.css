@@ -1,0 +1,16 @@
+.high-api-usage-icon {
+  width: 12px;
+  height: 12px;
+  margin: 0 4px;
+  fill: #dd7a01;
+  vertical-align: middle;
+}
+
+.rule-group-title {
+  margin-top: 8px;
+  font-weight: bold;
+}
+
+.rule-filter {
+  max-width: 300px;
+}

@@ -145,76 +145,79 @@ export class RecordTable {
     let idIdx = this.table[0].findIndex(header => header.toLowerCase() === "id");
     return this.getVisibleTable().map(row => row.filter((c, i) => (i == 0 || i == idIdx)).map(cell => "\"" + this.cellToString(cell).split("\"").join("\"\"") + "\"").join(separator)).join("\r\n");
   }
-  isVisible(row) {
-    if (!this.filter) {
+  isVisible(row, filter = this.filter) {
+    if (!filter) {
       return true;
+    }
+    if (Array.isArray(filter)) {
+      return filter.every(f => this.isVisible(row, f));
     }
     let filterValue;
     //TODO migrate legacy search on all components
-    if (typeof this.filter === "string" || this.filter instanceof String) {
-      filterValue = this.filter;
+    if (typeof filter === "string" || filter instanceof String) {
+      filterValue = filter;
     } else {
-      filterValue = this.filter.value;
+      filterValue = filter.value;
     }
-    if (!filterValue && this.filter.operator && this.filter.operator != "!=" && this.filter.operator != "=") {
+    if (!filterValue && filter.operator && filter.operator != "!=" && filter.operator != "=") {
       return true;
     }
-    if (this.filter.fieldIndex == null){
+    if (filter.fieldIndex == null){
       return row.some(cell => this.cellToString(cell).toLowerCase().includes(filterValue.toLowerCase()));
     }
-    let cell = row[this.filter.fieldIndex];
-    if (cell == null && this.filter.value == "") {
-      if (this.filter.operator == "=") {
+    let cell = row[filter.fieldIndex];
+    if (cell == null && filter.value == "") {
+      if (filter.operator == "=") {
         return true;
-      } else if (this.filter.operator == "!=") {
+      } else if (filter.operator == "!=") {
         return false;
-      } else if (this.filter.operator == "startsWith") {
+      } else if (filter.operator == "startsWith") {
         return true;
-      } else if (this.filter.operator == "endsWith") {
+      } else if (filter.operator == "endsWith") {
         return true;
-      } else if (this.filter.operator == "contains") {
+      } else if (filter.operator == "contains") {
         return true;
       }
     }
-    if (cell == null && this.filter.value != "") {
-      if (this.filter.operator == "=") {
+    if (cell == null && filter.value != "") {
+      if (filter.operator == "=") {
         return false;
-      } else if (this.filter.operator == "!=") {
+      } else if (filter.operator == "!=") {
         return true;
-      } else if (this.filter.operator == "startsWith") {
+      } else if (filter.operator == "startsWith") {
         return false;
-      } else if (this.filter.operator == "endsWith") {
+      } else if (filter.operator == "endsWith") {
         return false;
-      } else if (this.filter.operator == "contains") {
+      } else if (filter.operator == "contains") {
         return false;
       }
     }
-    switch (this.filter.operator) {
+    switch (filter.operator) {
       case "=": //equal
-        return this.cellToString(cell).toLowerCase() == this.filter.value.toLowerCase();
+        return this.cellToString(cell).toLowerCase() == filter.value.toLowerCase();
       case "!=": //not equal
-        return this.cellToString(cell).toLowerCase() != this.filter.value.toLowerCase();
+        return this.cellToString(cell).toLowerCase() != filter.value.toLowerCase();
       case "startsWith":
-        return this.cellToString(cell).toLowerCase().startsWith(this.filter.value.toLowerCase());
+        return this.cellToString(cell).toLowerCase().startsWith(filter.value.toLowerCase());
       case "endsWith":
-        return this.cellToString(cell).toLowerCase().endsWith(this.filter.value.toLowerCase());
+        return this.cellToString(cell).toLowerCase().endsWith(filter.value.toLowerCase());
       // case ">":
       //TODO cell is already converted to text so we need move conversion on redering
-      //   if (this.filter.fieldType == "date" || this.filter.fieldType == "datetime") {
-      //     return cell > new Date(this.filter.value);
-      //   } else if (this.filter.fieldType == "decimal" || this.filter.fieldType == "currency") {
-      //     return cell > parseFloat(this.filter.value);
+      //   if (filter.fieldType == "date" || filter.fieldType == "datetime") {
+      //     return cell > new Date(filter.value);
+      //   } else if (filter.fieldType == "decimal" || filter.fieldType == "currency") {
+      //     return cell > parseFloat(filter.value);
       //   }
       //   return true;//default display
       // case "<":
-      //   if (this.filter.fieldType == "date" || this.filter.fieldType == "datetime") {
-      //     return cell < new Date(this.filter.value);
-      //   } else if (this.filter.fieldType == "decimal" || this.filter.fieldType == "currency") {
-      //     return cell < parseFloat(this.filter.value);
+      //   if (filter.fieldType == "date" || filter.fieldType == "datetime") {
+      //     return cell < new Date(filter.value);
+      //   } else if (filter.fieldType == "decimal" || filter.fieldType == "currency") {
+      //     return cell < parseFloat(filter.value);
       //   }
       //   return true;//default display
       default: //like and bad operator
-        return this.cellToString(cell).toLowerCase().includes(this.filter.value.toLowerCase());
+        return this.cellToString(cell).toLowerCase().includes(filter.value.toLowerCase());
     }
   }
   async discoverQueryColumns(record, vm, fields = vm.columnIndex.fields, prefix = "") {
@@ -479,14 +482,16 @@ export class RecordTable {
   }
   updateVisibility(fltr) {
     this.filter = fltr;
-    if (fltr != null && fltr.field != null && fltr.field != "") {
-      fltr.fieldIndex = this.columnIdx.get(fltr.field);
-      fltr.fieldType = this.columnType.get(fltr.field);
+    for (let f of (Array.isArray(fltr) ? fltr : [fltr])) {
+      if (f != null && f.field != null && f.field != "") {
+        f.fieldIndex = this.columnIdx.get(f.field);
+        f.fieldType = this.columnType.get(f.field);
+      }
     }
     let countOfVisibleRecords = 0;
     for (let r = 1/* always show header */; r < this.table.length; r++) {
       this.rowVisibilities[r] = this.isVisible(this.table[r]);
-      if (this.isVisible(this.table[r])) countOfVisibleRecords++;
+      if (this.rowVisibilities[r]) countOfVisibleRecords++;
     }
     this.countOfVisibleRecords = countOfVisibleRecords;
     if (this.setStatus) {

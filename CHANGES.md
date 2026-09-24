@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 1.42
+
+- Org analyzer: group rules needing many API calls (field analysis, Apex source scanning) under a "High API usage" section with a warning icon, and no longer query every object's fields when no field rule is selected
+- Org analyzer: add a "Flow with old API Version" rule (active, non-managed flows below API 50, Process Builders excluded)
+- Org analyzer: add a rule filter on results, combinable with the priority filter, and fix the "All priorities" option which hid every result
+- Org analyzer: fix the "Entity with too many validation rules" rule, whose query failed after the first batch (`EntityDefinition does not support queryMore()`) and silently counted only part of the validation rules
+- Org analyzer: fix the Connected App query, which requested non-existent `OAuthScopes`/`Permissions` fields and silently disabled every Connected App rule; the admin pre-authorization rules now count the profiles/permission sets granted access to the app
+- Org analyzer: fix the "Connected App is used but not installed" rule, whose `AppMenuItem` query used a non-existent `ConnectedApplication` relationship; it no longer flags every used app when the installed apps can't be retrieved
+- Org analyzer: fix the "Workflow Rule to migrate to Flow" rule, whose query filtered on a non-existent `Active` field and never returned anything; it now reports every non-managed Workflow Rule, active or not (the active flag isn't queryable in bulk)
+
 ## Version 1.41
 
 - Apex runner: add AI-generated Apex scripts, same as the existing SOQL generation in Data Export. Type `@` in the prompt to reference an Apex class or a Salesforce object by name, and the AI gets that class's source or that object's fields as context. Adds a "GenerateApex" prompt template for the AgentForce provider

@@ -516,26 +516,44 @@ class SecurityAnalyzer {
       }
 
       // Get all Connected Apps
-      let queryApp = "SELECT Name,CreatedBy.Name,CreatedDate,LastModifiedBy.Name,LastModifiedDate,OptionsAllowAdminApprovedUsersOnly,OAuthScopes,Permissions FROM ConnectedApplication ORDER BY Name";
+      let queryApp = "SELECT Id,Name,CreatedBy.Name,CreatedDate,LastModifiedBy.Name,LastModifiedDate,OptionsAllowAdminApprovedUsersOnly FROM ConnectedApplication ORDER BY Name";
       let allConnectedAppsResult = {rows: []};
       await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(queryApp), {}), allConnectedAppsResult)
         .catch(error => {
           console.error(error);
         });
 
-      // Get all installed AppMenuItems (for "used but not installed" check)
-      let installedAppNames = new Set();
-      if (appUsedNotInstalledRule) {
-        let appMenuItemQuery = "SELECT ApplicationId, ConnectedApplication.Name FROM AppMenuItem WHERE ConnectedApplication.Name != null";
-        let appMenuItemResult = {rows: []};
-        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appMenuItemQuery), {}), appMenuItemResult)
+      // ConnectedApplication doesn't expose its OAuth scopes nor its pre-approved profiles/permission sets.
+      // The latter are SetupEntityAccess rows (one per profile/permission set granted access to the app).
+      let appAccessCounts = new Map();
+      if (appAdminPreAuthTooManyPermsRule || appAdminPreAuthNoPermsRule) {
+        let appAccessQuery = "SELECT SetupEntityId FROM SetupEntityAccess WHERE SetupEntityType = 'ConnectedApplication'";
+        let appAccessResult = {rows: []};
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appAccessQuery), {}), appAccessResult)
           .catch(error => {
             console.error(error);
           });
-        for (let item of appMenuItemResult.rows) {
-          if (item.ConnectedApplication?.Name) {
-            installedAppNames.add(item.ConnectedApplication.Name);
-          }
+        for (let access of appAccessResult.rows) {
+          let appId = access.SetupEntityId.substring(0, 15);
+          appAccessCounts.set(appId, (appAccessCounts.get(appId) || 0) + 1);
+        }
+      }
+
+      // Get all installed AppMenuItems (for "used but not installed" check)
+      // AppMenuItem has no relationship to ConnectedApplication: match on ApplicationId instead.
+      let installedAppIds = null;
+      if (appUsedNotInstalledRule) {
+        let appMenuItemQuery = "SELECT ApplicationId FROM AppMenuItem WHERE Type = 'ConnectedApplication'";
+        let appMenuItemResult = {rows: []};
+        let appMenuItemFailed = false;
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent(appMenuItemQuery), {}), appMenuItemResult)
+          .catch(error => {
+            appMenuItemFailed = true;
+            console.error(error);
+          });
+        // batchHandler swallows SalesforceRestError and returns null, so an empty result may mean a failed query
+        if (!appMenuItemFailed && appMenuItemResult.rows.length > 0) {
+          installedAppIds = new Set(appMenuItemResult.rows.filter(item => item.ApplicationId).map(item => item.ApplicationId.substring(0, 15)));
         }
       }
 
@@ -608,7 +626,7 @@ class SecurityAnalyzer {
         }
 
         // Check if app is used but not installed
-        if (appUsedNotInstalledRule && oAuthTokenData && !installedAppNames.has(appName)) {
+        if (appUsedNotInstalledRule && installedAppIds && oAuthTokenData && !installedAppIds.has(connectedApp.Id.substring(0, 15))) {
           logs.push({
             reference: appName,
             name: "Connected App is used but not installed",
@@ -618,45 +636,28 @@ class SecurityAnalyzer {
         }
 
         // Check admin pre-auth with too many permissions
+        let permissionCount = appAccessCounts.get(connectedApp.Id.substring(0, 15)) || 0;
         if (appAdminPreAuthTooManyPermsRule && connectedApp.OptionsAllowAdminApprovedUsersOnly) {
-          let permissions = connectedApp.Permissions || "";
-          let oauthScopes = connectedApp.OAuthScopes || "";
-          let permissionCount = 0;
-
-          // Count permissions (comma-separated or semicolon-separated)
-          if (permissions) {
-            permissionCount += permissions.split(/[,;]/).filter(p => p.trim()).length;
-          }
-          if (oauthScopes) {
-            permissionCount += oauthScopes.split(/[,;]/).filter(s => s.trim()).length;
-          }
-
-          // Threshold: 10 permissions/scopes
+          // Threshold: 10 profiles/permission sets
           const permissionThreshold = 10;
           if (permissionCount > permissionThreshold) {
             logs.push({
               reference: appName,
               name: "Connected app admin pre auth with too many permission",
-              description: `This connected app has admin pre-approved users enabled but has ${permissionCount} permissions/OAuth scopes. Having too many permissions increases security risk. Consider reviewing and reducing the number of permissions to follow the principle of least privilege.`,
+              description: `This connected app has admin pre-approved users enabled and is granted to ${permissionCount} profiles/permission sets. Granting access too broadly increases security risk. Consider reviewing and reducing the profiles/permission sets allowed to follow the principle of least privilege.`,
               priority: permissionCount > 15 ? 1 : (permissionCount > 12 ? 2 : 3)
             });
           }
         }
 
         // Check admin pre-auth without permissions
-        if (appAdminPreAuthNoPermsRule && connectedApp.OptionsAllowAdminApprovedUsersOnly) {
-          let permissions = connectedApp.Permissions || "";
-          let oauthScopes = connectedApp.OAuthScopes || "";
-          let hasPermissions = (permissions && permissions.trim()) || (oauthScopes && oauthScopes.trim());
-
-          if (!hasPermissions) {
-            logs.push({
-              reference: appName,
-              name: "Connected app admin pre auth without permission",
-              description: "This connected app has admin pre-approved users enabled but has no permissions or OAuth scopes configured. This configuration may be incomplete or unnecessary. Consider either adding appropriate permissions or disabling admin pre-approval if not needed.",
-              priority: 3
-            });
-          }
+        if (appAdminPreAuthNoPermsRule && connectedApp.OptionsAllowAdminApprovedUsersOnly && permissionCount == 0) {
+          logs.push({
+            reference: appName,
+            name: "Connected app admin pre auth without permission",
+            description: "This connected app has admin pre-approved users enabled but no profile or permission set is granted access, so no user can use it. Consider either assigning the appropriate profiles/permission sets or disabling admin pre-approval if not needed.",
+            priority: 3
+          });
         }
       }
 
@@ -1025,7 +1026,8 @@ class AutomationAnalyzer {
   async analyse() {
     let processBuilderRule = this.model.isRuleEnable("Process Builder to migrate to Flow");
     let workflowRule = this.model.isRuleEnable("Workflow Rule to migrate to Flow");
-    if (!processBuilderRule && !workflowRule) {
+    let flowOldApiVersionRule = this.model.isRuleEnable("Flow with old API Version");
+    if (!processBuilderRule && !workflowRule && !flowOldApiVersionRule) {
       return;
     }
 
@@ -1054,7 +1056,9 @@ class AutomationAnalyzer {
 
       // Query Workflow Rules
       if (workflowRule) {
-        let workflowQuery = "SELECT Id, Name, TableEnumOrId, LastModifiedDate, LastModifiedBy.Name, Active FROM WorkflowRule WHERE Active = true ORDER BY Name";
+        // WorkflowRule has no Active field: the active flag is only in the Metadata field, which can be queried
+        // one record at a time. So all non-managed rules are reported, active or not.
+        let workflowQuery = "SELECT Id, Name, TableEnumOrId, LastModifiedDate, LastModifiedBy.Name FROM WorkflowRule WHERE NamespacePrefix = null ORDER BY Name";
         let workflowResult = {rows: []};
         await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(workflowQuery), {}), workflowResult)
           .catch(error => {
@@ -1065,8 +1069,32 @@ class AutomationAnalyzer {
           logs.push({
             reference: workflow.Name + (workflow.TableEnumOrId ? " (" + workflow.TableEnumOrId + ")" : ""),
             name: "Workflow Rule to migrate to Flow",
-            description: `This Workflow Rule should be migrated to a Flow. Workflow Rules are being deprecated in favor of Flow Builder, which provides better performance, more capabilities, and better debugging tools. Last modified: ${workflow.LastModifiedDate ? new Date(workflow.LastModifiedDate).toLocaleDateString() : "N/A"} by ${workflow.LastModifiedBy?.Name || "N/A"}.`,
+            description: `This Workflow Rule should be migrated to a Flow, or deleted if it is inactive. Workflow Rules are being deprecated in favor of Flow Builder, which provides better performance, more capabilities, and better debugging tools. Last modified: ${workflow.LastModifiedDate ? new Date(workflow.LastModifiedDate).toLocaleDateString() : "N/A"} by ${workflow.LastModifiedBy?.Name || "N/A"}.`,
             priority: 2
+          });
+        }
+      }
+
+      // Query active Flow versions with an old API version
+      // Only active versions matter (inactive/obsolete versions don't run), Process Builders are already
+      // reported by the migration rule, and managed package flows can't be updated by the customer.
+      if (flowOldApiVersionRule) {
+        let flowQuery = "SELECT Id, MasterLabel, ApiVersion, ProcessType, VersionNumber, Definition.DeveloperName, Definition.NamespacePrefix FROM Flow WHERE Status = 'Active' AND ProcessType != 'Workflow' AND ApiVersion < 50 ORDER BY MasterLabel";
+        let flowResult = {rows: []};
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(flowQuery), {}), flowResult)
+          .catch(error => {
+            console.error(error);
+          });
+
+        for (let flow of flowResult.rows) {
+          if (flow.Definition?.NamespacePrefix) {
+            continue;
+          }
+          logs.push({
+            reference: (flow.Definition?.DeveloperName || flow.MasterLabel) + " (v" + flow.VersionNumber + ")",
+            name: "Flow with old API Version",
+            description: `This active ${flow.ProcessType} flow is using an old API version (${flow.ApiVersion}). Flow runtime behavior depends on the API version: consider saving a new version with a recent API version and testing it.`,
+            priority: flow.ApiVersion < 30 ? 1 : (flow.ApiVersion < 40 ? 2 : 3)
           });
         }
       }
@@ -1075,7 +1103,7 @@ class AutomationAnalyzer {
       this.model.resultTableModel.dataChange(this.recordTable);
       this.model.didUpdate();
     } catch (error) {
-      console.error("Error analyzing Process Builder and Workflow Rules:", error);
+      console.error("Error analyzing Process Builder, Workflow Rules and Flows:", error);
     }
   }
 }
@@ -1103,15 +1131,16 @@ class EntityAnalyzer {
       return;
     }
 
-    let query = "SELECT QualifiedApiName FROM EntityDefinition WHERE PublisherId != 'System' and Description = null ORDER BY QualifiedApiName";
-    let result = {rows: []};
-    await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {}), result)
-      .catch(error => {
-        console.log(error);
-      });
+    let query;
     let tableFields = new Map();
     let logs = [];
     if (objWithoutDescRule) {
+      query = "SELECT QualifiedApiName FROM EntityDefinition WHERE PublisherId != 'System' and Description = null ORDER BY QualifiedApiName";
+      let result = {rows: []};
+      await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {}), result)
+        .catch(error => {
+          console.log(error);
+        });
       for (let i = 0; i < result.rows.length; i++) {
         let entity = result.rows[i];
         logs.push({reference: entity.QualifiedApiName, name: "Custom SObject without description", description: "Add description from SETUP > Object Manager > (select entity) > Edit", priority: 5});//5 low
@@ -1120,11 +1149,14 @@ class EntityAnalyzer {
       this.model.resultTableModel.dataChange(this.recordTable);
       this.model.didUpdate();
     }
-    let {globalDescribe} = this.model.describeInfo.describeGlobal(false);
     let fieldMap = new Map();
-    //const validationRuleSelect = "SELECT Id, Active, EntityDefinitionId, EntityDefinition.DeveloperName, ErrorMessage, ValidationName FROM ValidationRule WHERE ErrorMessage LIKE '%" + shortcutSearch.replace(/([%_\\'])/g, "\\$1") + "%' LIMIT 30";
+    // FieldDefinition is queried in chunks of 50 objects: this is the most API-expensive part, only run it for field rules
+    let objectList = [];
+    if (fieldWithoutDescRule || fieldNotReferencedRule || objWithManyFieldsDescRule) {
+      let {globalDescribe} = this.model.describeInfo.describeGlobal(false);
+      objectList = globalDescribe.sobjects.filter(s => (s.associateEntityType == null));
+    }
     query = "SELECT Id, DurableId, QualifiedApiName, EntityDefinition.QualifiedApiName, Description FROM FieldDefinition WHERE PublisherId!= 'System' AND EntityDefinition.QualifiedApiName in ([RANGE])";
-    let objectList = globalDescribe.sobjects.filter(s => (s.associateEntityType == null));
     for (let index = 0; index < objectList.length; index += 50) {
       let entityNames = objectList.slice(index, index + 50).map(e => "'" + e.name + "'");
       let fieldsFesult = {rows: []};
@@ -1212,7 +1244,10 @@ class EntityAnalyzer {
     // Check validation rules count per object
     if (objWithManyValidationRulesRule) {
       let logs4 = [];
-      let validationRuleQuery = "SELECT Id, EntityDefinition.QualifiedApiName, Active FROM ValidationRule WHERE EntityDefinition.QualifiedApiName != null ORDER BY EntityDefinition.QualifiedApiName";
+      // Don't traverse the EntityDefinition relationship here: EntityDefinition doesn't support queryMore(),
+      // so the query would fail after the first batch. EntityDefinitionId is the API name for standard
+      // objects and the 01I id for custom ones, resolved below only for the objects over the threshold.
+      let validationRuleQuery = "SELECT Id, EntityDefinitionId FROM ValidationRule";
       let validationRuleResult = {rows: []};
       await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(validationRuleQuery), {}), validationRuleResult)
         .catch(error => {
@@ -1222,24 +1257,37 @@ class EntityAnalyzer {
       // Count validation rules per object
       let validationRuleCounts = new Map();
       for (let validationRule of validationRuleResult.rows) {
-        let objectName = validationRule.EntityDefinition?.QualifiedApiName;
-        if (objectName) {
-          let count = validationRuleCounts.get(objectName) || 0;
-          validationRuleCounts.set(objectName, count + 1);
+        let entityId = validationRule.EntityDefinitionId;
+        if (entityId) {
+          let count = validationRuleCounts.get(entityId) || 0;
+          validationRuleCounts.set(entityId, count + 1);
         }
       }
 
       // Check for objects with too many validation rules (threshold: 15)
       const validationRuleThreshold = 15;
-      for (let [objectName, count] of validationRuleCounts) {
-        if (count > validationRuleThreshold) {
-          logs4.push({
-            reference: objectName,
-            name: "Entity with too many validation rules",
-            description: `This entity has ${count} validation rules. Consider consolidating or reviewing validation rules to improve maintainability and performance. Salesforce recommends keeping validation rules manageable per object.`,
-            priority: count > 25 ? 2 : 3
+      let overThreshold = [...validationRuleCounts].filter(([, count]) => count > validationRuleThreshold);
+      let entityIdToName = new Map();
+      let customEntityIds = overThreshold.map(([entityId]) => entityId).filter(entityId => entityId.startsWith("01I"));
+      if (customEntityIds.length > 0) {
+        let entityQuery = "SELECT DurableId, QualifiedApiName FROM EntityDefinition WHERE DurableId IN (" + customEntityIds.map(entityId => "'" + entityId.substring(0, 15) + "'").join(", ") + ")";
+        let entityResult = {rows: []};
+        await this.model.batchHandler(sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(entityQuery), {}), entityResult)
+          .catch(error => {
+            console.error(error);
           });
+        for (let entity of entityResult.rows) {
+          entityIdToName.set(entity.DurableId.substring(0, 15), entity.QualifiedApiName);
         }
+      }
+      for (let [entityId, count] of overThreshold) {
+        let objectName = entityIdToName.get(entityId.substring(0, 15)) || entityId;
+        logs4.push({
+          reference: objectName,
+          name: "Entity with too many validation rules",
+          description: `This entity has ${count} validation rules. Consider consolidating or reviewing validation rules to improve maintainability and performance. Salesforce recommends keeping validation rules manageable per object.`,
+          priority: count > 25 ? 2 : 3
+        });
       }
 
       this.recordTable.addToTable(logs4, {column: "priority"});
@@ -1345,12 +1393,13 @@ class Model {
       this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
       this.userId = res.userId;
     }));
+    // highApiUsage: the rule needs many API calls (chunked FieldDefinition queries, full Apex source download, ...)
     this.rules = [
       {name: "Custom SObject without description", selected: true},
-      {name: "Custom Field without description", selected: true},
+      {name: "Custom Field without description", selected: true, highApiUsage: true},
       //TODO not working seems metadata component dependency is not working
-      //{name: "Custom Field not referenced", selected: true},
-      {name: "Entity with too many fields", selected: true},
+      //{name: "Custom Field not referenced", selected: true, highApiUsage: true},
+      {name: "Entity with too many fields", selected: true, highApiUsage: true},
       {name: "Entity with too many validation rules", selected: true},
       {name: "Entity with too many triggers", selected: true},
       {name: "Connected App OAuth Token not used recently", selected: true},
@@ -1364,14 +1413,14 @@ class Model {
       {name: "Apex Class with poor code coverage", selected: true},
       {name: "Apex Class with old API Version", selected: true},
       {name: "Apex Class need recompilation", selected: true},
-      {name: "Apex hardcoded id in code instead of label", selected: true},
-      {name: "Apex SOQL in loop", selected: true},
-      {name: "Apex DML in loop", selected: true},
-      {name: "Apex class without explicit sharing", selected: true},
-      {name: "Apex trigger with SOQL/DML instead of service class", selected: true},
-      {name: "Apex class not referenced (not REST Apex)", selected: true},
-      {name: "Apex job schedulable with no jobs in 365 days", selected: true},
-      {name: "Apex SOQL injection: missing escape on parameter", selected: true},
+      {name: "Apex hardcoded id in code instead of label", selected: true, highApiUsage: true},
+      {name: "Apex SOQL in loop", selected: true, highApiUsage: true},
+      {name: "Apex DML in loop", selected: true, highApiUsage: true},
+      {name: "Apex class without explicit sharing", selected: true, highApiUsage: true},
+      {name: "Apex trigger with SOQL/DML instead of service class", selected: true, highApiUsage: true},
+      {name: "Apex class not referenced (not REST Apex)", selected: true, highApiUsage: true},
+      {name: "Apex job schedulable with no jobs in 365 days", selected: true, highApiUsage: true},
+      {name: "Apex SOQL injection: missing escape on parameter", selected: true, highApiUsage: true},
       {name: "Inactive user", selected: true},
       {name: "Too many System Administrators", selected: true},
       {name: "Role Hierarchy with too many levels", selected: true},
@@ -1379,7 +1428,19 @@ class Model {
       {name: "Aura Component not migrated to LWC", selected: true},
       {name: "Process Builder to migrate to Flow", selected: true},
       {name: "Workflow Rule to migrate to Flow", selected: true},
+      {name: "Flow with old API Version", selected: true},
     ];
+  }
+  applyResultFilter() {
+    let filters = [];
+    if (this.priorityFilter) {
+      filters.push({field: "priority", operator: "=", value: this.priorityFilter});
+    }
+    if (this.ruleFilter) {
+      filters.push({field: "name", operator: "=", value: this.ruleFilter});
+    }
+    this.recordTable.updateVisibility(filters.length ? filters : null);
+    this.resultTableModel.dataChange(this.recordTable);
   }
   isRuleEnable(ruleName) {
     return this.rules.some(rule => rule.name == ruleName && rule.selected);
@@ -1534,6 +1595,7 @@ class App extends React.Component {
     this.onStartClick = this.onStartClick.bind(this);
     this.onStopAnalyze = this.onStopAnalyze.bind(this);
     this.onSelectPriorityFilter = this.onSelectPriorityFilter.bind(this);
+    this.onSelectRuleFilter = this.onSelectRuleFilter.bind(this);
     this.onSelectAllChange = this.onSelectAllChange.bind(this);
     this.onDownloadCsv = this.onDownloadCsv.bind(this);
   }
@@ -1548,12 +1610,12 @@ class App extends React.Component {
   onSelectPriorityFilter(event) {
     let {model} = this.props;
     model.priorityFilter = event.target.value;
-    if (model.priorityFilter == null) {
-      model.recordTable.updateVisibility(null);
-    } else {
-      model.recordTable.updateVisibility({field: "priority", operator: "=", value: model.priorityFilter});
-    }
-    model.resultTableModel.dataChange(model.recordTable);
+    model.applyResultFilter();
+  }
+  onSelectRuleFilter(event) {
+    let {model} = this.props;
+    model.ruleFilter = event.target.value;
+    model.applyResultFilter();
   }
   onSelectAllChange(e) {
     let {model} = this.props;
@@ -1590,6 +1652,9 @@ class App extends React.Component {
     hostArg.set("host", model.sfHost);
     hostArg.set("tab", 5);
     let selectAllChecked = model.rules && model.rules.every(rule => rule.selected);
+    let standardRules = model.rules.filter(rule => !rule.highApiUsage);
+    let highApiUsageRules = model.rules.filter(rule => rule.highApiUsage);
+    let resultRuleNames = [...new Set(model.recordTable.records.map(record => record.name))].sort();
 
     return (
       h("div", {},
@@ -1634,7 +1699,11 @@ class App extends React.Component {
             ),
             h("br", {}),
             h("div", {className: "slds-grid slds-wrap"},
-              model.rules.map((rule, i) => h(RuleSelector, {key: "rule" + i, model, rule}))
+              standardRules.map(rule => h(RuleSelector, {key: rule.name, model, rule}))
+            ),
+            h("h2", {className: "rule-group-title"}, h(HighApiUsageIcon), "High API usage"),
+            h("div", {className: "slds-grid slds-wrap"},
+              highApiUsageRules.map(rule => h(RuleSelector, {key: rule.name, model, rule}))
             )
           ),
           h("div", {className: "autocomplete-header"},
@@ -1651,8 +1720,12 @@ class App extends React.Component {
                 h("use", {xlinkHref: "symbols.svg#download"})
               )
             ),
-            h("select", {value: model.priorityFilter, onChange: this.onSelectPriorityFilter, className: "priority-filter select-control"},
-              h("option", {value: null, defaultValue: true}, "All priorities"),
+            h("select", {value: model.ruleFilter || "", onChange: this.onSelectRuleFilter, className: "rule-filter select-control"},
+              h("option", {value: ""}, "All rules"),
+              resultRuleNames.map(ruleName => h("option", {key: ruleName, value: ruleName}, ruleName))
+            ),
+            h("select", {value: model.priorityFilter || "", onChange: this.onSelectPriorityFilter, className: "priority-filter select-control"},
+              h("option", {value: ""}, "All priorities"),
               h("option", {key: "1", value: 1}, "1"),
               h("option", {key: "2", value: 2}, "2"),
               h("option", {key: "3", value: 3}, "3"),
@@ -1702,11 +1775,18 @@ class RuleSelector extends React.Component {
   }
   render() {
     let {rule} = this.props;
-    return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: rule.name},
+    return h("div", {className: "slds-col slds-size_3-of-12"}, h("label", {title: rule.name + (rule.highApiUsage ? " (high API usage)" : "")},
       h("input", {type: "checkbox", className: "checkbox-control", checked: rule.selected, onChange: this.onChange}),
+      rule.highApiUsage ? h(HighApiUsageIcon) : null,
       rule.name
     ));
   }
+}
+function HighApiUsageIcon() {
+  return h("svg", {className: "high-api-usage-icon", "aria-label": "High API usage"},
+    h("title", {}, "High API usage"),
+    h("use", {xlinkHref: "symbols.svg#warning"})
+  );
 }
 
 {
