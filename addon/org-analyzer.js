@@ -568,7 +568,8 @@ class SecurityAnalyzer {
       // Analyze each connected app
       for (let connectedApp of allConnectedAppsResult.rows) {
         let appName = connectedApp.Name;
-        let connectedAppLink = this.model.setupLink("/lightning/setup/ConnectedApplication/page?address=%2F" + connectedApp.Id);
+        // The app detail page needs the connected app definition Id (06P), which no API exposes: link to the "Manage Connected Apps" list
+        let connectedAppLink = this.model.setupLink("/lightning/setup/ConnectedApplication/home");
         let loginHistoryFound = allAppsInLoginHistoryNames.has(appName);
         let severity = "log";
         let reason = "Found in Login History";
