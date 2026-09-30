@@ -162,6 +162,39 @@ input:disabled:hover {
   margin-bottom: 1.25rem;
   background-color: #fafaf9;
 }
+/* Label/title, pills and control on a single line, wrapping when too narrow */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.filter-row > .slds-form-element__label {
+  margin-bottom: 0;
+  flex: none;
+}
+/* Keeps the search input on the label's line: the pills wrap inside their own box instead */
+.filter-row_nowrap {
+  flex-wrap: nowrap;
+}
+.filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.filter-row .filter-pill {
+  margin: 0;
+}
+.filter-row-grow {
+  flex: 1 0 15rem;
+  min-width: 15rem;
+}
+/* The generic button rule above adds a right margin and rounded corners that split SLDS button groups apart */
+.slds-button-group button {
+  margin-right: 0;
+}
 .filter-pill {
   display: inline-flex;
   align-items: center;
@@ -173,6 +206,10 @@ input:disabled:hover {
   margin: 2px 4px 2px 0;
   font-size: 0.8125rem;
   line-height: 1.5rem;
+}
+/* Pill without remove button: symmetric padding */
+.filter-pill.filter-pill-static {
+  padding-right: 10px;
 }
 .filter-pill button {
   border: none;

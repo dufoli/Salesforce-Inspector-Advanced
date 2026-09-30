@@ -2,6 +2,8 @@
 
 ## Version 1.42
 
+- Metadata retrieve: on orgs with source tracking (scratch orgs, sandboxes), add a "Recent changes" search (default) based on `SourceMember`, where the metadata type can be "All" and each result shows whether it was created, modified or deleted; other orgs keep the "All metadata" search only
+- Metadata retrieve: add a Folder filter (contains, with autosuggest of the org's folders) in "All metadata" search when a foldered type (reports, dashboards, documents, email templates) is selected; only matching folders are listed, which saves API calls
 - Org analyzer: group rules needing many API calls (field analysis, Apex source scanning) under a "High API usage" section with a warning icon, and no longer query every object's fields when no field rule is selected
 - Org analyzer: add a "Flow with old API Version" rule (active, non-managed flows below API 50, Process Builders excluded)
 - Org analyzer: add a rule filter on results, combinable with the priority filter, and fix the "All priorities" option which hid every result

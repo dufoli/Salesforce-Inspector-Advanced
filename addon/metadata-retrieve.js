@@ -48,6 +48,33 @@ function flattenArray(x) {
   return [].concat(...x);
 }
 
+// SourceMember MemberTypes that can't be retrieved as such through the Metadata API
+const nonRetrievableSourceMemberTypes = ["AuraDefinition", "PicklistValue"];
+
+// Type filter pseudo-value in recent mode: no MemberType condition (model keeps selectedTypes empty)
+const allTypesLabel = "All";
+
+function soqlEscape(value) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function soqlString(value) {
+  return "'" + soqlEscape(value) + "'";
+}
+
+function soqlLikeContains(value) {
+  return "'%" + soqlEscape(value).replace(/%/g, "\\%").replace(/_/g, "\\_") + "%'";
+}
+
+function soqlDateTime(date) {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// listMetadata type holding the folders of a foldered type (e.g. Report -> ReportFolder)
+function folderTypeOf(xmlName) {
+  return xmlName == "EmailTemplate" ? "EmailFolder" : xmlName + "Folder";
+}
+
 function groupByThree(list) {
   let groups = [];
   for (let element of list) {
@@ -76,6 +103,11 @@ class Model {
     this.typeSuggestions = [];
     this.showTypeSuggestions = false;
     this.nameContains = "";
+    this.folderContains = "";
+    this.folderSuggestions = [];
+    this.showFolderSuggestions = false;
+    this.folderCatalog = {}; // foldered type xmlName -> folder fullNames, loaded lazily per type
+    this.folderCatalogLoading = false;
     this.modifiedFrom = "";
     this.modifiedTo = "";
     this.modifiedByInput = "";
@@ -97,6 +129,8 @@ class Model {
     this.downloadAuto = false;
     this.dragOverPackageXml = false;
     this.downloadMode = "filter"; // "filter" (search & filter metadata) or "upload" (import an existing package.xml)
+    this.searchSource = "all"; // "recent" (SourceMember, source-tracked orgs only) or "all" (listMetadata)
+    this.sourceTrackingEnabled = false; // set by detectSourceTracking, "recent" is only offered when true
 
     // Translation download state
     this.translationLanguages = null;
@@ -121,7 +155,7 @@ class Model {
     this.checkOnly = false;
     this.allowMissingFiles = false;
     this.ignoreWarnings = false;
-    this.performRetrieve = true;
+    this.deployPerformRetrieve = true;
     this.purgeOnDelete = false;
     this.rollbackOnError = true;
     this.singlePackage = false;
@@ -206,13 +240,26 @@ class Model {
     }
     let downloadLink = document.createElement("a");
     downloadLink.download = "datamodel.csv";
-    let BOM = "﻿";
+    let BOM = "\uFEFF";
     let rt = new RecordTable();
     rt.addToTable(fieldsFesult.rows);
     let bb = new Blob([BOM, rt.csvSerialize(separator)], {type: "text/csv;charset=utf-8"});
     downloadLink.href = window.URL.createObjectURL(bb);
     downloadLink.click();
     this.progress = "done";
+    this.didUpdate();
+  }
+
+  // SourceMember only exists on scratch orgs and sandboxes with source tracking enabled (INVALID_TYPE elsewhere)
+  async detectSourceTracking() {
+    try {
+      await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT Id FROM SourceMember LIMIT 1"), {});
+      this.sourceTrackingEnabled = true;
+      this.searchSource = "recent";
+    } catch (e) {
+      this.sourceTrackingEnabled = false;
+      this.searchSource = "all";
+    }
     this.didUpdate();
   }
 
@@ -244,13 +291,17 @@ class Model {
       return;
     }
     let kw = this.typeFilterInput.trim().toLowerCase();
-    this.typeSuggestions = this.metadataTypeCatalog
+    // In recent mode, "All" (= no type filter) is offered to reset the selection
+    let allSuggestion = (this.searchSource == "recent" && this.selectedTypes.length > 0 && allTypesLabel.toLowerCase().includes(kw))
+      ? [{xmlName: allTypesLabel, directoryName: ""}]
+      : [];
+    this.typeSuggestions = allSuggestion.concat(this.metadataTypeCatalog
       .filter(metadataObject => !this.selectedTypes.includes(metadataObject.xmlName))
       .filter(metadataObject => !kw
         || metadataObject.xmlName.toLowerCase().includes(kw)
         || metadataObject.directoryName.toLowerCase().includes(kw))
       .sort((a, b) => a.xmlName < b.xmlName ? -1 : a.xmlName > b.xmlName ? 1 : 0)
-      .slice(0, 50);
+      .slice(0, 50));
   }
   onTypeFilterInput(text) {
     this.typeFilterInput = text;
@@ -264,7 +315,9 @@ class Model {
     this.showTypeSuggestions = false;
   }
   addSelectedType(xmlName) {
-    if (!this.selectedTypes.includes(xmlName)) {
+    if (xmlName == allTypesLabel) {
+      this.selectedTypes = [];
+    } else if (!this.selectedTypes.includes(xmlName)) {
       this.selectedTypes.push(xmlName);
     }
     this.typeFilterInput = "";
@@ -324,6 +377,7 @@ class Model {
     this.selectedTypes = [];
     this.typeFilterInput = "";
     this.nameContains = "";
+    this.folderContains = "";
     this.modifiedFrom = "";
     this.modifiedTo = "";
     this.modifiedByInput = "";
@@ -331,6 +385,77 @@ class Model {
     this.searchProgress = "ready";
     this.searchLogMessages = [];
     this.didUpdate();
+  }
+
+  selectedFolderedTypes() {
+    return (this.metadataTypeCatalog || [])
+      .filter(metadataObject => metadataObject.inFolder == "true" && this.selectedTypes.includes(metadataObject.xmlName))
+      .map(metadataObject => metadataObject.xmlName);
+  }
+  hasFolderedTypeSelected() {
+    return this.selectedFolderedTypes().length > 0;
+  }
+
+  // ----- Folder filter (autosuggest of folders of the selected foldered types) -----
+
+  async loadFolderCatalogIfNeeded() {
+    let types = this.selectedFolderedTypes().filter(xmlName => !this.folderCatalog[xmlName]);
+    if (types.length === 0 || this.folderCatalogLoading) {
+      return;
+    }
+    this.folderCatalogLoading = true;
+    let typeByFolderType = {};
+    for (let xmlName of types) {
+      typeByFolderType[folderTypeOf(xmlName)] = xmlName;
+      this.folderCatalog[xmlName] = [];
+    }
+    try {
+      let metadataApi = sfConn.wsdl(apiVersion, "Metadata");
+      await Promise.all(groupByThree(Object.keys(typeByFolderType)).map(async folderTypes => {
+        let folders = sfConn.asArray(await sfConn.soap(metadataApi, "listMetadata", {queries: folderTypes.map(type => ({type}))}));
+        for (let folder of folders) {
+          let xmlName = typeByFolderType[folder.type];
+          if (xmlName) {
+            this.folderCatalog[xmlName].push(folder.fullName);
+          }
+        }
+      }));
+    } catch (e) {
+      // Suggestions are a convenience: the filter still works as a free-text "contains"
+      console.error(e);
+    }
+    this.folderCatalogLoading = false;
+    this.updateFolderSuggestions();
+    this.didUpdate();
+  }
+  updateFolderSuggestions() {
+    let kw = this.folderContains.trim().toLowerCase();
+    let suggestions = [];
+    for (let xmlName of this.selectedFolderedTypes()) {
+      for (let fullName of this.folderCatalog[xmlName] || []) {
+        if (!kw || fullName.toLowerCase().includes(kw)) {
+          suggestions.push({type: xmlName, fullName});
+        }
+      }
+    }
+    suggestions.sort((a, b) => a.fullName < b.fullName ? -1 : a.fullName > b.fullName ? 1 : 0);
+    this.folderSuggestions = suggestions.slice(0, 20);
+  }
+  onFolderInput(text) {
+    this.folderContains = text;
+    this.updateFolderSuggestions();
+  }
+  onFolderFocus() {
+    this.showFolderSuggestions = true;
+    this.loadFolderCatalogIfNeeded();
+    this.updateFolderSuggestions();
+  }
+  onFolderBlur() {
+    this.showFolderSuggestions = false;
+  }
+  selectFolder(fullName) {
+    this.folderContains = fullName;
+    this.showFolderSuggestions = false;
   }
 
   // ----- Search (lists actual metadata components matching the filters) -----
@@ -352,6 +477,10 @@ class Model {
   }
 
   async runSearch() {
+    if (this.searchSource == "recent") {
+      await this.runSourceMemberSearch();
+      return;
+    }
     if (this.selectedTypes.length === 0) {
       this.searchLogMessages = [{level: "error", text: "(Please select at least one metadata type)"}];
       this.didUpdate();
@@ -384,13 +513,16 @@ class Model {
         });
       });
       let xmlNames = flattenArray(xmlNameGroups);
+      // Applied to folders before listing their contents, so non-matching folders cost no API call
+      let folderKw = this.folderContains.trim().toLowerCase();
 
       let resultGroups = await Promise.all(groupByThree(xmlNames).map(async xmlNamesGroup => {
         let someItems = sfConn.asArray(await logWait(
           "ListMetadata " + xmlNamesGroup.join(", "),
           sfConn.soap(metadataApi, "listMetadata", {queries: xmlNamesGroup.map(xmlName => ({type: xmlName}))})
         ));
-        let folders = someItems.filter(item => folderMap[item.type]);
+        let folders = someItems.filter(item => folderMap[item.type]
+          && (!folderKw || (item.fullName || "").toLowerCase().includes(folderKw)));
         let nonFolders = someItems.filter(item => !folderMap[item.type]);
         let folderContents = await Promise.all(groupByThree(folders).map(async folderGroup =>
           sfConn.asArray(await logWait(
@@ -440,6 +572,83 @@ class Model {
         fullName: item.fullName,
         lastModifiedByName: item.lastModifiedByName || "",
         lastModifiedDate: item.lastModifiedDate || "",
+        operation: "",
+        selected: false
+      }));
+      this.searchProgress = "done";
+      this.didUpdate();
+    } catch (e) {
+      this.searchProgress = "error";
+      console.error(e);
+      this.searchLogMessages.push({level: "error", text: "(Error: " + e.message + ")"});
+      this.didUpdate();
+    }
+  }
+
+  // Selected types plus their child types (e.g. CustomObject -> CustomField), as SourceMember tracks children separately
+  sourceMemberTypeFilter() {
+    let types = new Set();
+    for (let metadataObject of this.metadataTypeCatalog || []) {
+      if (!this.selectedTypes.includes(metadataObject.xmlName)) {
+        continue;
+      }
+      types.add(metadataObject.xmlName);
+      for (let child of sfConn.asArray(metadataObject.childXmlNames)) {
+        types.add(child);
+      }
+    }
+    // Types not in the catalog (catalog not loaded yet) are still queried as-is
+    for (let xmlName of this.selectedTypes) {
+      types.add(xmlName);
+    }
+    return [...types];
+  }
+
+  async runSourceMemberSearch() {
+    try {
+      this.searchProgress = "working";
+      this.searchResults = null;
+      this.searchLogMessages = [];
+      this.didUpdate();
+
+      let conditions = [];
+      let types = this.sourceMemberTypeFilter();
+      if (types.length > 0) {
+        conditions.push("MemberType IN (" + types.map(soqlString).join(", ") + ")");
+      }
+      conditions.push("MemberType NOT IN (" + nonRetrievableSourceMemberTypes.map(soqlString).join(", ") + ")");
+      let nameKw = this.nameContains.trim();
+      if (nameKw) {
+        conditions.push("MemberName LIKE " + soqlLikeContains(nameKw));
+      }
+      let byKw = this.modifiedByInput.trim();
+      if (byKw) {
+        conditions.push("LastModifiedBy.Name LIKE " + soqlLikeContains(byKw));
+      }
+      if (this.modifiedFrom) {
+        conditions.push("LastModifiedDate >= " + soqlDateTime(new Date(this.modifiedFrom + "T00:00:00")));
+      }
+      if (this.modifiedTo) {
+        conditions.push("LastModifiedDate <= " + soqlDateTime(new Date(this.modifiedTo + "T23:59:59")));
+      }
+      let query = "SELECT MemberType, MemberName, LastModifiedDate, LastModifiedBy.Name, IsNewMember, IsNameObsolete FROM SourceMember"
+        + " WHERE " + conditions.join(" AND ")
+        + " ORDER BY MemberType, MemberName";
+
+      let res = await this.logWaitSearch("Query SourceMember",
+        sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {}));
+      let records = res.records;
+      while (!res.done) {
+        res = await sfConn.rest(res.nextRecordsUrl, {});
+        records = records.concat(res.records);
+      }
+
+      this.searchResults = records.map(r => ({
+        type: r.MemberType,
+        fullName: r.MemberName,
+        lastModifiedByName: r.LastModifiedBy ? r.LastModifiedBy.Name : "",
+        lastModifiedDate: r.LastModifiedDate || "",
+        operation: r.IsNameObsolete ? "deleted" : r.IsNewMember ? "created" : "modified",
         selected: false
       }));
       this.searchProgress = "done";
@@ -461,7 +670,8 @@ class Model {
       return;
     }
     for (let row of this.searchResults) {
-      row.selected = checked;
+      // Deleted components no longer exist in the org, so they can't be retrieved
+      row.selected = checked && row.operation != "deleted";
     }
     this.didUpdate();
   }
@@ -935,7 +1145,7 @@ class Model {
               allowMissingFiles: this.allowMissingFiles,
               checkOnly: this.checkOnly,
               ignoreWarnings: this.ignoreWarnings,
-              performRetrieve: this.performRetrieve,
+              performRetrieve: this.deployPerformRetrieve,
               purgeOnDelete: this.purgeOnDelete,
               rollbackOnError: this.rollbackOnError,
               runTests: this.runTests ? this.runTests.split(",").map(t => t.trim()).filter(t => t) : [],
@@ -1057,6 +1267,10 @@ class App extends React.Component {
     this.onAddType = this.onAddType.bind(this);
     this.onRemoveType = this.onRemoveType.bind(this);
     this.onNameContainsChange = this.onNameContainsChange.bind(this);
+    this.onFolderContainsChange = this.onFolderContainsChange.bind(this);
+    this.onFolderFocus = this.onFolderFocus.bind(this);
+    this.onFolderBlur = this.onFolderBlur.bind(this);
+    this.onSelectFolder = this.onSelectFolder.bind(this);
     this.onModifiedFromChange = this.onModifiedFromChange.bind(this);
     this.onModifiedToChange = this.onModifiedToChange.bind(this);
     this.onModifiedByChange = this.onModifiedByChange.bind(this);
@@ -1076,6 +1290,7 @@ class App extends React.Component {
     this.onDropPackageXml = this.onDropPackageXml.bind(this);
     this.onClickDataModel = this.onClickDataModel.bind(this);
     this.onSetDownloadMode = this.onSetDownloadMode.bind(this);
+    this.onSetSearchSource = this.onSetSearchSource.bind(this);
     // Upload Metadata tab
     this.onFileChange = this.onFileChange.bind(this);
     this.onDeployClick = this.onDeployClick.bind(this);
@@ -1133,6 +1348,28 @@ class App extends React.Component {
   onRemoveType(xmlName) {
     let {model} = this.props;
     model.removeSelectedType(xmlName);
+    model.didUpdate();
+  }
+  onFolderContainsChange(e) {
+    let {model} = this.props;
+    model.onFolderInput(e.target.value);
+    model.didUpdate();
+  }
+  onFolderFocus() {
+    let {model} = this.props;
+    model.onFolderFocus();
+    model.didUpdate();
+  }
+  onFolderBlur() {
+    let {model} = this.props;
+    setTimeout(() => {
+      model.onFolderBlur();
+      model.didUpdate();
+    }, 150);
+  }
+  onSelectFolder(fullName) {
+    let {model} = this.props;
+    model.selectFolder(fullName);
     model.didUpdate();
   }
   onNameContainsChange(e) {
@@ -1253,6 +1490,14 @@ class App extends React.Component {
     model.downloadMode = mode;
     model.didUpdate();
   }
+  onSetSearchSource(source) {
+    let {model} = this.props;
+    model.searchSource = source;
+    model.searchResults = null;
+    model.searchLogMessages = [];
+    model.updateTypeSuggestions();
+    model.didUpdate();
+  }
 
   // --- Upload Metadata tab handlers ---
   onFileChange(e) {
@@ -1354,6 +1599,8 @@ class App extends React.Component {
     let {model} = this.props;
     let allResultsSelected = model.searchResults && model.searchResults.length > 0 && model.searchResults.every(row => row.selected);
     let anySelected = model.searchResults && model.searchResults.some(row => row.selected);
+    let showOperation = model.searchResults && model.searchResults.some(row => row.operation);
+    let showFolderFilter = model.searchSource == "all" && model.hasFolderedTypeSelected();
     return h("div", {},
       h("div", {className: "slds-m-bottom_medium"},
         h("div", {className: "slds-form-element"},
@@ -1376,10 +1623,31 @@ class App extends React.Component {
       ),
 
       model.downloadMode == "filter" ? h("div", {className: "filter-bar"},
-        h("h3", {className: "slds-text-heading_small slds-m-bottom_small"}, "Filters"),
-        h("div", {className: "slds-form-element slds-m-bottom_small"},
+        h("div", {className: "filter-row slds-m-bottom_small"},
+          h("h3", {className: "slds-text-heading_small"}, "Filters"),
+          model.sourceTrackingEnabled ? h("div", {className: "slds-button-group", role: "group", "aria-label": "Search source"},
+            h("button", {
+              type: "button",
+              className: "slds-button slds-button_neutral" + (model.searchSource == "recent" ? " slds-button_brand" : ""),
+              "aria-pressed": model.searchSource == "recent" ? "true" : "false",
+              title: "Source-tracked changes (SourceMember): scratch orgs and sandboxes with source tracking only",
+              onClick: () => this.onSetSearchSource("recent")
+            }, "Recent changes"),
+            h("button", {
+              type: "button",
+              className: "slds-button slds-button_neutral" + (model.searchSource == "all" ? " slds-button_brand" : ""),
+              "aria-pressed": model.searchSource == "all" ? "true" : "false",
+              title: "Every component of the selected types (listMetadata), available in every org",
+              onClick: () => this.onSetSearchSource("all")
+            }, "All metadata")
+          ) : null
+        ),
+        h("div", {className: "slds-form-element filter-row filter-row_nowrap slds-m-bottom_small"},
           h("label", {className: "slds-form-element__label", htmlFor: "metadataTypeInput"}, "Metadata Type"),
-          model.selectedTypes.length > 0 ? h("div", {className: "slds-m-bottom_x-small"},
+          (model.searchSource == "recent" || model.selectedTypes.length > 0) ? h("div", {className: "filter-pills"},
+            (model.searchSource == "recent" && model.selectedTypes.length == 0)
+              ? h("span", {className: "filter-pill filter-pill-static", title: "All metadata types: pick a type to narrow the search"}, h("span", {}, allTypesLabel))
+              : null,
             model.selectedTypes.map(xmlName => h("span", {className: "filter-pill", key: xmlName},
               h("span", {}, xmlName),
               h("button", {type: "button", title: "Remove", onClick: () => this.onRemoveType(xmlName)},
@@ -1389,7 +1657,7 @@ class App extends React.Component {
               )
             ))
           ) : null,
-          h("div", {className: "slds-form-element__control"},
+          h("div", {className: "slds-form-element__control filter-row-grow"},
             h("div", {className: "slds-combobox_container"},
               h("div", {className: "slds-combobox slds-dropdown-trigger slds-dropdown-trigger_click" + ((model.showTypeSuggestions && model.typeSuggestions.length) ? " slds-is-open" : "")},
                 h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"},
@@ -1434,6 +1702,37 @@ class App extends React.Component {
               h("input", {id: "nameContainsInput", type: "text", className: "slds-input", placeholder: "Contains…", value: model.nameContains, onChange: this.onNameContainsChange})
             )
           ),
+          showFolderFilter ? h("div", {className: "slds-col slds-size_1-of-1 slds-medium-size_1-of-4 slds-form-element"},
+            h("label", {className: "slds-form-element__label", htmlFor: "folderContainsInput", title: "Only applies to foldered types (reports, dashboards, documents, email templates)"}, "Folder"),
+            h("div", {className: "slds-form-element__control"},
+              h("div", {className: "slds-combobox_container"},
+                h("div", {className: "slds-combobox slds-dropdown-trigger slds-dropdown-trigger_click" + ((model.showFolderSuggestions && model.folderSuggestions.length) ? " slds-is-open" : "")},
+                  h("div", {className: "slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right", role: "none"},
+                    h("input", {
+                      id: "folderContainsInput",
+                      type: "text",
+                      className: "slds-input slds-combobox__input",
+                      autoComplete: "off",
+                      placeholder: model.folderCatalogLoading ? "Loading folders…" : "Contains…",
+                      value: model.folderContains,
+                      onChange: this.onFolderContainsChange,
+                      onFocus: this.onFolderFocus,
+                      onBlur: this.onFolderBlur
+                    })
+                  ),
+                  (model.showFolderSuggestions && model.folderSuggestions.length > 0) ? h("div", {className: "slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid", role: "listbox"},
+                    h("ul", {className: "slds-listbox slds-listbox_vertical", role: "presentation"},
+                      model.folderSuggestions.map(folder => h("li", {role: "presentation", className: "slds-listbox-item", key: folder.type + "~" + folder.fullName, onMouseDown: () => this.onSelectFolder(folder.fullName)},
+                        h("div", {className: "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small", role: "option"},
+                          h("span", {className: "slds-media__body"}, h("span", {className: "slds-truncate"}, folder.fullName + " (" + folder.type + ")"))
+                        )
+                      ))
+                    )
+                  ) : null
+                )
+              )
+            )
+          ) : null,
           h("div", {className: "slds-col slds-size_1-of-2 slds-medium-size_1-of-4 slds-form-element"},
             h("label", {className: "slds-form-element__label", htmlFor: "modifiedFromInput"}, "Modified From"),
             h("div", {className: "slds-form-element__control"},
@@ -1483,7 +1782,7 @@ class App extends React.Component {
             className: "slds-button slds-button_brand",
             onClick: this.onSearchClick,
             disabled: model.searchProgress == "working",
-            title: model.selectedTypes.length == 0 ? "Select at least one metadata type" : ""
+            title: (model.searchSource == "all" && model.selectedTypes.length == 0) ? "Select at least one metadata type" : ""
           }, "Search"),
           h("button", {className: "slds-button slds-button_neutral", onClick: this.onClearFilters, disabled: model.searchProgress == "working"}, "Clear filters")
         ),
@@ -1531,19 +1830,28 @@ class App extends React.Component {
                 h("th", {}, "Metadata Type"),
                 h("th", {}, "Metadata Name"),
                 h("th", {}, "Modified By"),
-                h("th", {}, "Modified At")
+                h("th", {}, "Modified At"),
+                showOperation ? h("th", {}, "Operation") : null
               )
             ),
             h("tbody", {},
               model.searchResults.map(row => h("tr", {key: row.type + "~" + row.fullName, className: "slds-hint-parent"},
                 h("td", {},
-                  h("input", {type: "checkbox", checked: row.selected, onChange: e => this.onToggleResultRow(row, e.target.checked), className: "slds-checkbox"}),
+                  h("input", {
+                    type: "checkbox",
+                    checked: row.selected,
+                    disabled: row.operation == "deleted",
+                    title: row.operation == "deleted" ? "Deleted components can't be retrieved" : "",
+                    onChange: e => this.onToggleResultRow(row, e.target.checked),
+                    className: "slds-checkbox"
+                  }),
                   h("span", {className: "slds-checkbox__label"})
                 ),
                 h("td", {title: row.type}, row.type),
                 h("td", {title: row.fullName}, row.fullName),
                 h("td", {title: row.lastModifiedByName}, row.lastModifiedByName),
-                h("td", {title: row.lastModifiedDate}, row.lastModifiedDate ? new Date(row.lastModifiedDate).toLocaleString() : "")
+                h("td", {title: row.lastModifiedDate}, row.lastModifiedDate ? new Date(row.lastModifiedDate).toLocaleString() : ""),
+                showOperation ? h("td", {}, row.operation) : null
               ))
             )
           )
@@ -1642,8 +1950,8 @@ class App extends React.Component {
         h("label", {className: "slds-m-top_x-small"},
           h("input", {
             type: "checkbox",
-            checked: model.performRetrieve,
-            onChange: e => this.onDeployOptionChange("performRetrieve", e.target.checked),
+            checked: model.deployPerformRetrieve,
+            onChange: e => this.onDeployOptionChange("deployPerformRetrieve", e.target.checked),
             disabled: (model.deployProgress == "working"),
             className: "slds-checkbox__input"
           }),
@@ -1823,7 +2131,7 @@ class App extends React.Component {
               )
             )
           ),
-          h("div", {className: "slds-tabs_default__content slds-m-top_medium"},
+          h("div", {className: "slds-tabs_default__content"},
             activeTab == "download" ? this.renderDownloadMetadataTab() : null,
             activeTab == "translation" ? this.renderDownloadTranslationTab() : null,
             activeTab == "upload" ? this.renderUploadMetadataTab() : null,
@@ -1864,6 +2172,7 @@ class TranslationObjectSelector extends React.Component {
     let root = document.getElementById("root");
     let model = new Model(sfHost);
     model.loadMetadataTypeCatalog();
+    model.detectSourceTracking();
     model.reactCallback = cb => {
       ReactDOM.render(h(App, {model}), root, cb);
     };
