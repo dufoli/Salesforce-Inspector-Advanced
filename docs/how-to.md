@@ -418,6 +418,15 @@ Open it from the popup ("Download Metadata" button, shortcut `d`). The page is n
 - **Upload Metadata**: drag & drop (or browse to) a metadata zip to deploy it to the org. Deploy Options let you check-only (validate without deploying), allow missing files, ignore warnings, perform a retrieve, and purge on delete.
 - **Data Model**: download a CSV export of all objects and fields in the org.
 
+!!! tip "Metadata API format vs source format"
+    The downloaded zip uses the Metadata API format (e.g. `flows/MyFlow.flow`, `objects/Account.object`), not the source format used by VS Code / the sf CLI (e.g. `flows/MyFlow.flow-meta.xml`, decomposed `objects/Account/fields/...`). To get source format files in your SFDX project, download the `package.xml` instead and retrieve it with the sf CLI from your project folder:
+
+    ```
+    sf project retrieve start --manifest package.xml --target-org <alias>
+    ```
+
+    Alternatively, an already downloaded zip can be converted with `sf project convert mdapi --root-dir <unzipped folder> --output-dir force-app`.
+
 ## Formula Helper
 
 A standalone tool for writing and cleaning up Salesforce formulas: syntax highlighting, line numbers, autocompletion of field names, objects and formula functions, and real-time error checks.
