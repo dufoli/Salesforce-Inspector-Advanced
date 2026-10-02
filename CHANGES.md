@@ -2,6 +2,7 @@
 
 ## Version 1.42
 
+- Apex runner: inside an inline SOQL query (`[SELECT ... FROM ...]`), suggest objects after `FROM` (child relationships in sub-queries) and the queried object's fields elsewhere, following relationship paths (e.g. `Account.Owner.`); bind variables (`:var`) keep Apex suggestions
 - Metadata retrieve: on orgs with source tracking (scratch orgs, sandboxes), add a "Recent changes" search (default) based on `SourceMember`, where the metadata type can be "All" and each result shows whether it was created, modified or deleted; other orgs keep the "All metadata" search only
 - Metadata retrieve: add a Folder filter (contains, with autosuggest of the org's folders) in "All metadata" search when a foldered type (reports, dashboards, documents, email templates) is selected; only matching folders are listed, which saves API calls
 - Org analyzer: group rules needing many API calls (field analysis, Apex source scanning) under a "High API usage" section with a warning icon, and no longer query every object's fields when no field rule is selected

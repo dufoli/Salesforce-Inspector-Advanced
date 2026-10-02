@@ -326,6 +326,9 @@ class Model {
       this.selectSuggestion();
       return;
     }
+    if (this.autocompleteSoql(vm, script, selStart, searchTerm)) {
+      return;
+    }
     let contextPath;
     if (searchTerm && searchTerm.includes(".")) {
       [contextPath, searchTerm] = searchTerm.split(".", 2);
@@ -406,6 +409,184 @@ class Model {
         .sort(vm.resultsSort(searchTerm))
         .slice(0, 20) //only 20 first result
     };
+  }
+
+  /**
+   * Bounds of the inline SOQL query ([SELECT ... FROM ...]) enclosing pos, or null when pos is outside of any.
+   */
+  findInlineSoql(script, pos) {
+    let depth = 0;
+    let open = -1;
+    for (let i = pos - 1; i >= 0; i--) {
+      let ch = script[i];
+      if (ch == "]") {
+        depth++;
+      } else if (ch == "[") {
+        if (depth == 0) {
+          open = i;
+          break;
+        }
+        depth--;
+      } else if (ch == ";") {
+        return null; // a query cannot contain a statement separator
+      }
+    }
+    if (open == -1 || !/^\s*select\b/i.test(script.substring(open + 1))) {
+      return null;
+    }
+    let end = script.length;
+    for (let i = pos; i < script.length; i++) {
+      if (script[i] == "]" || script[i] == ";") {
+        end = i;
+        break;
+      }
+    }
+    return {start: open + 1, end};
+  }
+
+  /**
+   * Innermost (SELECT ...) sub-query of query enclosing pos, falling back to the whole query.
+   */
+  findSoqlScope(query, pos) {
+    let depth = 0;
+    for (let i = pos - 1; i >= 0; i--) {
+      if (query[i] == ")") {
+        depth++;
+      } else if (query[i] == "(") {
+        if (depth > 0) {
+          depth--;
+        } else if (/^\s*select\b/i.test(query.substring(i + 1))) {
+          let end = query.length;
+          let closeDepth = 0;
+          for (let j = pos; j < query.length; j++) {
+            if (query[j] == "(") {
+              closeDepth++;
+            } else if (query[j] == ")") {
+              if (closeDepth == 0) {
+                end = j;
+                break;
+              }
+              closeDepth--;
+            }
+          }
+          return {start: i + 1, end, parent: this.findSoqlScope(query, i)};
+        }
+        // otherwise a function call such as COUNT( or IN (, still in the same scope
+      }
+    }
+    return {start: 0, end: query.length, parent: null};
+  }
+
+  // collapse parenthesized parts so keywords of sub-queries are not mistaken for the current scope ones
+  stripSoqlParentheses(text) {
+    let previous;
+    do {
+      previous = text;
+      text = text.replace(/\([^()]*\)/g, "()");
+    } while (text != previous);
+    return text;
+  }
+
+  describeSobjectIfReady(sobjectName) {
+    if (!sobjectName) {
+      return null;
+    }
+    let {sobjectStatus, sobjectDescribe} = this.describeInfo.describeSobject(false, sobjectName);
+    return sobjectStatus == "ready" ? sobjectDescribe : null;
+  }
+
+  // the sobject queried by a scope, resolving sub-query child relationships against the parent query object
+  resolveSoqlSobject(query, scope) {
+    let fromMatch = this.stripSoqlParentheses(query.substring(scope.start, scope.end)).match(/\bfrom\s+([a-zA-Z0-9_]+)/i);
+    if (!fromMatch) {
+      return null;
+    }
+    if (!scope.parent) {
+      return fromMatch[1];
+    }
+    let parentDescribe = this.describeSobjectIfReady(this.resolveSoqlSobject(query, scope.parent));
+    let rel = parentDescribe && parentDescribe.childRelationships.find(r => r.relationshipName && r.relationshipName.toLowerCase() == fromMatch[1].toLowerCase());
+    return rel ? rel.childSObject : null;
+  }
+
+  /**
+   * Suggest objects after FROM and fields elsewhere when the cursor is inside an inline SOQL query.
+   * Returns false when Apex suggestions apply instead.
+   */
+  autocompleteSoql(vm, script, termStart, searchTerm) {
+    let soql = this.findInlineSoql(script, termStart);
+    if (!soql) {
+      return false;
+    }
+    let query = script.substring(soql.start, soql.end);
+    let pos = termStart - soql.start;
+    let scope = this.findSoqlScope(query, pos);
+    let before = this.stripSoqlParentheses(query.substring(scope.start, pos));
+    if (/:\s*$/.test(before)) {
+      return false; // bind variable
+    }
+    let term = searchTerm.toLowerCase();
+
+    if (/\bfrom\s+$/i.test(before)) {
+      if (scope.parent) {
+        let parentDescribe = this.describeSobjectIfReady(this.resolveSoqlSobject(query, scope.parent));
+        vm.autocompleteResults = {
+          sobjectName: parentDescribe ? parentDescribe.name : "",
+          title: parentDescribe ? parentDescribe.name + " child relationships suggestions:" : "Loading metadata...",
+          results: new Enumerable(parentDescribe ? parentDescribe.childRelationships : [])
+            .filter(rel => rel.relationshipName && (rel.relationshipName.toLowerCase().includes(term) || rel.childSObject.toLowerCase().includes(term)))
+            .map(rel => ({value: rel.relationshipName, title: rel.relationshipName + " (" + rel.childSObject + "." + rel.field + ")", suffix: " ", rank: 1, autocompleteType: "object", dataType: rel.childSObject}))
+            .toArray()
+            .sort(vm.resultsSort(searchTerm))
+        };
+        return true;
+      }
+      let {globalDescribe, globalStatus} = vm.describeInfo.describeGlobal(false);
+      vm.autocompleteResults = {
+        sobjectName: "",
+        title: globalStatus == "ready" ? "Objects suggestions:" : "Loading metadata...",
+        results: new Enumerable(globalStatus == "ready" ? globalDescribe.sobjects : [])
+          .filter(sobjectDescribe => sobjectDescribe.queryable && (sobjectDescribe.name.toLowerCase().includes(term) || sobjectDescribe.label.toLowerCase().includes(term)))
+          .map(sobjectDescribe => ({value: sobjectDescribe.name, title: sobjectDescribe.name, suffix: " ", rank: 1, autocompleteType: "object", dataType: ""}))
+          .toArray()
+          .sort(vm.resultsSort(searchTerm))
+      };
+      return true;
+    }
+
+    // fields, following relationship paths such as Account.Owner.Na
+    let path = searchTerm.split(".");
+    let fieldTerm = path.pop();
+    let contextPath = path.length ? path.join(".") + "." : "";
+    let sobjectName = this.resolveSoqlSobject(query, scope);
+    let sobjectDescribe = this.describeSobjectIfReady(sobjectName);
+    for (let i = 0; sobjectDescribe && i < path.length; i++) {
+      let field = sobjectDescribe.fields.find(f => f.relationshipName && f.relationshipName.toLowerCase() == path[i].toLowerCase());
+      // polymorphic lookups resolve to their first referenceTo only
+      sobjectDescribe = field && field.referenceTo && field.referenceTo.length > 0 ? this.describeSobjectIfReady(field.referenceTo[0]) : null;
+    }
+    if (!sobjectDescribe) {
+      vm.autocompleteResults = {sobjectName: sobjectName || "", title: sobjectName ? "Loading metadata or unknown field: " + sobjectName + "." + contextPath : "Missing FROM object", results: []};
+      return true;
+    }
+    let inSelectList = /^\s*select\b/i.test(before) && !/\bfrom\b/i.test(before);
+    let fieldTermLower = fieldTerm.toLowerCase();
+    vm.autocompleteResults = {
+      sobjectName: sobjectDescribe.name,
+      title: sobjectDescribe.name + " fields suggestions:",
+      results: new Enumerable(sobjectDescribe.fields)
+        .flatMap(function* (field) {
+          yield {value: field.name, title: field.name, label: field.label, suffix: inSelectList ? ", " : " ", rank: 1, autocompleteType: "fieldName", dataType: field.type};
+          if (field.relationshipName) {
+            yield {value: field.relationshipName + ".", title: field.relationshipName + ".", label: field.label, suffix: "", rank: 2, autocompleteType: "relationshipName", dataType: ""};
+          }
+        })
+        .filter(r => r.value.toLowerCase().includes(fieldTermLower) || r.label.toLowerCase().includes(fieldTermLower))
+        .toArray()
+        .sort(vm.resultsSort(fieldTerm))
+        .map(r => ({...r, value: contextPath + r.value}))
+    };
+    return true;
   }
 
   //basic parser
