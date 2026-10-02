@@ -17,6 +17,7 @@
 - Org analyzer: fix the "Analyze org" button disappearing after filtering the results, and the options link opening without the org host
 - Results table (data export, inspect, org analyzer): cells containing an http(s) URL show an icon to open it in a new tab
 - Org analyzer: fix the "Workflow Rule to migrate to Flow" rule, whose query filtered on a non-existent `Active` field and never returned anything; it now reports every non-managed Workflow Rule, active or not (the active flag isn't queryable in bulk)
+- Editor (data export, apex runner, formula helper): the "Auto-select first suggestion" option is renamed "Editor suggestions on Ctrl+Space only, first one pre-selected" and moved to the User Experience tab; when enabled, typing no longer opens the suggestion list (Ctrl+Space does), the first suggestion is pre-selected and the list closes once a suggestion is picked. Apex runner and formula helper now follow this option instead of always pre-selecting the first suggestion
 
 ## Version 1.41
 

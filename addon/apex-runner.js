@@ -104,10 +104,11 @@ class Model {
     this.scriptName = "";
     this.suggestionTop = 0;
     this.suggestionLeft = 0;
-    this.autoSelectFirstSuggestion = true; // unlike data export, always enabled here (not user-configurable)
+    this.autoSelectFirstSuggestion = localStorage.getItem("autoSelectFirstSuggestion") === "true"; // default to false
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.autocompleteResultBox = null;
-    this.displaySuggestion = true;
+    // with auto-select, suggestions are only shown on demand (Ctrl+Space) so typing never selects one by accident
+    this.displaySuggestion = !this.autoSelectFirstSuggestion;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
     let scriptTemplatesRawValue = localStorage.getItem("scriptTemplates");
     if (scriptTemplatesRawValue) {
@@ -518,7 +519,10 @@ class Model {
         console.error(error);
       });
   }
-  showSuggestion() {
+  showSuggestion(force) {
+    if (this.autoSelectFirstSuggestion && !force) {
+      return;
+    }
     this.displaySuggestion = true;
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.didUpdate();
@@ -571,6 +575,10 @@ class Model {
 
     this.editor.focus();
     this.applyEdit(ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
+    if (this.autoSelectFirstSuggestion) {
+      // the first suggestion is always active, so keeping the list open would make Enter/Tab keep selecting
+      this.displaySuggestion = false;
+    }
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler();
   }

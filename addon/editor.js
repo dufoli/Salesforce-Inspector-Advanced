@@ -146,8 +146,9 @@ export class Editor extends React.Component {
           if (model.displaySuggestion) {
             model.selectSuggestion();
           } else {
-            model.showSuggestion();
+            model.showSuggestion(true);
           }
+          return; // keep displaySuggestion as set by selectSuggestion/showSuggestion
         }
         break;
       case "ArrowRight":
@@ -175,6 +176,7 @@ export class Editor extends React.Component {
         if (model.displaySuggestion && model.activeSuggestion != -1) {
           e.preventDefault();
           model.selectSuggestion();
+          return;
         }
         break;
       case "Escape":
@@ -217,6 +219,7 @@ export class Editor extends React.Component {
           }
         } else if (model.displaySuggestion && model.activeSuggestion > -1) {
           model.selectSuggestion();
+          return;
         } else {
           model.editor.setRangeText(tabChar, selectionStart, selectionStart, "preserve");
         }
@@ -293,7 +296,7 @@ export class Editor extends React.Component {
       }
     }
     if (!model.displaySuggestion && e.key != "Control" && e.key != "Shift" && e.key != "Alt" && e.key != "Meta" && e.key != "Escape") {
-      model.displaySuggestion = true;
+      model.showSuggestion(false);
     }
   }
   handleMouseUp() {

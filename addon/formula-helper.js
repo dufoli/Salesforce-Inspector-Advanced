@@ -77,9 +77,10 @@ class Model {
     this.autocompleteState = "";
     this.autocompleteResults = {title: " ", results: []};
     this.autocompleteClick = null;
-    this.autoSelectFirstSuggestion = true; // unlike data export, always enabled here (not user-configurable)
+    this.autoSelectFirstSuggestion = localStorage.getItem("autoSelectFirstSuggestion") === "true"; // default to false
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
-    this.displaySuggestion = true;
+    // with auto-select, suggestions are only shown on demand (Ctrl+Space) so typing never selects one by accident
+    this.displaySuggestion = !this.autoSelectFirstSuggestion;
     this.autocompleteResultBox = null;
     this.suggestionTop = 0;
     this.suggestionLeft = 0;
@@ -211,7 +212,10 @@ class Model {
     this.recomputeProblems(value);
   }
 
-  showSuggestion() {
+  showSuggestion(force) {
+    if (this.autoSelectFirstSuggestion && !force) {
+      return;
+    }
     this.displaySuggestion = true;
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.didUpdate();
@@ -283,6 +287,10 @@ class Model {
   // just placing the caret at the end like a plain field/operator insertion.
   insertSuggestion(r, selStart, selEnd) {
     this.applyEdit(r.value + (r.suffix || ""), selStart, selEnd, "end");
+    if (this.autoSelectFirstSuggestion) {
+      // the first suggestion is always active, so keeping the list open would make Enter/Tab keep selecting
+      this.displaySuggestion = false;
+    }
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     if (r.autocompleteType == "function") {
       let placeholder = functionPlaceholderRange(r.suffix);

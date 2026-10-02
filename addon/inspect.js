@@ -349,8 +349,8 @@ class Model {
                 continue;
               }
 
-              // Check if field type is address - if true, skip query and leave usage empty
-              if (fieldDesc.type === "address") {
+              // Check if field type is address or location - if true, skip query and leave usage empty
+              if (fieldDesc.type === "address" || fieldDesc.type === "location") {
                 // Leave fieldUsage as undefined (empty)
                 continue;
               }

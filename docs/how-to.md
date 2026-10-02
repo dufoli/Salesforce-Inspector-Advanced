@@ -377,11 +377,14 @@ To enable performance metrics for queries on the data export page, open the Opti
 then set "Display Query Execution Time" to enabled. Total time for the query to process and, when applicable, batch stats (Total Number of Batches, Min/Max/Avg Batch Time)
 are displayed.
 
-## Auto-select first suggestion in Data Export
+## Editor suggestions on Ctrl+Space only
 
-By default, when the SOQL/SOSL/GraphQL autocomplete list is displayed on the Data Export page, no suggestion is highlighted until you press an arrow key.
-To have the first suggestion highlighted automatically as soon as the list appears (so it can be picked directly with Enter or Tab), open the Options screen,
-select the Data Export tab, and enable "Auto-select first suggestion" (disabled by default).
+By default, the autocomplete list of the editors (Data Export, Apex Runner, Formula Helper) is displayed while you type, and no suggestion is highlighted until you press an arrow key.
+To show suggestions only on demand, open the Options screen, select the User Experience tab, and enable "Editor suggestions on Ctrl+Space only, first one pre-selected" (disabled by default). With this option:
+
+- typing never opens the list: press Ctrl+Space to display it
+- the first suggestion is highlighted, so it can be picked directly with Enter, Tab or Ctrl+Space
+- the list closes once a suggestion is picked (or with Esc)
 
 ## Explore API
 

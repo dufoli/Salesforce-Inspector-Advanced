@@ -84,7 +84,8 @@ class Model {
     this.columnIndex = {fields: []};
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.autocompleteResultBox = null;
-    this.displaySuggestion = true;
+    // with auto-select, suggestions are only shown on demand (Ctrl+Space) so typing never selects one by accident
+    this.displaySuggestion = !this.autoSelectFirstSuggestion;
     this.clientId = localStorage.getItem(sfHost + "_clientId") ? localStorage.getItem(sfHost + "_clientId") : "";
     this.aiAssistant = new AIAssistant();
     this.aiGenerating = false;
@@ -404,7 +405,10 @@ class Model {
       .catch(err => console.log("error handling failed", err));
   }
 
-  showSuggestion() {
+  showSuggestion(force) {
+    if (this.autoSelectFirstSuggestion && !force) {
+      return;
+    }
     this.displaySuggestion = true;
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler({newDescribe: true});
@@ -503,6 +507,10 @@ class Model {
     this.applyEdit((this.autocompleteResults.contextPath ? this.autocompleteResults.contextPath : "") + ar[idx].value + ar[idx].suffix, selStart, selEnd, "end");
     if (ar[idx].value.startsWith("FIELDS") && !this.editor.value.toLowerCase().includes("limit")) {
       this.editor.value += " LIMIT 200";
+    }
+    if (this.autoSelectFirstSuggestion) {
+      // the first suggestion is always active, so keeping the list open would make Enter/Tab keep selecting
+      this.displaySuggestion = false;
     }
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler();
@@ -907,7 +915,7 @@ class Model {
       sobjectName,
       title: sobjectName + " fields suggestions:",
       results: new Enumerable(sobjectDescribe.fields)
-        .filter(field => field.type != "address")
+        .filter(field => field.type != "address" && field.type != "location")
         .filter(field => field.type != "reference" || field.relationshipName)
         .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase())
           || field.label.toLowerCase().includes(searchTerm.toLowerCase())
@@ -946,7 +954,7 @@ class Model {
       sobjectName,
       title,
       results: new Enumerable(sobjectDescribe.fields)
-        .filter(field => field.type != "address")
+        .filter(field => field.type != "address" && field.type != "location")
         .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
         .map(field => ({value: field.name, title: field.label, suffix: ": { }", nestOffset: field.name.length + 4, rank: 1, autocompleteType: "fieldName", dataType: field.type}))
         .toArray()
@@ -966,7 +974,7 @@ class Model {
       sobjectName,
       title: sobjectName + " aggregate fields suggestions:",
       results: new Enumerable(sobjectDescribe.fields)
-        .filter(field => field.type != "address" && field.type != "reference")
+        .filter(field => field.type != "address" && field.type != "reference"  && field.type != "location")
         .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
         .map(field => ({value: field.name, title: field.label, suffix: " { }", nestOffset: field.name.length + 3, rank: 1, autocompleteType: "fieldName", dataType: field.type}))
         .toArray()
@@ -1736,7 +1744,7 @@ class Model {
         title: "typeof suggestions:",
         results: contextSobjectDescribes
           .flatMap(sobjectDescribe => sobjectDescribe.fields)
-          .filter(field => field.type != "address" && field.relationshipName && field.relationshipName.toLowerCase() == fieldName.toLowerCase())
+          .filter(field => field.type != "address" && field.type != "location" && field.relationshipName && field.relationshipName.toLowerCase() == fieldName.toLowerCase())
           .flatMap(function* (field) {
             for (let refto of field.referenceTo) {
               yield {value: refto, title: refto, suffix: " THEN  END", rank: 1, autocompleteType: "object", dataType: ""};
@@ -1793,7 +1801,7 @@ class Model {
       let ar = contextSobjectDescribes
         .flatMap(sobjectDescribe => sobjectDescribe.fields)
         .filter(field => field.name.toLowerCase().includes(searchTerm.toLowerCase()) || field.label.toLowerCase().includes(searchTerm.toLowerCase()))
-        .filter(field => field.type != "address")
+        .filter(field => field.type != "address" && field.type != "location")
         .map(field => contextPath + field.name)
         .toArray();
       if (ar.length > 0) {
@@ -1810,7 +1818,7 @@ class Model {
       title: contextSobjectDescribes.map(sobjectDescribe => sobjectDescribe.name).toArray().join(", ") + " fields suggestions:",
       results: contextSobjectDescribes
         .flatMap(sobjectDescribe => sobjectDescribe.fields)
-        .filter(field => field.type != "address")
+        .filter(field => field.type != "address" && field.type != "location")
         .flatMap(function* (field) {
           yield {value: field.name, title: field.label, suffix: (isAfterWhere || isAfterGroupBy || isAfterOrderBy) ? " " : ", ", rank: 2, autocompleteType: "fieldName", dataType: field.type};
           if (field.relationshipName) {
