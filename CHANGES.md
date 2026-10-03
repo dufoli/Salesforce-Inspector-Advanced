@@ -2,6 +2,8 @@
 
 ## Version 1.42
 
+- Data import: relationship columns, standard (`Account`, `Owner`) or custom (`Lookup__r`), are skipped automatically since they cannot be imported, e.g. the `Account` column exported next to `Account.External_ID__c`, or a nested object from a JSON paste; external ID columns (`Account.External_ID__c`, `Lookup__r:Object__c:Field__c`) are unaffected
+- Data import: rename the "Copy Options" button to "Copy Import Settings", with a tooltip listing what is copied and how to reuse it
 - Apex runner: inside an inline SOQL query (`[SELECT ... FROM ...]`), suggest objects after `FROM` (child relationships in sub-queries) and the queried object's fields elsewhere, following relationship paths (e.g. `Account.Owner.`); bind variables (`:var`) keep Apex suggestions
 - Metadata retrieve: on orgs with source tracking (scratch orgs, sandboxes), add a "Recent changes" search (default) based on `SourceMember`, where the metadata type can be "All" and each result shows whether it was created, modified or deleted; other orgs keep the "All metadata" search only
 - Metadata retrieve: add a Folder filter (contains, with autosuggest of the org's folders) in "All metadata" search when a foldered type (reports, dashboards, documents, email templates) is selected; only matching folders are listed, which saves API calls

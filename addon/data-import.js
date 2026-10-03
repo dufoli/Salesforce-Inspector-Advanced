@@ -713,8 +713,20 @@ class Model {
       if (externalIdColumn) {
         return externalIdColumn;
       }
+    } else if (/__r$/i.test(col.trim()) || this.isRelationshipName(col.trim())) {
+      // Relationship columns (e.g. "Account" or "Lookup__r", exported next to "Account.External_ID__c" or from a JSON paste) cannot be imported, skip them
+      return "_" + col.trim();
     }
     return col.trim();
+  }
+
+  isRelationshipName(name) {
+    let sobjectDescribe = this.describeInfo.describeSobject(this.apiType == "Tooling", this.importType).sobjectDescribe;
+    if (!sobjectDescribe) {
+      return false;
+    }
+    let lowerName = name.toLowerCase();
+    return sobjectDescribe.fields.some(field => field.relationshipName && field.relationshipName.toLowerCase() == lowerName);
   }
 
   refreshColumn() {
@@ -1744,7 +1756,7 @@ class App extends React.Component {
             ),
           ),
           h("div", {className: "flex-right"},
-            h("button", {onClick: this.onCopyOptionsClick, title: "Save these import options by pasting them into Excel in the top left cell, just above the header row"}, "Copy Options"),
+            h("button", {onClick: this.onCopyOptionsClick, title: "Copy the import settings (API type, action, object, external ID, batch size, threads) to the clipboard. Paste them into Excel in the top left cell, just above the header row, to reuse them on the next import"}, "Copy Import Settings"),
             h("button", {onClick: this.onSkipAllUnknownFieldsClick, disabled: !model.canSkipAllUnknownFields() || model.isWorking() || model.importCounts().Queued == 0}, "Skip all unknown fields")
           ),
         ),
@@ -1760,7 +1772,8 @@ class App extends React.Component {
                 h("li", {}, "Number, date, time and checkbox values must conform to the relevant ", h("a", {href: "http://www.w3.org/TR/xmlschema-2/#built-in-primitive-datatypes", target: "_blank"}, "XSD datatypes"), "."),
                 h("li", {}, "Columns starting with an underscore are ignored."),
                 h("li", {}, "You can resume a previous import by including the \"__Status\" column in your input."),
-                h("li", {}, "You can supply the other import options by clicking \"Copy options\" and pasting the options into Excel in the top left cell, just above the header row.")
+                h("li", {}, "You can supply the other import settings by clicking \"Copy Import Settings\" and pasting them into Excel in the top left cell, just above the header row."),
+                h("li", {}, "Relationship columns (e.g. \"Account\", \"Owner\" or \"MyLookup__r\") are skipped automatically.")
               )
             ),
             h("li", {}, "Select your input format"),

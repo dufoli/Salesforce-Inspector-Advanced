@@ -345,6 +345,10 @@ export async function dataImportTest(test) {
   assertEquals("", vm.dataError);
   assertEquals({Queued: 1, Processing: 0, Succeeded: 0, Failed: 0}, vm.importCounts());
 
+  // Relationship columns (standard and custom) are skipped automatically, external ID columns are kept
+  vm.setData("Name,Owner,Lookup__r,Lookup__r.Name\r\ntest0,,,test1");
+  assertEquals(["Name", "_Owner", "_Lookup__r", "Lookup__r:Inspector_Test__c:Name"], vm.columns().map(c => c.columnValue));
+
   // Errors (whole batch)
   await anonApex("delete [select Id from Inspector_Test__c];");
   vm.dataFormat = "csv";
