@@ -4,6 +4,7 @@ import {sfConn, apiVersion} from "./inspector.js";
 import {csvParse} from "./csv-parse.js";
 import {DescribeInfo, copyToClipboard, tableToHtml} from "./data-load.js";
 import {ScrollTable, TableModel} from "./record-table.js";
+import {createImportArgs, soapImport} from "./import-engine.js";
 class Model {
 
   constructor(sfHost, args) {
@@ -931,20 +932,7 @@ class Model {
     let dateFormatRegex = this.calculateDateFormat(dateFormat);
     let datetimeFormatRegex = this.calculateDatetimeFormat(datetimeFormat);
     let batchRows = [];
-    let importArgs = {};
-    if (importAction == "upsert") {
-      importArgs.externalIDFieldName = idFieldName;
-    }
-    if (importAction == "delete" || importAction == "undelete" || importAction == "hardDelete") {
-      importArgs.ID = [];
-    } else if (importAction == "deleteMetadata") {
-      importArgs["met:type"] = "CustomMetadata";
-      importArgs["met:fullNames"] = [];
-    } else if (importAction == "upsertMetadata") {
-      importArgs["met:metadata"] = [];
-    } else {
-      importArgs.sObjects = [];
-    }
+    let importArgs = createImportArgs(importAction, idFieldName);
     let headerBulk = header.filter(h => !h.startsWith("_")).join(",");
     let chunk = headerBulk + "\n";
     let chunkRows = [];
@@ -1102,9 +1090,9 @@ class Model {
       setTimeout(this.executeBatch.bind(this), 2500);
     }
 
-    let soapheaders = {};
+    let soapHeaders;
     if (this.importType === "Case" || this.importType === "Lead" || this.importType === "Account") {
-      soapheaders.headers = {"AssignmentRuleHeader": {"useDefaultRule": this.assignmentRule}};
+      soapHeaders = {"AssignmentRuleHeader": {"useDefaultRule": this.assignmentRule}};
     }
     if (this.apiType == "Bulk") {
       for (let batch of batchRows) {
@@ -1340,32 +1328,14 @@ class Model {
         });
       }
     } else {
-      let wsdl = sfConn.wsdl(apiVersion, this.apiType);
-      this.spinFor(sfConn.soap(wsdl, importAction, importArgs, soapheaders).then(res => {
-
-        let results = sfConn.asArray(res);
+      this.spinFor(soapImport(sfConn, this.apiType, importAction, importArgs, soapHeaders).then(results => {
         for (let i = 0; i < results.length; i++) {
           let result = results[i];
           let row = batchRows[i];
-          if (result.success == "true") {
-            row[statusColumnIndex] = "Succeeded";
-            row[actionColumnIndex]
-              = importAction == "create" ? "Inserted"
-              : importAction == "update" ? "Updated"
-              : importAction == "upsert" || importAction == "upsertMetadata" ? (result.created == "true" ? "Inserted" : "Updated")
-              : importAction == "delete" || importAction == "deleteMetadata" ? "Deleted"
-              : importAction == "undelete" ? "Undeleted"
-              : "Unknown";
-          } else {
-            row[statusColumnIndex] = "Failed";
-            row[actionColumnIndex] = "";
-          }
-          row[resultIdColumnIndex] = result.id || "";
-          row[errorColumnIndex] = sfConn.asArray(result.errors).map(errorNode =>
-            errorNode.statusCode
-            + ": " + errorNode.message
-            + " [" + sfConn.asArray(errorNode.fields).join(", ") + "]"
-          ).join(", ");
+          row[statusColumnIndex] = result.success ? "Succeeded" : "Failed";
+          row[actionColumnIndex] = result.action;
+          row[resultIdColumnIndex] = result.id;
+          row[errorColumnIndex] = result.error;
         }
         this.consecutiveFailures = 0;
       }, err => {

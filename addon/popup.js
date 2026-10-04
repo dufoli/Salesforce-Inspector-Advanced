@@ -2747,6 +2747,14 @@ class AllDataSelection extends React.PureComponent {
     }
     return "https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/sforce_api_objects_" + sobject.name.toLowerCase() + ".htm";
   }
+  // Data Transfer with this record as the start record
+  getTransferUrl(sfHost, selectedValue) {
+    let args = new URLSearchParams();
+    args.set("host", sfHost);
+    args.set("sobject", selectedValue.sobject.name);
+    args.set("filter", "Id = '" + selectedValue.recordId + "'");
+    return "data-transfer.html?" + args;
+  }
   getNewObjectUrl(sfHost, newUrl){
     return "https://" + sfHost + newUrl;
   }
@@ -2844,6 +2852,7 @@ class AllDataSelection extends React.PureComponent {
         ))),
         isFieldsPresent ? h("a", {ref: "showFieldApiNameBtn", onClick: showApiName, target: linkTarget, className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, h("span", {}, "Show ", h("u", {}, "f"), "ields API names")) : null,
         selectedValue.sobject.isEverCreatable ? h("a", {ref: "showNewBtn", href: this.getNewObjectUrl(sfHost, selectedValue.sobject.newUrl), target: linkTarget, className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, h("span", {}, h("u", {}, "N"), "ew " + selectedValue.sobject.label)) : null,
+        selectedValue.recordId && selectedValue.sobject.isEverCreatable && buttons.includes("regularApi") ? h("a", {href: this.getTransferUrl(sfHost, selectedValue), target: linkTarget, title: "Copy this record, and the related records you choose, to a sandbox", className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, "Copy to Sandbox") : null,
         contextFilterName ? h("a", {ref: "exportListViewBtn", onClick: this.exportListView, target: linkTarget, className: "slds-m-top_xx-small page-button slds-button slds-button_neutral"}, h("span", {}, "Export ", h("u", {}, "L"), "ist View")) : null,
       )
     );
