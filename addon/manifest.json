@@ -110,6 +110,7 @@
         "streaming.html",
         "data-export.html",
         "data-import.html",
+        "data-transfer.html",
         "inspect.html",
         "metadata-retrieve.html",
         "explore-api.html",

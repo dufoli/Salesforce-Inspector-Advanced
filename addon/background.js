@@ -40,8 +40,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true; // Tell Chrome that we want to call sendResponse asynchronously.
   }
+  if (request.message == "getSessionHosts") {
+    // Hosts of the orgs the user is logged in to, e.g. to pick the target org of a data transfer
+    chrome.cookies.getAll({name: "sid", secure: true, storeId: sender.tab.cookieStoreId}, cookies => {
+      let hosts = cookies.map(c => c.domain.replace(/^\./, "")).filter(domain => /\.my\.(salesforce\.(com|mil)|sfcrmproducts\.cn)$/.test(domain));
+      sendResponse([...new Set(hosts)]);
+    });
+    return true; // Tell Chrome that we want to call sendResponse asynchronously.
+  }
   if (request.message == "getSession") {
-    sfHost = request.sfHost;
+    if (!request.otherOrg) { // a connection to another org (e.g. data transfer target) must not change the org used by keyboard shortcuts
+      sfHost = request.sfHost;
+    }
     chrome.cookies.get({url: "https://" + request.sfHost, name: "sid", storeId: sender.tab.cookieStoreId}, sessionCookie => {
       if (!sessionCookie) {
         sendResponse(null);

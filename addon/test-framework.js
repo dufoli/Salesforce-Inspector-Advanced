@@ -4,6 +4,7 @@ import {csvParseTest} from "./csv-parse-test.js";
 import {dataImportTest} from "./data-import-test.js";
 import {dataExportTest} from "./data-export-test.js";
 import {flowAnalyzeTest} from "./flow-analyze-test.js";
+import {dataTransferTest} from "./data-transfer-test.js";
 
 let seenError = false;
 class Test {
@@ -111,7 +112,8 @@ addEventListener("load", () => {
         csvParseTest,
         dataImportTest,
         dataExportTest,
-        flowAnalyzeTest
+        flowAnalyzeTest,
+        dataTransferTest
       };
 
       // If specific tests are requested, run only those
@@ -134,6 +136,7 @@ addEventListener("load", () => {
         await dataImportTest(test);
         await dataExportTest(test);
         await flowAnalyzeTest(test);
+        await dataTransferTest(test);
       }
 
       test.assert(!seenError, "Expected no error");

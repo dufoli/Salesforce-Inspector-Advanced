@@ -50,7 +50,8 @@ Enumerable.prototype.flatMap.prototype = Enumerable.prototype;
 Enumerable.prototype.concat.prototype = Enumerable.prototype;
 
 // @param didUpdate: A callback function to listen for updates to describe data
-export function DescribeInfo(spinFor, didUpdate) {
+// @param conn: The connection of the org to describe, see createConnection() in inspector.js
+export function DescribeInfo(spinFor, didUpdate, conn = sfConn) {
   function initialState() {
     return {
       data: {global: {globalStatus: "pending", globalDescribe: null}, sobjects: null},
@@ -62,7 +63,7 @@ export function DescribeInfo(spinFor, didUpdate) {
     let apiDescribes = sobjectAllDescribes[useToolingApi ? "tool" : "data"];
     if (apiDescribes.global.globalStatus == "pending") {
       apiDescribes.global.globalStatus = "loading";
-      apiDescribes.global.promise = sfConn.rest(useToolingApi ? "/services/data/v" + apiVersion + "/tooling/sobjects/" : "/services/data/v" + apiVersion + "/sobjects/").then(res => {
+      apiDescribes.global.promise = conn.rest(useToolingApi ? "/services/data/v" + apiVersion + "/tooling/sobjects/" : "/services/data/v" + apiVersion + "/sobjects/").then(res => {
         apiDescribes.global.globalStatus = "ready";
         apiDescribes.global.globalDescribe = res;
         apiDescribes.sobjects = new Map();
@@ -111,7 +112,7 @@ export function DescribeInfo(spinFor, didUpdate) {
       }
       if (sobjectInfo.sobject.sobjectStatus == "pending") {
         sobjectInfo.sobject.sobjectStatus = "loading";
-        sobjectInfo.sobject.promise = sfConn.rest(sobjectInfo.global.urls.describe).then(res => {
+        sobjectInfo.sobject.promise = conn.rest(sobjectInfo.global.urls.describe).then(res => {
           sobjectInfo.sobject.sobjectStatus = "ready";
           sobjectInfo.sobject.sobjectDescribe = res;
           didUpdate();

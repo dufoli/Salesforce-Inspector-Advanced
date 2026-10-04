@@ -14,7 +14,7 @@ export let sessionError;
 export let sfConn = {
   async authenticate(sfHost) {
     const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
-    const clientId = sfConn.getClientId(sfHost);
+    const clientId = this.getClientId(sfHost);
     //generate code challenge and code verifier
     let pkceRsp = await fetch(`https://${sfHost}/services/oauth2/pkce/generator?`);
     let pkceData = await pkceRsp.json();
@@ -53,10 +53,12 @@ export let sfConn = {
     const ACCESS_TOKEN = "access__token";
     const browser = navigator.userAgent.includes("Chrome") ? "chrome" : "moz";
     //get url parameters to extract code and state
+    //only the page's main connection handles the OAuth redirect, connections from createConnection() target another org
+    const isMainConnection = this === sfConn;
     const url = new URL(window.location.href);
     const params = new URLSearchParams(url.search);
-    const codeParam = params.get("code");
-    const stateParam = params.get("state");
+    const codeParam = isMainConnection ? params.get("code") : null;
+    const stateParam = isMainConnection ? params.get("state") : null;
     if (stateParam) {
       sfHost = decodeURIComponent(stateParam);
     }
@@ -91,7 +93,7 @@ export let sfConn = {
         this.sessionId = oldToken;
       } else {
         let message = await new Promise(resolve =>
-          currentBrowser.runtime.sendMessage({message: "getSession", sfHost}, resolve));
+          currentBrowser.runtime.sendMessage({message: "getSession", sfHost, otherOrg: !isMainConnection}, resolve));
         if (message) {
           this.instanceHostname = getMyDomain(message.hostname);
           this.sessionId = message.key;
@@ -101,8 +103,8 @@ export let sfConn = {
       }
     }
     const IS_SANDBOX = "isSandbox";
-    if (localStorage.getItem(sfHost + "_" + IS_SANDBOX) == null) {
-      sfConn.rest("/services/data/v" + apiVersion + "/query/?q=SELECT+IsSandbox,+InstanceName+FROM+Organization").then(res => {
+    if (this.sessionId && localStorage.getItem(sfHost + "_" + IS_SANDBOX) == null) {
+      this.rest("/services/data/v" + apiVersion + "/query/?q=SELECT+IsSandbox,+InstanceName+FROM+Organization").then(res => {
         localStorage.setItem(sfHost + "_" + IS_SANDBOX, res.records[0].IsSandbox);
         localStorage.setItem(sfHost + "_orgInstance", res.records[0].InstanceName);
       });
@@ -329,6 +331,15 @@ export let sfConn = {
   },
 
 };
+
+// Creates an additional connection, e.g. to copy data to another org, while sfConn stays the connection of the current page.
+// Call getSession(sfHost) on it before use: it reuses an OAuth token stored for that org, or the session cookie if the user is logged in to it.
+export function createConnection() {
+  let conn = Object.create(sfConn);
+  conn.instanceHostname = null;
+  conn.sessionId = null;
+  return conn;
+}
 
 class XML {
   static stringify({name, attributes, value}) {

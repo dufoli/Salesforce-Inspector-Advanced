@@ -7,6 +7,7 @@ import {QueryHistory, HistoryBox} from "./history-box.js";
 import {Editor} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 import {AIAssistant} from "./ai-assistant.js";
+import {parseTransferQuery} from "./transfer-plan.js";
 
 class Model {
   constructor({sfHost, args}) {
@@ -346,6 +347,21 @@ class Model {
     if (this.queryTooling) args.set("apitype", "Tooling");
 
     window.open("data-import.html?" + args, getLinkTarget(e));
+  }
+  canTransfer() {
+    return this.canCopy() && !this.isSearchMode() && !this.isGraphMode() && this.apiType === "query" && !this.queryTooling;
+  }
+  // Opens Data Transfer with the object and filter of the main query, and its subqueries as checked relationships
+  transferRecords(e) {
+    let args = new URLSearchParams();
+    args.set("host", this.sfHost);
+    let parsed = parseTransferQuery(this.cleanupQuery(this.editor.value, this));
+    if (parsed) {
+      args.set("sobject", parsed.sobject);
+      args.set("filter", parsed.filter);
+      args.set("relationships", parsed.relationships.join(","));
+    }
+    window.open("data-transfer.html?" + args, getLinkTarget(e));
   }
   getQueryMethod() {
     if (this.isSearchMode()) {
@@ -2961,6 +2977,7 @@ class App extends React.Component {
     this.onDownloadCsv = this.onDownloadCsv.bind(this);
     this.onCopyAsJson = this.onCopyAsJson.bind(this);
     this.onDeleteRecords = this.onDeleteRecords.bind(this);
+    this.onTransferRecords = this.onTransferRecords.bind(this);
     this.onDownloadBulkResults = this.onDownloadBulkResults.bind(this);
     this.onResultsFilterInput = this.onResultsFilterInput.bind(this);
     this.onSetQueryName = this.onSetQueryName.bind(this);
@@ -3108,6 +3125,10 @@ class App extends React.Component {
     let {model} = this.props;
     model.deleteRecords(e);
     model.didUpdate();
+  }
+  onTransferRecords(e) {
+    let {model} = this.props;
+    model.transferRecords(e);
   }
   onDownloadBulkResults() {
     let {model} = this.props;
@@ -3389,6 +3410,7 @@ class App extends React.Component {
               )
             ),
             h("button", {disabled: !model.canDelete(), onClick: this.onDeleteRecords, title: "Open the 'Data Import' page with preloaded records to delete (< 20k records). 'Id' field needs to be queried", className: "delete-btn"}, "Delete Records"),
+            h("button", {disabled: !model.canTransfer(), onClick: this.onTransferRecords, title: "Open the 'Data Transfer' page to copy the records of this query to a sandbox, with the related objects of its subqueries checked"}, "Send to Sandbox"),
             model.tableModel.editedRows.values().some(r => r.values().some(cell => (cell.dataEditValue != null))) ? h("button", {onClick: this.onSaveAll, title: "Save all edited records", className: "highlighted"}, "Save all") : null
           ),
           h("div", {className: "result-filter-box flex-right", title: model.resultsFilterField ? resultFilterValue : ""},

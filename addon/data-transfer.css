@@ -1,0 +1,224 @@
+.area.transfer-config {
+  flex-grow: 0;
+}
+.area.transfer-tree,
+.area.transfer-fields,
+.area.transfer-links,
+.area.transfer-problems {
+  flex-grow: 0;
+  overflow: auto;
+}
+.area.transfer-actions {
+  flex-grow: 0;
+}
+.transfer-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.transfer-line .conf-input {
+  display: flex;
+  align-items: center;
+}
+.transfer-line .conf-label {
+  min-width: 5.5rem;
+}
+input.transfer-sobject {
+  width: 16rem;
+}
+.transfer-filter {
+  flex-grow: 1;
+}
+.transfer-filter input {
+  flex-grow: 1;
+  font-family: monospace;
+}
+input.transfer-target {
+  width: 28rem;
+}
+/* Tree of the objects to copy */
+ul.tree,
+ul.tree-children {
+  list-style: none;
+  margin: 0;
+}
+ul.tree-children {
+  padding-left: 1.5rem;
+  border-left: 1px dotted #c9c7c5;
+  margin-left: 0.4rem;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 0;
+}
+.tree-row-disabled {
+  color: #969492;
+}
+.tree-toggle {
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  line-height: 1;
+}
+.tree-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.tree-root {
+  font-weight: 700;
+}
+.tree-detail {
+  color: #706e6b;
+  font-size: 0.85em;
+}
+.tree-count {
+  color: #3e3e3c;
+}
+button.tree-fields {
+  padding: 0 8px;
+  height: 1.5rem;
+}
+button.tree-fields.active {
+  background-color: #eef4ff;
+}
+.tree-warning {
+  color: #8c4b02;
+}
+.tree-error {
+  display: inline;
+  margin: 0;
+}
+.tree-result {
+  color: #2e844a;
+}
+.tree-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 4px 0 6px;
+}
+.tree-candidate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.tree-show-all {
+  font-style: italic;
+}
+.transfer-fields .area-header input[type=search] {
+  width: 14rem;
+}
+.transfer-fields .area-header {
+  gap: 8px;
+  align-items: center;
+}
+.transfer-links .radio-buttons label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 16px;
+}
+.confirm-details {
+  list-style: disc;
+  padding-left: 2em;
+  margin-bottom: 12px;
+}
+.transfer-status {
+  margin-left: 12px;
+  color: #4a4a56;
+}
+.transfer-table {
+  border-collapse: collapse;
+  width: 100%;
+  background-color: #fff;
+  margin-bottom: 12px;
+}
+.transfer-table th,
+.transfer-table td {
+  border: 1px solid #DDDBDA;
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.transfer-table th {
+  background-color: #FAFAF9;
+}
+.transfer-table td.conf-error {
+  display: table-cell;
+  margin: 0;
+}
+.transfer-problems h1 {
+  display: block;
+  margin: 12px 0 8px;
+}
+.transfer-config select {
+  width: auto;
+}
+/* Saved transfers, same layout as the saved queries of data export */
+.query-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.query-controls > div {
+  margin-bottom: 8px;
+  padding-left: 8px;
+}
+.text-control {
+  width: 8.5rem;
+}
+input[type=save] {
+  font-family: inherit;
+  padding: 5px 13px;
+  border: 1px solid #DDDBDA;
+  height: 32px;
+  position: relative;
+  border-radius: 0.25rem;
+}
+input.save-control {
+  background-image: url(images/save.svg);
+  background-repeat: no-repeat;
+  background-size: 1rem;
+  background-position: 10px 7px;
+  padding-left: 35px;
+}
+.history-suggestion-active {
+  background-color: #999;
+  color: #444;
+  cursor: pointer;
+  font-weight: 700;
+}
+.help-text ul {
+  list-style: disc;
+  padding-left: 2em;
+}
+.tree-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+.tree-match select {
+  width: auto;
+  height: 1.5rem;
+  padding: 0 4px;
+}
+.tree-linked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+.transfer-line.radio-buttons label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 16px 0 0;
+}
