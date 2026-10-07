@@ -3426,6 +3426,7 @@ class App extends React.Component {
                 h("option", {value: "!="}, "Not equal"),
                 h("option", {value: "startsWith"}, "Starts With"),
                 h("option", {value: "endsWith"}, "Ends With"),
+                h("option", {value: "notContains"}, "Does Not Contain"),
                 // h("option", {value: ">"}, ">"),
                 // h("option", {value: "<"}, "<")
               )

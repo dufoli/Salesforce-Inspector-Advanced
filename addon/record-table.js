@@ -177,6 +177,8 @@ export class RecordTable {
         return true;
       } else if (filter.operator == "contains") {
         return true;
+      } else if (filter.operator == "notContains") {
+        return false;
       }
     }
     if (cell == null && filter.value != "") {
@@ -190,6 +192,8 @@ export class RecordTable {
         return false;
       } else if (filter.operator == "contains") {
         return false;
+      } else if (filter.operator == "notContains") {
+        return true;
       }
     }
     switch (filter.operator) {
@@ -201,6 +205,8 @@ export class RecordTable {
         return this.cellToString(cell).toLowerCase().startsWith(filter.value.toLowerCase());
       case "endsWith":
         return this.cellToString(cell).toLowerCase().endsWith(filter.value.toLowerCase());
+      case "notContains":
+        return !this.cellToString(cell).toLowerCase().includes(filter.value.toLowerCase());
       // case ">":
       //TODO cell is already converted to text so we need move conversion on redering
       //   if (filter.fieldType == "date" || filter.fieldType == "datetime") {
