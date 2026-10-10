@@ -525,8 +525,9 @@ class Model {
       this.editor.value += " LIMIT 200";
     }
     if (this.autoSelectFirstSuggestion) {
-      // the first suggestion is always active, so keeping the list open would make Enter/Tab keep selecting
-      this.displaySuggestion = false;
+      // the first suggestion is always active, so keeping the list open would make Enter/Tab keep selecting,
+      // except when traversing a relationship ("Account.") where the next field is expected
+      this.displaySuggestion = this.editor.value.substring(0, this.editor.selectionStart).endsWith(".");
     }
     this.activeSuggestion = this.autoSelectFirstSuggestion ? 0 : -1;
     this.editorAutocompleteHandler();
