@@ -295,7 +295,11 @@ export class Editor extends React.Component {
         break;
       }
     }
-    if (!model.displaySuggestion && e.key != "Control" && e.key != "Shift" && e.key != "Alt" && e.key != "Meta" && e.key != "Escape") {
+    if (!model.displaySuggestion && e.key == "." && model.autoSelectFirstSuggestion) {
+      // relationship traversal: show the related object's fields, the input event refreshes the results
+      model.displaySuggestion = true;
+      model.activeSuggestion = 0;
+    } else if (!model.displaySuggestion && e.key != "Control" && e.key != "Shift" && e.key != "Alt" && e.key != "Meta" && e.key != "Escape") {
       model.showSuggestion(false);
     }
   }
