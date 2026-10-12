@@ -13,7 +13,16 @@ Chrome and Firefox extension that adds a metadata layer on top of the standard S
 
 Salesforce Inspector Advanced is a fork of [Salesforce Inspector Reloaded](https://github.com/tprouvot/Salesforce-Inspector-reloaded), itself a fork of the original [Salesforce Inspector](https://github.com/sorenkrabbe/Chrome-Salesforce-inspector) by Søren Krabbe. It takes a different direction: replace the Developer Console for day-to-day work (real code editor, Apex runner, log profiler, SOSL), go further on data tools (export, import, inspect, transfer to sandbox) and add analysis tools for orgs and flows — while staying a manual, ad-hoc tool (see [Design Principles](#design-principles)).
 
+## Demo
+
+Click a preview to play the video.
+
+| Data export, log viewer, org analyzer, streaming | Formula helper, metadata search |
+|---|---|
+| [![Demo 1/2](docs/assets/images/demo-part1.png)](docs/assets/demo-part1.mp4) | [![Demo 2/2](docs/assets/images/demo-part2.png)](docs/assets/demo-part2.mp4) |
+
 - [Salesforce Inspector Advanced](#salesforce-inspector-advanced)
+  - [Demo](#demo)
   - [Features](#features)
   - [Documentation](#documentation)
   - [Roadmap](#roadmap)
