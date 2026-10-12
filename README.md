@@ -19,7 +19,9 @@ Click a preview to play the video.
 
 | Data export, log viewer, org analyzer, streaming | Formula helper, metadata search |
 |---|---|
-| [![Demo 1/2](docs/assets/images/demo-part1.png)](docs/assets/demo-part1.mp4) | [![Demo 2/2](docs/assets/images/demo-part2.png)](docs/assets/demo-part2.mp4) |
+| <img width="960" height="540" alt="demo-part1" src="https://github.com/user-attachments/assets/92be5291-8b1b-4015-8620-7d5a007eedc6" />
+ | <img width="960" height="540" alt="demo-part2" src="https://github.com/user-attachments/assets/00764398-8e47-429b-8fea-d62ab0d1f1ea" />
+ |
 
 - [Salesforce Inspector Advanced](#salesforce-inspector-advanced)
   - [Demo](#demo)
