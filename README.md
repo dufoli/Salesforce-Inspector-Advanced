@@ -1,49 +1,25 @@
 <img src="https://github.com/dufoli/Salesforce-Inspector-Advanced/blob/master/addon/icon128.png?raw=true" align="right">
 
-# Salesforce inspector advanced
+# Salesforce Inspector Advanced
 
-![GitHub release](https://img.shields.io/github/v/release/dufoli/Salesforce-Inspector-reloaded?sort=semver)
+![GitHub release](https://img.shields.io/github/v/release/dufoli/Salesforce-Inspector-Advanced?sort=semver)
 [![Chrome Web Store Installs](https://img.shields.io/chrome-web-store/users/dbfimaflmomgldabcphgolbeoamjogji)](https://chromewebstore.google.com/detail/salesforce-inspector-adva/dbfimaflmomgldabcphgolbeoamjogji)
 [![Chrome Web Store Rating](https://img.shields.io/chrome-web-store/rating/dbfimaflmomgldabcphgolbeoamjogji)](https://chromewebstore.google.com/detail/salesforce-inspector-adva/dbfimaflmomgldabcphgolbeoamjogji)
-[![GitHub stars](https://img.shields.io/github/stars/dufoli/Salesforce-Inspector-reloaded?cacheSeconds=3600)](https://github.com/dufoli/Salesforce-Inspector-Advanced/stargazers/)
-[![GitHub contributors](https://img.shields.io/github/contributors/dufoli/Salesforce-Inspector-reloaded.svg)](https://github.com/dufoli/Salesforce-Inspector-Advanced/graphs/contributors/)
+[![GitHub stars](https://img.shields.io/github/stars/dufoli/Salesforce-Inspector-Advanced?cacheSeconds=3600)](https://github.com/dufoli/Salesforce-Inspector-Advanced/stargazers/)
+[![GitHub contributors](https://img.shields.io/github/contributors/dufoli/Salesforce-Inspector-Advanced.svg)](https://github.com/dufoli/Salesforce-Inspector-Advanced/graphs/contributors/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 
-Chrome and Firefox extension to add a metadata layout on top of the standard Salesforce UI to improve the productivity and joy of Salesforce configuration, development, and integration work.
+Chrome and Firefox extension that adds a metadata layer on top of the standard Salesforce UI to improve the productivity and joy of Salesforce configuration, development, and integration work.
 
-We all know and love Salesforce Inspector: As the great Søren Krabbe did not have the time to maintain it anymore. Thomas Prouvot decided to take over and fork the original project but I do not share the same vision of him.
+Salesforce Inspector Advanced is a fork of [Salesforce Inspector Reloaded](https://github.com/tprouvot/Salesforce-Inspector-reloaded), itself a fork of the original [Salesforce Inspector](https://github.com/sorenkrabbe/Chrome-Salesforce-inspector) by Søren Krabbe. It takes a different direction: replace the Developer Console for day-to-day work (real code editor, Apex runner, log profiler, SOSL), go further on data tools (export, import, inspect, transfer to sandbox) and add analysis tools for orgs and flows — while staying a manual, ad-hoc tool (see [Design Principles](#design-principles)).
 
-My goal are :
-
-- to have fun 😉 because open source is fun 🎉!
-- to achieve functionnal goals:
-  - kill dev console needs with SOSL, apex runner, debugger, profiler, static ressource support
-  - streaming API monitoring
-  - better suggestions in data export, import and inspect
-  - switch to a real editor instead of textarea : (color text, suggestion over text,...)
-  - flow improvment: cleanup old flow versions, debug custom lwc reactive, better naviguation, detect DML before callout in transaction, detect DML, SOQL in loop,... 
-  - monitor external package version are up to date
-- to achieve some technical goals:
-  - Avoid dom and have only react components
-  - switch to up to date version of dependencies
-  - have CI/CD build with unit test/integration test in build
-  - switch to typescript
-
-So I decided to fork on a new project in a more collaborative way.
-
-The goal of this project is to focus on improving key features for administrator: export, import and inspect.
-Then add new features to make life easier and avoid API call.
-In order to rich this goal, I have take a closer look to the full backlog of original project and from collegues, friends who work on salesforce but I need feedback from community.
-
-- [Salesforce inspector advanced](#salesforce-inspector-advanced)
-  - [Roadmap](#roadmap)
+- [Salesforce Inspector Advanced](#salesforce-inspector-advanced)
+  - [Features](#features)
   - [Documentation](#documentation)
-  - [New features compared to SF Inspector Reloaded](#new-features-compared-to-sf-inspector-reloaded)
+  - [Roadmap](#roadmap)
   - [Security and Privacy](#security-and-privacy)
-  - [Use Salesforce Inspector with a Connected App](#use-salesforce-inspector-with-a-connected-app)
+  - [Use Salesforce Inspector with an External Client App](#use-salesforce-inspector-with-an-external-client-app)
   - [Installation](#installation)
-    - [Browser Stores](#browser-stores)
-    - [Local Installation](#local-installation)
   - [Troubleshooting](#troubleshooting)
   - [Contributions](#contributions)
   - [Development](#development)
@@ -55,10 +31,37 @@ In order to rich this goal, I have take a closer look to the full backlog of ori
   - [About](#about)
   - [License](#license)
 
-## Roadmap
+## Features
 
-> [!IMPORTANT]
-> Roadmap is here : https://github.com/dufoli/Salesforce-Inspector-Advanced/milestones
+Highlights compared to Salesforce Inspector Reloaded. The full history is in [CHANGES.md](./CHANGES.md).
+
+**Data**
+
+- **Data Export**: SOQL, SOSL and GraphQL with a real editor (syntax highlighting, autocomplete of objects, fields, relationships, subqueries, polymorphic `TYPEOF` and picklist/record type values), query formatting, column sort and advanced filters, inline edit, Bulk API for large volumes, history and saved queries with tags, CSV download and rich copy to Excel/Jira/Word.
+- **Data Import**: Bulk API, hard delete, assignment rules, edit failed rows before retry, relationship columns skipped automatically.
+- **Data Transfer** *(new)*: copy records **with their related records** to a sandbox without writing SOQL — pick the related objects in a tree, lookups between copied records are remapped, insert order computed from lookups, upsert on external ID. Also available from Data Export ("Send to Sandbox") and from a record page.
+- **Inspect**: picklist value suggestions, roll-up summary and formula details, field usage analysis (percentage of records with a value per field).
+
+**Development**
+
+- **Apex Runner**: anonymous Apex, batch and queueable execution, log polling, autocomplete of classes, methods and inline SOQL, AI-generated Apex.
+- **Log viewer & profiler**: flame chart (zoomable), profiler, Apex class view, resource view (SOQL, DML, callouts), search, run unit tests with code coverage.
+- **Formula Helper**: write formulas with autocomplete, client-side error checks and formatting.
+- **Streaming**: subscribe, monitor, publish and register Platform Events, PushTopics, Change Data Capture and Real-Time Event Monitoring events, with a timeline graph.
+- **API Explorer**: templates (Bulk, Chatter, Reports, Platform Event channels), history, saved requests.
+
+**Analysis & Metadata**
+
+- **Org Analyzer**: detect bad practices and vulnerabilities (SOQL/DML in loops, hardcoded IDs, SOQL injection, sharing model, unused fields and classes, Workflow/Process Builder to migrate, inactive users, Connected App permissions, ...) with priorities and a link to the Setup page that fixes each issue.
+- **Flow Analyzer**: performance, best practice, security and maintainability rules on a flow, from Flow Builder; plus "where is it used", version details and cleanup of old versions.
+- **Metadata Retrieve**: search by type, name, folder, date or last modifier, "Recent changes" on source-tracked orgs, package.xml generation, translation download.
+- **Dependency viewer**: hierarchy of metadata dependencies.
+
+**Everyday**
+
+- **Popup**: quick search on objects, users and shortcuts with filters, clone user, reset password, login as user in incognito, enable LWC debug, export a list view or a report.
+- **AI assistant** *(opt-in)*: generate SOQL and Apex, describe flows, with Agentforce, OpenAI, Mistral or Anthropic.
+- **Options**: custom favicon per org, custom links, editor behavior, date/number formats.
 
 ## Documentation
 
@@ -67,68 +70,59 @@ In order to rich this goal, I have take a closer look to the full backlog of ori
 
 [![view - Documentation](https://img.shields.io/badge/view-Documentation-blue?style=for-the-badge)](https://dufoli.github.io/Salesforce-Inspector-Advanced/ "Go to extension documentation")
 
-## New features compared to SF Inspector Reloaded
+## Roadmap
 
-- Export SOQL: suggest in subquery, field valud with IN/LIKE, format query, respect order of column, Download CSV file
-- Export SOSL
-- Inspect: suggest value for picklist
-- Import: assignment rules
-- Apex Runner: execute batch, enqueue job or just anonymous code, poll log, auto suggest className, 
-- Log: profiler, search with autoscroll, download
-- Streaming : Manage and monitor plateform event
+> [!IMPORTANT]
+> Roadmap is here: https://github.com/dufoli/Salesforce-Inspector-Advanced/milestones
+
+Feedback from the community drives it: open an [issue](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues) for a bug or an idea.
 
 ## Security and Privacy
 
-The Salesforce Inspector browser extension/plugin communicates directly between the user's web browser and the Salesforce servers. No data is sent to other parties and no data is persisted outside of Salesforce servers after the user leaves the Salesforce Inspector pages.
+The Salesforce Inspector browser extension communicates directly between the user's web browser and the Salesforce servers. No data is persisted outside of Salesforce servers after the user leaves the Salesforce Inspector pages.
 The Inspector communicates via the official Salesforce webservice APIs on behalf of the currently logged in user. This means the Inspector will be capable of accessing nothing but the data and features the user has been granted access to in Salesforce.
 
-All Salesforce API calls from the Inspector re-uses the access token/session used by the browser to access Salesforce. To acquire this access token the Salesforce Inspector requires permission to read browser cookie information for Salesforce domains.
+All Salesforce API calls from the Inspector re-use the access token/session used by the browser to access Salesforce. To acquire this access token the Salesforce Inspector requires permission to read browser cookie information for Salesforce domains.
+
+**AI features are opt-in.** No data is sent to a third party unless you configure an AI provider (OpenAI, Mistral or Anthropic) in the options and use an AI feature: the content needed for that request (prompt, query, flow or class metadata) is then sent to the chosen provider with your own API key. Agentforce requests stay in your Salesforce org.
 
 To validate the accuracy of this description, inspect the source code, monitor the network traffic in your browser or take my word.
 
-## Use Salesforce Inspector with a Connected App
+## Use Salesforce Inspector with an External Client App
 
-Follow steps described in [how-to documentation](https://dufoli.github.io/Salesforce-Inspector-Advanced/how-to/#use-sf-inspector-with-a-connected-app). Note: you must complete these steps to use the extension in orgs where "API Access Control" is enabled.
+The extension authenticates with OAuth 2.0 (web server flow with PKCE). In orgs where "API Access Control" is enabled, you must create an External Client App: follow the steps (a wizard helps you) described in the [how-to documentation](https://dufoli.github.io/Salesforce-Inspector-Advanced/how-to/#use-sf-inspector-with-an-external-client-app).
 
 ## Installation
 
-### Browser Stores
-
 - [Chrome Web Store](https://chromewebstore.google.com/detail/salesforce-inspector-adva/dbfimaflmomgldabcphgolbeoamjogji)
 - [Firefox Browser Add-ons](https://addons.mozilla.org/fr/firefox/addon/salesforce-inspector-advanced)
-- Edge Add-ons : used chrome extension from edge store
+- Edge: install the extension from the Chrome Web Store.
 
-### Local Installation
-
-1. Download or clone the repo.
-2. Checkout the master branch.
-3. Open `chrome://extensions/`.
-4. Enable `Developer mode`.
-5. Click `Load unpacked`.
-6. Select the **`addon`** subdirectory of this repository.
+To install from source, see [Development](#development).
 
 ## Troubleshooting
 
 - If Salesforce Inspector is not available after installation, the most likely issue is that your browser is not up to date. See [instructions for Google Chrome](https://productforums.google.com/forum/#!topic/chrome/YK1-o4KoSjc).
 - When you enable the My Domain feature in Salesforce, Salesforce Inspector may not work until you have restarted your browser (or until you have deleted the "sid" cookie for the old Salesforce domain by other means).
+- Something else? Use the "Report a bug" button in the popup, or open an [issue](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues).
 
 ## Contributions
 
 Contributions are welcome!
 
-To submit a PR, please create a branch from master branch.
-This branch will be taged when the new version is published on web store.
-
-Make sure to update CHANGES.md file by describing the improvement / bugfix you realised.
-
-In order to make sure everyone who reads documentation is aware of your improvement, you can update the 'how-to' page to document / expose this new functionality.
-
-Linting : to assure indentation, formatting and best practices coherence, please install ESLint extension.
+- Create a branch from `master` and open your PR against `master`. `master` is tagged when a new version is published on the web stores.
+- Update [CHANGES.md](./CHANGES.md) with the improvement / bugfix you made.
+- If you add or change a user-facing feature, document it in the [how-to page](./docs/how-to.md).
+- Run `npm run eslint` before submitting (installing the ESLint extension in your editor helps).
 
 ## Development
 
-1. Install Node.js with npm
-2. `npm install`
+1. Install Node.js with npm.
+2. Clone the repository and run `npm install`.
+3. Open `chrome://extensions/`.
+4. Enable `Developer mode`.
+5. Click `Load unpacked`.
+6. Select the **`addon`** subdirectory of this repository.
 
 ### Chrome
 
@@ -177,7 +171,7 @@ Linting : to assure indentation, formatting and best practices coherence, please
 
 ## About
 
-By Olivier Dufour forked from [Thomas Prouvot](https://github.com/tprouvot/Salesforce-Inspector-reloaded) who forked from [Søren Krabbe and Jesper Kristensen](https://github.com/sorenkrabbe/Chrome-Salesforce-inspector)
+By Olivier Dufour, forked from [Thomas Prouvot](https://github.com/tprouvot/Salesforce-Inspector-reloaded) who forked from [Søren Krabbe and Jesper Kristensen](https://github.com/sorenkrabbe/Chrome-Salesforce-inspector).
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -195,6 +189,7 @@ By Olivier Dufour forked from [Thomas Prouvot](https://github.com/tprouvot/Sales
 <!-- prettier-ignore-end -->
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
+
 ## License
 
 [MIT](./LICENSE)
