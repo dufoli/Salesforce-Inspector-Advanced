@@ -1,0 +1,202 @@
+.apex-code-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.code-header h2 {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.code-picker {
+  width: 300px;
+}
+
+.coverage-mode label {
+  margin-right: 10px;
+}
+
+.coverage-percent {
+  font-weight: 700;
+  color: #2e844a;
+}
+
+.coverage-percent.low {
+  color: #ba0517;
+}
+
+.error-message,
+.coverage-message {
+  color: #ba0517;
+  margin-bottom: 8px;
+}
+
+.code-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 12px;
+}
+
+.code-area {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background-color: white;
+}
+
+.test-area {
+  width: 380px;
+  margin-left: 0;
+  overflow: auto;
+}
+
+.code-viewer {
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.code-line {
+  display: flex;
+  white-space: pre;
+}
+
+.code-line .line-number {
+  flex: 0 0 48px;
+  padding-right: 8px;
+  text-align: right;
+  color: #706e6b;
+  border-right: 4px solid transparent;
+  margin-right: 8px;
+  user-select: none;
+}
+
+.code-line.line-covered {
+  background-color: #e3f7e5;
+}
+
+.code-line.line-covered .line-number {
+  border-right-color: #2e844a;
+}
+
+.code-line.line-uncovered {
+  background-color: #fde6e6;
+}
+
+.code-line.line-uncovered .line-number {
+  border-right-color: #ba0517;
+}
+
+.code-line.line-target {
+  outline: 2px solid #0176d3;
+}
+
+.test-panel h3 {
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+.test-panel .code-picker {
+  width: 100%;
+}
+
+.test-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.test-chip {
+  background-color: #e5f2fd;
+  border: 1px solid #0176d3;
+  border-radius: 12px;
+  padding: 0 4px 0 8px;
+}
+
+.test-chip .chip-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.test-suggestions {
+  margin-top: 4px;
+}
+
+.test-suggestions a {
+  margin-right: 8px;
+}
+
+.test-actions {
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.test-result {
+  border-left: 4px solid;
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  background-color: white;
+}
+
+.test-result.pass {
+  border-left-color: #2e844a;
+}
+
+.test-result.fail {
+  border-left-color: #ba0517;
+}
+
+.test-time {
+  color: #706e6b;
+}
+
+.test-message {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stack-frame {
+  display: block;
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 11px;
+}
+
+.failed-only {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.include-managed {
+  display: block;
+  margin-top: 4px;
+}
+
+.test-sets {
+  margin-bottom: 6px;
+}
+
+.test-set-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.test-set-row select,
+.test-set-row input {
+  flex: 1;
+  min-width: 0;
+}

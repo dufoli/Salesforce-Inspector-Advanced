@@ -14,7 +14,22 @@ Then you can check result on log and go to log analyzer to analyze it.
 The results area has 4 tabs: **Logs** (executed scripts and their logs), **Jobs** (batch/queueable jobs), **Tests** and **Coverage**.
 
 - Use **Delete all logs** to clear old ApexLogs from the org, and **Open empty logs** to open the log viewer without running anything.
-- Click **Run Unit Tests** to run all tests in the org (confirmation required); results appear in the Tests tab and code coverage per class in the Coverage tab, with lines highlighted in red where coverage is below 75%.
+- Click **Run All Unit Tests** to run all tests in the org (confirmation required); results appear in the Tests tab and code coverage per class in the Coverage tab, with lines highlighted in red where coverage is below 75%.
+- Click **Open Apex Code** to view the code and the line coverage of a class or trigger, see below.
+
+## Apex code and code coverage
+
+The Apex Code page shows the code of an Apex class or trigger, with each line colored by its code coverage: green when tests executed it, red when no test did. Open it with:
+
+- **Open Apex Code** in Apex Runner, then pick a class or trigger,
+- **View Code & Coverage** in the menu of an Apex class or trigger Id in a results table (e.g. the Id column of the Coverage and Tests tabs of Apex Runner, or a Data Export query on `ApexClass`),
+- **View Code & Coverage** in the popup, on the Setup page of an Apex class or trigger.
+
+To run tests, add test classes in the right panel: the test classes which already cover the code are suggested. The list contains the test classes of the org, as in the Developer Console; check **Include managed packages** to list the test classes of installed packages too. If this list cannot be loaded, all the Apex classes are listed.
+
+To run the tests of a module again, type a name and click **Save set**: the tests to run are saved as a test set, then **Load a test set...** replaces the tests to run by the classes of the test set. Test sets are saved in the browser by class name, so a test set created in a sandbox also works in production and in the other sandboxes; the classes which do not exist in the current org are listed. Click **Run Tests**: when the run is complete, the results are listed (check **Failed tests only** to hide the passed ones) and the coverage switches to **Last run**, the lines executed by these tests only. **Org coverage** shows the coverage of all the tests of the org. Click a line of a failed test's stack trace to go to that line.
+
+The **Last run** coverage needs the coverage per test, so it is empty when the org stores only aggregated code coverage (Apex Test Execution options in Setup).
 
 ## Clone a User
 

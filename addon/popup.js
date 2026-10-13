@@ -2816,6 +2816,8 @@ class AllDataSelection extends React.PureComponent {
         h(ShowDetailsButton, {ref: "showDetailsBtn", sfHost, showDetailsSupported, selectedValue, contextRecordId}),
         selectedValue.recordId && selectedValue.recordId.startsWith("0Af")
           ? h("a", {href: this.getDeployStatusUrl(), target: linkTarget, className: "button page-button slds-button slds-button_neutral slds-m-top_xx-small slds-m-bottom_xx-small"}, "Check Deploy Status") : null,
+        selectedValue.recordId && (selectedValue.recordId.startsWith("01p") || selectedValue.recordId.startsWith("01q"))
+          ? h("a", {href: "apex-code.html?" + new URLSearchParams({host: sfHost, id: selectedValue.recordId}), target: linkTarget, className: "button page-button slds-button slds-button_neutral slds-m-top_xx-small slds-m-bottom_xx-small"}, "View Code & Coverage") : null,
         this.props.isOnFlowPage && this.props.onDescribeFlow ? h("button", {
           className: "slds-m-top_xx-small page-button slds-button slds-button_neutral",
           onClick: this.props.onDescribeFlow

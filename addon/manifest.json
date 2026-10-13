@@ -106,6 +106,7 @@
       "resources": [
         "popup.html",
         "apex-runner.html",
+        "apex-code.html",
         "log.html",
         "streaming.html",
         "data-export.html",

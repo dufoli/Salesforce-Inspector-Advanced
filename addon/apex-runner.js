@@ -34,6 +34,7 @@ class Model {
     this.tableTestModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
       {name: "AsyncApexJobId", title: "Job id"},
       {name: "ApexClass", hidden: true},
+      {name: "ApexClassId", title: "Apex class Id"},
       {name: "ApexClass.Name", title: "Apex class"},
       {name: "MethodName", title: "Method"},
       {name: "ApexTestRunResultId", hidden: true},
@@ -43,6 +44,7 @@ class Model {
     ]});
     this.tableCoverageModel = new TableModel(sfHost, this.didUpdate.bind(this), {"columns": [
       {name: "ApexClassOrTrigger", hidden: true},
+      {name: "ApexClassOrTriggerId", title: "Id"},
       {name: "ApexClassOrTrigger.Name", title: "ApexClass / Trigger"},
       {name: "NumLinesCovered", title: "Lines covered"},
       {name: "NumLinesUncovered", title: "Lines uncovered"}
@@ -1269,13 +1271,13 @@ class Model {
       tests = new RecordTable();
       tests.describeInfo = vm.describeInfo;
       tests.sfHost = vm.sfHost;
-      querytests = `SELECT AsyncApexJobId, ApexClass.Name,  MethodName, ApexTestRunResultId, Outcome, Message, StackTrace FROM ApexTestResult WHERE AsyncApexJobId = '${this.runningTestId}'`;
+      querytests = `SELECT AsyncApexJobId, ApexClassId, ApexClass.Name, MethodName, ApexTestRunResultId, Outcome, Message, StackTrace FROM ApexTestResult WHERE AsyncApexJobId = '${this.runningTestId}'`;
       this.tests = null;
     }
     let coverages = new RecordTable();
     coverages.describeInfo = vm.describeInfo;
     coverages.sfHost = vm.sfHost;
-    let querycoverages = "SELECT ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered FROM ApexCodeCoverageAggregate WHERE ApexClassOrTriggerId != NULL AND ApexClassOrTrigger.Name != NULL AND (NumLinesCovered > 0 OR NumLinesUncovered > 0) AND NumLinesCovered != NULL AND NumLinesUncovered != NULL ORDER BY ApexClassOrTrigger.Name";
+    let querycoverages = "SELECT ApexClassOrTriggerId, ApexClassOrTrigger.Name, NumLinesCovered, NumLinesUncovered FROM ApexCodeCoverageAggregate WHERE ApexClassOrTriggerId != NULL AND ApexClassOrTrigger.Name != NULL AND (NumLinesCovered > 0 OR NumLinesUncovered > 0) AND NumLinesCovered != NULL AND NumLinesUncovered != NULL ORDER BY ApexClassOrTrigger.Name";
     this.coverages = null;
     vm.updatedCoverages();
     if (this.runningTestId) {
@@ -2105,7 +2107,8 @@ class App extends React.Component {
             h("button", {className: "cancel-btn", disabled: !model.isWorking, onClick: this.onStopExecute}, "Stop polling logs"),
             h("button", {onClick: this.openEmptyLog}, "Open empty logs"),
             h("button", {onClick: this.deleteAllLog, className: "delete-btn"}, "Delete all logs"),
-            h("button", {onClick: this.runTests, disabled: (model.testStatus == "STARTED")}, model.runningTestId ? "Stop Unit Tests" : "Run Unit Tests"),
+            h("button", {onClick: this.runTests, disabled: (model.testStatus == "STARTED")}, model.runningTestId ? "Stop Unit Tests" : "Run All Unit Tests"),
+            h("a", {href: "apex-code.html?" + new URLSearchParams({host: model.sfHost}), target: "_blank", className: "button", title: "View the code and the code coverage of an Apex class or trigger, and run its tests"}, "Open Apex Code"),
           ),
         ),
         h("textarea", {className: "result-text", readOnly: true, value: model.executeError || "", hidden: model.executeError == null}),
