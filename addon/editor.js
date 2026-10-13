@@ -16,6 +16,75 @@ function isInsideUnclosedQuote(text, pos, quoteChar) {
   return count % 2 === 1;
 }
 
+const colorBrackets = ["gold", "purple", "deepskyblue"];
+
+function buildTokenRegex({keywordColor, keywordCaseSensitive, stringDelimiter, enableComments}) {
+  let keywords = Array.from(keywordColor.keys());
+  let escapedDelimiter = stringDelimiter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let specialTokens = enableComments ? ["\\/\\/", "\\/\\*"] : [];
+  specialTokens.push(escapedDelimiter, "{", "\\[", "\\(", "}", "\\]", "\\)");
+  return new RegExp("\\b(" + keywords.join("|") + ")\\b|(" + specialTokens.join("|") + ")", "g" + (keywordCaseSensitive ? "" : "i"));
+}
+
+// Resolves a match of the token regex into the highlighted text and its color: strings and comments
+// extend past the matched token, brackets are colored by nesting depth (tracked in ctx.bracketIndex).
+function readToken(match, src, ctx) {
+  let token = match[0];
+  let start = match.index;
+  if (token == ctx.stringDelimiter) {
+    let end = start + 1;
+    while (end < src.length && src[end] != ctx.stringDelimiter) {
+      end += src[end] == "\\" ? 2 : 1;
+    }
+    return {sentence: src.substring(start, Math.min(end + 1, src.length)), color: "orange"};
+  }
+  if (ctx.enableComments && token == "//") {
+    let end = src.indexOf("\n", start + 2);
+    return {sentence: end > 0 ? src.substring(start, end + 1) : src.substring(start), color: "green"};
+  }
+  if (ctx.enableComments && token == "/*") {
+    let end = src.indexOf("*/", start + 2);
+    return {sentence: end > 0 ? src.substring(start, end + 2) : src.substring(start), color: "green"};
+  }
+  if (token == "(" || token == "[" || token == "{") {
+    return {sentence: token, color: colorBrackets[ctx.bracketIndex++ % 3]};
+  }
+  if (token == ")" || token == "]" || token == "}") {
+    if (ctx.bracketIndex == 0) {
+      return {sentence: token, color: "red"};//error
+    }
+    ctx.bracketIndex--;
+    return {sentence: token, color: colorBrackets[ctx.bracketIndex % 3]};
+  }
+  return {sentence: match[1], color: ctx.keywordColor.get(match[1].toLowerCase())};
+}
+
+/**
+ * Splits source code into colored segments, using the same rules as the Editor highlighting
+ * but without caret handling nor segment limit, for read-only display of whole files.
+ * @returns {Array<{value: string, color: string}>}
+ */
+export function tokenizeCode(src, {keywordColor, keywordCaseSensitive = false, stringDelimiter = "'", enableComments = true}) {
+  let ctx = {keywordColor, stringDelimiter, enableComments, bracketIndex: 0};
+  let regex = buildTokenRegex({keywordColor, keywordCaseSensitive, stringDelimiter, enableComments});
+  let segments = [];
+  let pos = 0;
+  let match;
+  while ((match = regex.exec(src)) !== null) {
+    let {sentence, color} = readToken(match, src, ctx);
+    if (match.index > pos) {
+      segments.push({value: src.substring(pos, match.index), color: "black"});
+    }
+    segments.push({value: sentence, color});
+    pos = match.index + sentence.length;
+    regex.lastIndex = pos;
+  }
+  if (pos < src.length) {
+    segments.push({value: src.substring(pos), color: "black"});
+  }
+  return segments;
+}
+
 export class Editor extends React.Component {
   constructor(props) {
     super(props);
@@ -353,65 +422,11 @@ export class Editor extends React.Component {
     let highlighted = [];
     let numberOfLines = src ? src.split("\n").length : 1;
     let selStart = model.editor ? model.editor.selectionStart : 0;
-    //let endIndex;
-    let keywords = [];
-    for (let keyword of keywordColor.keys()) {
-      keywords.push(keyword);
-    }
-
-    const stringDelimiter = this.stringDelimiter;
-    const escapedDelimiter = stringDelimiter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const specialTokens = this.enableComments ? ["\\/\\/", "\\/\\*"] : [];
-    specialTokens.push(escapedDelimiter, "{", "\\[", "\\(", "}", "\\]", "\\)");
-    const specialTokenPattern = specialTokens.join("|");
-
-    let keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(" + specialTokenPattern + ")", "g" + (keywordCaseSensitive ? "" : "i"));
-    const colorBrackets = ["gold", "purple", "deepskyblue"];
-    let bracketIndex = 0;
-    //yellow for function
+    let tokenOptions = {keywordColor, keywordCaseSensitive, stringDelimiter: this.stringDelimiter, enableComments: this.enableComments};
+    let ctx = {keywordColor, stringDelimiter: this.stringDelimiter, enableComments: this.enableComments, bracketIndex: 0};
+    let keywordRegEx = buildTokenRegex(tokenOptions);
     while ((keywordMatch = keywordRegEx.exec(remaining)) !== null) {
-      let color = "blue";
-      let sentence = keywordMatch[1];
-      if (keywordMatch[0] == stringDelimiter) {
-        color = "orange";
-        let closeRegEx = new RegExp("[^\\\\]" + escapedDelimiter);
-        let match = remaining.substring(keywordMatch.index + 1).match(closeRegEx);
-        if (match) {
-          sentence = remaining.substring(keywordMatch.index, keywordMatch.index + 1 + match.index + 2);
-        } else {
-          sentence = remaining.substring(keywordMatch.index);
-        }
-      } else if (this.enableComments && keywordMatch[0] == "//") {
-        color = "green";
-        let endIndex = remaining.indexOf("\n", keywordMatch.index + 2);
-        if (endIndex > 0) {
-          sentence = remaining.substring(keywordMatch.index, endIndex + 1);
-        } else {
-          sentence = remaining.substring(keywordMatch.index);
-        }
-      } else if (this.enableComments && keywordMatch[0] == "/*") {
-        color = "green";
-        let endIndex = remaining.indexOf("*/", keywordMatch.index + 2);
-        if (endIndex > 0) {
-          sentence = remaining.substring(keywordMatch.index, endIndex + 2);
-        } else {
-          sentence = remaining.substring(keywordMatch.index);
-        }
-      } else if (keywordMatch[0] == "(" || keywordMatch[0] == "[" || keywordMatch[0] == "{") {
-        color = colorBrackets[bracketIndex % 3];
-        sentence = keywordMatch[0];
-        bracketIndex++;
-      } else if (keywordMatch[0] == ")" || keywordMatch[0] == "]" || keywordMatch[0] == "}") {
-        if (bracketIndex == 0) {
-          color = "red";//error
-        } else {
-          bracketIndex--;
-          color = colorBrackets[bracketIndex % 3];
-        }
-        sentence = keywordMatch[0];
-      } else {
-        color = keywordColor.get(keywordMatch[1].toLowerCase());
-      }
+      let {sentence, color} = readToken(keywordMatch, remaining, ctx);
       if (selStart <= keywordMatch.index && selStart > 0) { // sel before keyword
         if (selStart > 0) {
           highlighted.push({value: remaining.substring(0, selStart), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
@@ -440,7 +455,7 @@ export class Editor extends React.Component {
       }
       remaining = remaining.substring(keywordMatch.index + sentence.length);
       selStart -= keywordMatch.index + sentence.length;
-      keywordRegEx = new RegExp("\\b(" + keywords.join("|") + ")\\b|(" + specialTokenPattern + ")", "g" + (keywordCaseSensitive ? "" : "i"));
+      keywordRegEx = buildTokenRegex(tokenOptions);
       if (highlighted.length > 1000) {
         break;
       }

@@ -1231,6 +1231,12 @@ export class TableModel {
         queryLogArgs.set("recordId", cell.recordId);
         cell.links.push({withIcon: true, href: "log.html?" + queryLogArgs, label: "View Log", className: "view-log", action: ""});
       }
+      if ((cell.objectType == "ApexClass" || cell.objectType == "ApexTrigger") && cell.recordId) {
+        let codeArgs = new URLSearchParams();
+        codeArgs.set("host", self.sfHost);
+        codeArgs.set("id", cell.recordId);
+        cell.links.push({withIcon: true, href: "apex-code.html?" + codeArgs, label: "View Code & Coverage", className: "view-log", action: ""});
+      }
       if (cell.objectType == "AsyncApexJob") {
         cell.links.push({withIcon: true, href: cell.recordId, label: "Abord Job", className: "abord-job", action: "abord"});
       }
