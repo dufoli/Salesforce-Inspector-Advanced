@@ -2,7 +2,7 @@
 export async function apexCodeTest(test) {
   console.log('TEST apexCode');
   let {assertEquals, assertThrows, loadPage} = test;
-  let {mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode} = await loadPage('apex-code.html');
+  let {failedTestsToRun, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode} = await loadPage('apex-code.html');
 
   // Coverage: a line covered by one test is covered, even if another test leaves it uncovered
   let merged = mergeCoverage([
@@ -13,6 +13,15 @@ export async function apexCodeTest(test) {
   assertEquals([1, 2, 3], Array.from(merged.covered).sort());
   assertEquals([4], Array.from(merged.uncovered));
   assertEquals({covered: [], uncovered: []}, {covered: Array.from(mergeCoverage([]).covered), uncovered: Array.from(mergeCoverage([]).uncovered)});
+
+  // Rerun failed tests: failed methods grouped by class, passed ones skipped
+  assertEquals([{classId: '01p000000000001', testMethods: ['a', 'c']}, {classId: '01p000000000002', testMethods: ['d']}], failedTestsToRun([
+    {ApexClassId: '01p000000000001', MethodName: 'a', Outcome: 'Fail'},
+    {ApexClassId: '01p000000000001', MethodName: 'b', Outcome: 'Pass'},
+    {ApexClassId: '01p000000000001', MethodName: 'c', Outcome: 'CompileFail'},
+    {ApexClassId: '01p000000000002', MethodName: 'd', Outcome: 'Fail'}
+  ]));
+  assertEquals([], failedTestsToRun([{ApexClassId: '01p000000000001', MethodName: 'a', Outcome: 'Pass'}]));
 
   // Tokenizer: keywords, strings (escaped quotes, empty strings) and comments
   let keywordColor = new Map([['public', 'blue'], ['return', 'violet']]);

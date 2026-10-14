@@ -73,6 +73,21 @@ export function resolveTestSet(set, options) {
  * Merges the Coverage field of several ApexCodeCoverage(Aggregate) records:
  * a line is covered if any record covers it, uncovered if no record covers it.
  */
+// Groups the failed test methods by class, in the format of the "tests" parameter of runTestsAsynchronous
+export function failedTestsToRun(results) {
+  let byClass = new Map();
+  for (let r of results) {
+    if (r.Outcome == "Pass" || !r.ApexClassId) {
+      continue;
+    }
+    if (!byClass.has(r.ApexClassId)) {
+      byClass.set(r.ApexClassId, []);
+    }
+    byClass.get(r.ApexClassId).push(r.MethodName);
+  }
+  return Array.from(byClass, ([classId, testMethods]) => ({classId, testMethods}));
+}
+
 export function mergeCoverage(coverages) {
   let covered = new Set();
   let uncovered = new Set();
@@ -370,18 +385,28 @@ export class Model {
     this.selectedTests = this.selectedTests.filter(t => t.Id != testId);
   }
 
-  async runTests() {
-    let tests = this.selectedTests.slice();
+  runTests() {
+    let testIds = this.selectedTests.map(t => t.Id);
+    return this.startTestRun({classids: testIds.join(",")}, testIds);
+  }
+
+  // Runs again only the failed test methods of the last run
+  rerunFailedTests() {
+    let tests = failedTestsToRun(this.testRun.results);
+    return this.startTestRun({tests}, tests.map(t => t.classId));
+  }
+
+  async startTestRun(body, testIds) {
     let jobId;
     try {
-      jobId = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/runTestsAsynchronous/", {method: "POST", body: {classids: tests.map(t => t.Id).join(",")}});
+      jobId = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/runTestsAsynchronous/", {method: "POST", body});
     } catch (error) {
       if (error.message && error.message.startsWith("ALREADY_IN_PROCESS")) {
         throw new Error("A test run is already in progress in this org, wait for it to finish (see the Tests tab of Apex Runner).");
       }
       throw error;
     }
-    this.testRun = {jobId, testIds: tests.map(t => t.Id), status: "Queued", total: 0, done: 0, results: []};
+    this.testRun = {jobId, testIds, status: "Queued", total: 0, done: 0, results: []};
     this.didUpdate();
     this.pollTestRun(this.testRun);
   }
@@ -405,7 +430,7 @@ export class Model {
       this.pollTestRun(testRun);
       return;
     }
-    testRun.results = await this.queryAll("SELECT ApexClass.Name, MethodName, Outcome, Message, StackTrace, RunTime FROM ApexTestResult WHERE AsyncApexJobId = "
+    testRun.results = await this.queryAll("SELECT ApexClassId, ApexClass.Name, MethodName, Outcome, Message, StackTrace, RunTime FROM ApexTestResult WHERE AsyncApexJobId = "
       + soqlString(testRun.jobId) + " ORDER BY ApexClass.Name, MethodName");
     testRun.status = "Completed";
     if (this.testRun == testRun) {
@@ -599,6 +624,8 @@ class TestPanel extends React.Component {
       ) : null,
       h("div", {className: "test-actions"},
         h("button", {className: "highlighted", disabled: model.selectedTests.length == 0 || running, onClick: () => model.spinFor(model.runTests())}, "Run Tests"),
+        !running && testRun && testRun.results.some(r => r.Outcome != "Pass")
+          ? h("button", {title: "Run again only the failed test methods", onClick: () => model.spinFor(model.rerunFailedTests())}, "Rerun Failed Tests") : null,
         testRun ? h("span", {className: "test-status"}, running ? testRun.status + (testRun.total ? " " + testRun.done + "/" + testRun.total : "") + "..." : "Completed") : null
       ),
       testRun && testRun.results.length ? h("div", {className: "test-results"},
