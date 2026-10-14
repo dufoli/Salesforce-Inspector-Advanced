@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {tokenizeCode} from "./editor.js";
 
@@ -127,7 +128,6 @@ export class Model {
   constructor({sfHost, args}) {
     this.sfHost = sfHost;
     this.sfLink = "https://" + sfHost;
-    this.userInfo = "...";
     this.spinnerCount = 0;
     this.error = null;
     this.allCode = []; // ApexClass and ApexTrigger, for the pickers: {Id, label, type}
@@ -147,9 +147,6 @@ export class Model {
     this.failedTestsOnly = false;
     this.pollTimer = null;
 
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
-    }));
     this.spinFor(this.loadAllCode());
     this.spinFor(this.loadTestClasses());
     let id = args.get("id");
@@ -191,12 +188,27 @@ export class Model {
   }
 
   async loadAllCode() {
-    let [classes, triggers] = await Promise.all([
+    let [classes, triggers, lockedNamespaces] = await Promise.all([
       this.queryAll("SELECT Id, Name, NamespacePrefix FROM ApexClass ORDER BY Name"),
-      this.queryAll("SELECT Id, Name, NamespacePrefix FROM ApexTrigger ORDER BY Name")
+      this.queryAll("SELECT Id, Name, NamespacePrefix FROM ApexTrigger ORDER BY Name"),
+      this.loadLockedNamespaces()
     ]);
+    let visible = r => !r.NamespacePrefix || !lockedNamespaces.has(r.NamespacePrefix);
     let toEntry = type => r => ({Id: r.Id, label: (r.NamespacePrefix ? r.NamespacePrefix + "." : "") + r.Name, type});
-    this.allCode = classes.map(toEntry("ApexClass")).concat(triggers.map(toEntry("ApexTrigger")));
+    this.allCode = classes.filter(visible).map(toEntry("ApexClass")).concat(triggers.filter(visible).map(toEntry("ApexTrigger")));
+  }
+
+  // Namespaces of the installed managed packages, whose code Salesforce hides (unlocked packages keep it visible)
+  async loadLockedNamespaces() {
+    try {
+      let packages = await this.queryAll("SELECT SubscriberPackage.NamespacePrefix, SubscriberPackageVersion.Package2ContainerOptions FROM InstalledSubscriberPackage", true);
+      return new Set(packages
+        .filter(p => p.SubscriberPackage && p.SubscriberPackage.NamespacePrefix && !(p.SubscriberPackageVersion && p.SubscriberPackageVersion.Package2ContainerOptions == "Unlocked"))
+        .map(p => p.SubscriberPackage.NamespacePrefix));
+    } catch (err) {
+      console.error("Failed to load installed packages", err);
+      return new Set();
+    }
   }
 
   // Test classes as listed by the Developer Console (@isTest classes only), null when this undocumented call failed
@@ -302,6 +314,10 @@ export class Model {
     history.replaceState(null, "", "?" + args);
     document.title = this.code.label + " - Apex Code";
     this.didUpdate();
+    if (this.code.hidden) {
+      // Salesforce records no code coverage for installed managed package code
+      return;
+    }
     await Promise.all([this.loadCoverage(), this.loadSuggestedTests()]);
   }
 
@@ -611,36 +627,15 @@ class App extends React.Component {
   render() {
     let {model} = this.props;
     let {code, coverage} = model;
-    let hostArg = new URLSearchParams();
-    hostArg.set("host", model.sfHost);
     let total = coverage ? coverage.covered.size + coverage.uncovered.size : 0;
     let percent = total ? Math.floor(coverage.covered.size * 100 / total) : null;
     return h("div", {className: "apex-code-page"},
-      h("div", {id: "user-info"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {}, "Apex Code"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"},
-          h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
-            h("span", {className: "slds-assistive-text"}),
-            h("div", {className: "slds-spinner__dot-a"}),
-            h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
-            h("div", {className: "icon"})
-          ),
-        ),
-      ),
+      h(PageHeader, {sfHost: model.sfHost, title: "Apex Code", spinning: model.spinnerCount != 0, options: true}),
       h("div", {className: "area code-header"},
         h(CodePicker, {options: model.allCode, id: "all-code", placeholder: "Open an Apex class or trigger", onPick: c => model.spinFor(model.openCode({id: c.Id, type: c.type}))}),
         code ? h("h2", {}, code.label + (code.type == "ApexTrigger" ? ".trigger" : ".cls")) : null,
         code ? h("a", {href: model.setupLink(), target: "_blank", title: "View in Setup"}, "Setup") : null,
-        code ? h("span", {className: "coverage-mode"},
+        code && !code.hidden ? h("span", {className: "coverage-mode"},
           h("label", {}, h("input", {type: "radio", name: "coverageMode", checked: model.coverageMode == "org", onChange: () => model.setCoverageMode("org")}), " Org coverage"),
           h("label", {title: model.lastRunTestIds.length ? "Lines executed by the tests of the last run" : "Run tests first"},
             h("input", {type: "radio", name: "coverageMode", checked: model.coverageMode == "lastRun", disabled: model.lastRunTestIds.length == 0, onChange: () => model.setCoverageMode("lastRun")}), " Last run")
@@ -648,9 +643,9 @@ class App extends React.Component {
         percent != null ? h("span", {className: "coverage-percent" + (percent < 75 ? " low" : "")}, percent + "% (" + coverage.covered.size + "/" + total + " lines)") : null
       ),
       model.error ? h("div", {className: "area error-message"}, model.error) : null,
-      code ? h("div", {className: "code-body"},
+      code && code.hidden ? h("div", {className: "area coverage-message"}, "This " + (code.type == "ApexTrigger" ? "trigger" : "class") + " belongs to an installed managed package: Salesforce hides its source code and records no code coverage for it.")
+      : code ? h("div", {className: "code-body"},
         h("div", {className: "area code-area"},
-          code.hidden ? h("div", {className: "coverage-message"}, "The source code of this managed package code is hidden.") : null,
           coverage && coverage.message ? h("div", {className: "coverage-message"}, coverage.message) : null,
           h(CodeViewer, {code, coverage, targetLine: model.targetLine})
         ),

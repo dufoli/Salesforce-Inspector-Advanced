@@ -42,9 +42,6 @@ export async function dataImportTest(test) {
   assertEquals(["Id", "Name"], vm.idLookupList());
   assertEquals(["Checkbox__c", "Id", "Lookup__c", "Lookup__r:Inspector_Test__c:Id", "Lookup__r:Inspector_Test__c:Name", "Name", "Number__c", "Owner:Group:Id", "Owner:Group:Name", "Owner:User:Email", "Owner:User:EmployeeNumber", "Owner:User:FederationIdentifier", "Owner:User:Id", "Owner:User:Username", "OwnerId", "__Action", "__Errors", "__Id", "__Status"].sort(), vm.columnList().sort());
 
-  // See user info
-  assert(vm.userInfo.indexOf(" / ") > -1);
-
   // Set up test records
   await anonApex(`
     delete [select Id from Inspector_Test__c];

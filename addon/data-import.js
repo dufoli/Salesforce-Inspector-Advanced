@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {csvParse} from "./csv-parse.js";
 import {DescribeInfo, copyToClipboard, tableToHtml} from "./data-load.js";
@@ -29,10 +30,8 @@ class Model {
       {value: "deleteMetadata", label: "Delete Metadata", supportedApis: ["Metadata"]}
     ];
 
-    this.sfLink = "https://" + this.sfHost;
     this.spinnerCount = 0;
     this.showHelp = false;
-    this.userInfo = "...";
     this.dataError = "";
     this.apiType = "Enterprise";
     this.dataFormat = "excel";
@@ -65,9 +64,6 @@ class Model {
     this.updateResult(null);
 
     this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => { this.refreshColumn(); });
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
-    }));
 
     let apiTypeParam = args.get("apitype");
     this.apiType = this.importType.endsWith("__mdt") ? "Metadata" : apiTypeParam ? apiTypeParam : "Enterprise";
@@ -1570,33 +1566,8 @@ class App extends React.Component {
   }
   render() {
     let {model} = this.props;
-    let hostArg = new URLSearchParams();
-    hostArg.set("host", model.sfHost);
-    hostArg.set("tab", 4);
     return h("div", {onClick: this.onClick},
-      h("div", {id: "user-info"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {}, "Data Import"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"},
-          h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
-            h("span", {className: "slds-assistive-text"}),
-            h("div", {className: "slds-spinner__dot-a"}),
-            h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
-            h("div", {className: "icon"})
-          ),
-          h("a", {href: "#", className: "top-btn", id: "help-btn", title: "Import Help", onClick: this.onToggleHelpClick},
-            h("div", {className: "icon"})
-          ),
-        ),
-      ),
+      h(PageHeader, {sfHost: model.sfHost, title: "Data Import", spinning: model.spinnerCount != 0, options: 4, help: {title: "Import Help", onClick: this.onToggleHelpClick}}),
       h("div", {className: "conf-section"},
         h("div", {className: "conf-subsection"},
           h("div", {className: "area configure-import"},

@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 import {DescribeInfo} from "./data-load.js";
 /* global initButton */
@@ -1409,8 +1410,6 @@ class Model {
     this.sfHost = sfHost;
     this.reactCallback = null;
     this.spinnerCount = 0;
-    this.sfLink = "https://" + sfHost;
-    this.userInfo = "...";
     this.progress = 0;
     this.progressCurrent = 0;
     this.progressTotal = 0;
@@ -1433,8 +1432,7 @@ class Model {
     this.apiUsage = null;
     this.recordTable.describeInfo = this.describeInfo;
     this.recordTable.sfHost = sfHost;
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
+    this.spinFor(sfConn.getUserInfo().then(res => {
       this.userId = res.userId;
     }));
     // highApiUsage: the rule needs many API calls (chunked FieldDefinition queries, full Apex source download, ...)
@@ -1765,9 +1763,6 @@ class App extends React.Component {
     // progress bar
     // checkbox for each rule => rules list
     document.title = model.title();
-    let hostArg = new URLSearchParams();
-    hostArg.set("host", model.sfHost);
-    hostArg.set("tab", 5);
     let selectAllChecked = model.rules && model.rules.every(rule => rule.selected);
     let highApiUsageSelected = model.rules.some(rule => rule.highApiUsage && rule.selected);
     let priorityCounts = new Map();
@@ -1778,26 +1773,7 @@ class App extends React.Component {
 
     return (
       h("div", {},
-        h("div", {id: "user-info", className: "object-bar"},
-          h("a", {href: model.sfLink, className: "sf-link"},
-            h("svg", {viewBox: "0 0 24 24"},
-              h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-            ),
-            " Salesforce Home"
-          ),
-          h("h1", {}, "Org Analyzer"),
-          h("span", {}, " / " + model.userInfo),
-          h("div", {className: "flex-right"},
-            h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
-              h("span", {className: "slds-assistive-text"}),
-              h("div", {className: "slds-spinner__dot-a"}),
-              h("div", {className: "slds-spinner__dot-b"}),
-            ),
-            h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
-              h("div", {className: "icon"})
-            )
-          ),
-        ),
+        h(PageHeader, {sfHost: model.sfHost, title: "Org Analyzer", spinning: model.spinnerCount != 0, options: 5}),
         h("div", {className: "area"},
           h("div", {className: "slds-notification slds-notification_alert", role: "alert", hidden: !highApiUsageSelected, style: {backgroundColor: "#FFB75D", color: "#080707", padding: "12px", marginBottom: "16px", borderRadius: "4px", border: "1px solid #DDDBDA"}},
             h("div", {style: {display: "flex", alignItems: "center"}},

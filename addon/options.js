@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {DescribeInfo} from "./data-load.js";
 import {clearAllCache} from "./cache.js";
@@ -14,16 +15,15 @@ class Model {
   constructor(sfHost, tab) {
     this.sfHost = sfHost;
     this.tab = tab;
-    this.sfLink = "https://" + this.sfHost;
-    this.userInfo = "...";
     if (localStorage.getItem(sfHost + "_isSandbox") != "true") {
       //change background color for production
       document.body.classList.add("prod");
     }
 
     this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => { });
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
+    this.orgName = null;
+    this.spinFor(sfConn.getUserInfo().then(res => {
+      this.orgName = res.organizationName;
     }));
   }
 
@@ -752,14 +752,7 @@ class APIKeyOption extends React.Component {
     if (!this.state.apiKey) {
       return "#";
     }
-    // Extract organization name from userInfo (format: "userFullName / userName / organizationName")
-    let orgName = this.sfHost;
-    if (this.model.userInfo && this.model.userInfo.includes(" / ")) {
-      let parts = this.model.userInfo.split(" / ");
-      if (parts.length >= 3) {
-        orgName = parts[2];
-      }
-    }
+    let orgName = this.model.orgName || this.sfHost;
 
     // Create the options.html URL with both host and setcustomerkey parameters
     let optionsUrl = chrome.runtime.getURL("options.html") + "?host=" + encodeURIComponent(this.sfHost) + "&setcustomerkey=" + encodeURIComponent(this.state.apiKey);
@@ -1418,16 +1411,7 @@ class App extends React.Component {
   render() {
     let {model} = this.props;
     return h("div", {},
-      h("div", {id: "user-info", className: "slds-border_bottom"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {className: "slds-text-title_bold"}, "Options"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"})),
+      h(PageHeader, {sfHost: model.sfHost, title: "Options", className: "slds-border_bottom", spinner: false}),
       h("div", {className: "main-container slds-card slds-m-around_small"},
         h(OptionsTabSelector, {model}))
     );

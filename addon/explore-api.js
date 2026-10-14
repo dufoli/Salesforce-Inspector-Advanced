@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {QueryHistory} from "./history-box.js";
 
@@ -10,10 +11,8 @@ function isSafeApiUrl(url) {
 class Model {
   constructor(sfHost, args) {
     this.sfHost = sfHost;
-    this.sfLink = "https://" + sfHost;
     this.spinnerCount = 0;
     this.title = "API Request";
-    this.userInfo = "...";
     this.expandSavedOptions = false;
     this.requestName = "";
     this.bodyType = "json";
@@ -91,9 +90,6 @@ class Model {
         {requestType: "REST", httpMethod: "POST", request: "{\"FullName\": \"Carbon_Comparison_Channel_chn_Carbon_Comparison_e\", \"Metadata\": {\"eventChannel\": \"Carbon_Comparison_Channel__chn\", \"selectedEntity\": \"Carbon_Comparison__e\"}}", soapType: "Partner", apiUrl: `/services/data/v${apiVersion}/tooling/sobjects/PlatformEventChannelMember`, name: "Create platform event channel member"},
       ];
     }
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
-    }));
 
   }
   /**
@@ -740,36 +736,11 @@ class App extends React.Component {
   render() {
     let {model} = this.props;
     document.title = model.title;
-    let hostArg = new URLSearchParams();
-    hostArg.set("host", model.sfHost);
-    hostArg.set("tab", 2);
     let soapTypes = ["Enterprise", "Partner", "Apex", "Metadata", "Tooling"];
     let httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"]; // not needed: "HEAD", "CONNECT", "OPTIONS", "TRACE"
     let bodyTypes = ["raw", "json", "csv", "xml"];
     return h("div", {},
-      h("div", {id: "user-info"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {}, "Explore API"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"},
-          h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
-            h("span", {className: "slds-assistive-text"}),
-            h("div", {className: "slds-spinner__dot-a"}),
-            h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
-            h("div", {className: "icon"})
-          ),
-          h("a", {href: (model.requestType == "SOAP" ? "https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/" : "https://www.salesforce.com/us/developer/docs/api_rest/"), target: "_blank", className: "top-btn", id: "help-btn", title: "Help"},
-            h("div", {className: "icon"})
-          ),
-        ),
-      ),
+      h(PageHeader, {sfHost: model.sfHost, title: "Explore API", spinning: model.spinnerCount != 0, options: 2, help: {title: "Help", href: model.requestType == "SOAP" ? "https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/" : "https://www.salesforce.com/us/developer/docs/api_rest/"}}),
       h("div", {className: "area", id: "query-area"},
         h("div", {className: "query-controls"},
           h("h1", {}, "Execute Request"),
