@@ -364,7 +364,7 @@ export class Editor extends React.Component {
         break;
       }
     }
-    if (!model.displaySuggestion && e.key == "." && model.autoSelectFirstSuggestion) {
+    if (!model.displaySuggestion && e.key != " " && e.key != "ArrowRight" && e.key != "ArrowLeft" && e.key != "ArrowDown" && e.key != "ArrowUp" && e.key != "Enter" && e.key != "Escape" && e.key != "Tab" && e.key != "Shift" && e.key != "Alt" && e.key != "Control" && e.key != "AltGraph" && e.key != "Meta" && model.autoSelectFirstSuggestion) {
       // relationship traversal: show the related object's fields, the input event refreshes the results
       model.displaySuggestion = true;
       model.activeSuggestion = 0;
