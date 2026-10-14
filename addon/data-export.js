@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {Enumerable, DescribeInfo, copyToClipboard, s, tableToHtml, recordTableToArray} from "./data-load.js";
 import {csvParse} from "./csv-parse.js";
@@ -22,14 +23,12 @@ class Model {
       this.editorAutocompleteHandler({newDescribe: true});
       this.didUpdate();
     });
-    this.sfLink = "https://" + sfHost;
     this.spinnerCount = 0;
     this.showHelp = false;
     this.showVariable = false;
     this.variableData = [];
     this.variableDataError = "";
     this.batchSize = 1;
-    this.userInfo = "...";
     this.queryAll = false;
     this.queryTooling = false; // Keep for backward compatibility
     this.apiType = "query"; // "query", "tooling", or "bulk"
@@ -111,9 +110,6 @@ class Model {
       ];
     }
 
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
-    }));
 
     if (args.has("query")) {
       this.initialQuery = args.get("query");
@@ -3263,9 +3259,6 @@ class App extends React.Component {
   }
   render() {
     let {model} = this.props;
-    let hostArg = new URLSearchParams();
-    hostArg.set("host", model.sfHost);
-    hostArg.set("tab", 3);
 
     let suggestionHelper = "";
     let resultFilterValue = model.resultsFilter;
@@ -3302,29 +3295,7 @@ class App extends React.Component {
       ["order", "blue"], ["nulls", "blue"], ["ASC", "blue"], ["DESC", "blue"], ["FIRST", "blue"], ["LAST", "blue"]]);
     const perf = model.perfStatus();
     return h("div", {onClick: this.onClick},
-      h("div", {id: "user-info"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {}, "Data Export"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"},
-          h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
-            h("span", {className: "slds-assistive-text"}),
-            h("div", {className: "slds-spinner__dot-a"}),
-            h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
-            h("div", {className: "icon"})
-          ),
-          h("a", {href: "#", className: "top-btn", id: "help-btn", title: "Export Help", onClick: this.onToggleHelp},
-            h("div", {className: "icon"})
-          ),
-        ),
-      ),
+      h(PageHeader, {sfHost: model.sfHost, title: "Data Export", spinning: model.spinnerCount != 0, options: 3, help: {title: "Export Help", onClick: this.onToggleHelp}}),
       h("div", {className: "area"},
         h("div", {className: "area-header"},
         ),

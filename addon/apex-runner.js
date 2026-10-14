@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {Enumerable, DescribeInfo} from "./data-load.js";
 import {QueryHistory, HistoryBox} from "./history-box.js";
@@ -68,10 +69,8 @@ class Model {
       this.didUpdate();
     });
 
-    this.sfLink = "https://" + sfHost;
     this.spinnerCount = 0;
     this.showHelp = false;
-    this.userInfo = "...";
     this.userId = null;
     this.timeout = null;
     this.winInnerHeight = 0;
@@ -135,8 +134,7 @@ class Model {
     this.typeProperties.set("Set", ["add(", "addAll(", "addAll(", "clear(", "clone(", "contains(", "containsAll(", "containsAll(", "equals(", "hashCode(", "isEmpty(", "remove(", "removeAll(", "removeAll(", "retainAll(", "retainAll(", "size("]);
     this.typeProperties.set("Database", ["convertLead(", "countQuery(", "countQueryWithBinds(", "delete(", "deleteAsync(", "deleteImmediate(", "emptyRecycleBin(", "executeBatch(", "getAsyncDeleteResult(", "getAsyncLocator(", "getAsyncSaveResult(", "getDeleted(", "getQueryLocator(", "getQueryLocatorWithBinds(", "getUpdated(", "insert(", "insertAsync(", "insertImmediate(", "merge(", "query(", "queryWithBinds(", "releaseSavepoint(", "rollback(", "setSavepoint(", "undelete(", "update(", "upsert(", "updateAsync(", "updateImmediate("]);
 
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
+    this.spinFor(sfConn.getUserInfo().then(res => {
       this.userId = res.userId;
     }));
 
@@ -1977,9 +1975,6 @@ class App extends React.Component {
   }
   render() {
     let {model} = this.props;
-    let hostArg = new URLSearchParams();
-    hostArg.set("host", model.sfHost);
-    hostArg.set("tab", 5);
     let suggestionHelper = "";
     if (model.displaySuggestion) {
       suggestionHelper = " Press Esc to hide suggestions";
@@ -1992,29 +1987,7 @@ class App extends React.Component {
       ["interface", "blue"], ["extends", "blue"], ["while", "violet"], ["for", "violet"], ["try", "violet"], ["catch", "violet"], ["true", "blue"], ["false", "blue"],
       ["finally", "violet"], ["extends", "violet"], ["throw", "violet"], ["new", "violet"], ["if", "violet"], ["else", "violet"]]);
     return h("div", {onClick: this.onClick},
-      h("div", {id: "user-info"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {}, "Script Execute"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"},
-          h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0},
-            h("span", {className: "slds-assistive-text"}),
-            h("div", {className: "slds-spinner__dot-a"}),
-            h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "options.html?" + hostArg, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
-            h("div", {className: "icon"})
-          ),
-          h("a", {href: "#", className: "top-btn", id: "help-btn", title: "Execute Help", onClick: this.onToggleHelp},
-            h("div", {className: "icon"})
-          ),
-        ),
-      ),
+      h(PageHeader, {sfHost: model.sfHost, title: "Script Execute", spinning: model.spinnerCount != 0, options: 5, help: {title: "Execute Help", onClick: this.onToggleHelp}}),
       h("div", {className: "area"},
         h("div", {className: "area-header"},
         ),

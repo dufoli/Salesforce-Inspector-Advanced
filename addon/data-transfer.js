@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion, createConnection} from "./inspector.js";
+import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {DescribeInfo, copyToClipboard} from "./data-load.js";
 import {HistoryBox} from "./history-box.js";
@@ -28,7 +29,6 @@ class Model {
     this.sfLink = "https://" + sfHost;
     this.reactCallback = null;
     this.spinnerCount = 0;
-    this.userInfo = "...";
     this.sourceOrgId = "";
     this.configs = loadConfigs();
     this.configName = "";
@@ -79,8 +79,7 @@ class Model {
       //change background color for production
       document.body.classList.add("prod");
     }
-    this.spinFor(sfConn.soap(sfConn.wsdl(apiVersion, "Partner"), "getUserInfo", {}).then(res => {
-      this.userInfo = res.userFullName + " / " + res.userName + " / " + res.organizationName;
+    this.spinFor(sfConn.getUserInfo().then(res => {
       this.sourceOrgId = res.organizationId;
     }));
     this.loadKnownHosts();
@@ -1626,26 +1625,7 @@ class App extends React.Component {
     let copyCount = model.copyCount();
     let total = model.totalCount();
     return h("div", {},
-      h("div", {id: "user-info"},
-        h("a", {href: model.sfLink, className: "sf-link"},
-          h("svg", {viewBox: "0 0 24 24"},
-            h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-          ),
-          " Salesforce Home"
-        ),
-        h("h1", {}, "Data Transfer"),
-        h("span", {}, " / " + model.userInfo),
-        h("div", {className: "flex-right"},
-          h("div", {id: "spinner", role: "status", className: "slds-spinner slds-spinner_small slds-spinner_inline", hidden: model.spinnerCount == 0 && !model.isWorking && !model.idsLoading},
-            h("span", {className: "slds-assistive-text"}),
-            h("div", {className: "slds-spinner__dot-a"}),
-            h("div", {className: "slds-spinner__dot-b"}),
-          ),
-          h("a", {href: "#", className: "top-btn", id: "help-btn", title: "Transfer Help", onClick: this.onToggleHelpClick},
-            h("div", {className: "icon"})
-          ),
-        ),
-      ),
+      h(PageHeader, {sfHost: model.sfHost, title: "Data Transfer", spinning: model.spinnerCount != 0 || model.isWorking || model.idsLoading, help: {title: "Transfer Help", onClick: this.onToggleHelpClick}}),
       h("div", {className: "area transfer-config"},
         h("div", {className: "query-controls"},
           h("h1", {}, "Copy records to a sandbox"),

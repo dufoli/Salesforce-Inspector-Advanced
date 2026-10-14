@@ -77,8 +77,12 @@ body {
 
 #user-info h1 {
   padding: 0 6px 0 10px;
+  font-size: 1rem;
+  display: inline;
+  color: #080707;
+  font-weight: 700;
+  line-height: 1.25;
 }
-
 #user-info span {
   font-size: 1em;
 }

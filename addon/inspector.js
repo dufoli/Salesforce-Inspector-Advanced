@@ -280,6 +280,13 @@ export let sfConn = {
       }
     });
   },
+  // Shared by the page header and the page model, so the user info is requested only once per page
+  getUserInfo() {
+    if (!this.userInfoPromise) {
+      this.userInfoPromise = this.soap(this.wsdl(apiVersion, "Partner"), "getUserInfo", {});
+    }
+    return this.userInfoPromise;
+  },
   async soap(wsdl, method, args, {headers} = {}) {
     if (!this.instanceHostname || !this.sessionId) {
       throw new Error("Session not found");
@@ -338,6 +345,7 @@ export function createConnection() {
   let conn = Object.create(sfConn);
   conn.instanceHostname = null;
   conn.sessionId = null;
+  conn.userInfoPromise = null;
   return conn;
 }
 

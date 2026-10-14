@@ -51,9 +51,6 @@ export async function dataExportTest(test) {
   assert(accountAutocompletes.includes("Account"));
   //assert(accountAutocompletes.includes("AccountContactRelation"));
 
-  // See user info
-  assert(vm.userInfo.indexOf(" / ") > -1);
-
   // Autocomplete field name in SELECT with no field metadata
   setQuery("select Id, nam", "", " from Account");
   assertEquals("Loading Account metadata...", vm.autocompleteResults.title);

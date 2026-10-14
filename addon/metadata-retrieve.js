@@ -1,5 +1,6 @@
 /* global React ReactDOM */
 import {sfConn, apiVersion} from "./inspector.js";
+import {SfHomeLink} from "./page-header.js";
 import {RecordTable} from "./record-table.js";
 /* global initButton */
 
@@ -92,7 +93,7 @@ class Model {
   constructor(sfHost) {
     this.reactCallback = null;
 
-    this.sfLink = "https://" + sfHost;
+    this.sfHost = sfHost;
 
     // Metadata type catalog (from describeMetadata), used by the type autosuggest and package.xml expansion
     this.metadataTypeCatalog = null;
@@ -2097,12 +2098,7 @@ class App extends React.Component {
     return (
       h("div", {},
         h("div", {className: "object-bar"},
-          h("a", {href: model.sfLink, className: "sf-link"},
-            h("svg", {viewBox: "0 0 24 24"},
-              h("path", {d: "M18.9 12.3h-1.5v6.6c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-5.1h-3.6v5.1c0 .2-.1.3-.3.3h-3c-.2 0-.3-.1-.3-.3v-6.6H5.1c-.1 0-.3-.1-.3-.2s0-.2.1-.3l6.9-7c.1-.1.3-.1.4 0l7 7v.3c0 .1-.2.2-.3.2z"})
-            ),
-            " Salesforce Home"
-          ),
+          h(SfHomeLink, {sfHost: model.sfHost}),
           h("span", {className: "progress progress-" + (anyWorking ? "working" : (model.progress == "done" || model.deployProgress == "done" || model.translationProgress == "done" || model.searchProgress == "done") ? "done" : (model.progress == "error" || model.deployProgress == "error" || model.translationProgress == "error" || model.searchProgress == "error") ? "error" : "ready")},
             model.progress == "working" ? "Downloading..."
             : model.deployProgress == "working" ? "Deploying..."
