@@ -87,7 +87,7 @@ class OptionsTabSelector extends React.Component {
           {option: Option, props: {type: "toggle", title: "Open Permission Set / Permission Set Group summary from shortcuts", key: "enablePermSetSummary"}},
           {option: Option, props: {type: "toggle", title: "Search metadata from Shortcut tab", key: "metadataShortcutSearch"}},
           {option: Option, props: {type: "toggle", title: "Disable query input autofocus", key: "disableQueryInputAutoFocus"}},
-          {option: Option, props: {type: "toggle", title: "Editor suggestions on Ctrl+Space only, first one pre-selected", key: "autoSelectFirstSuggestion", default: false}},
+          {option: Option, props: {type: "toggle", title: "Editor suggestions shown while typing, first one pre-selected", key: "autoSelectFirstSuggestion", default: false}},
           {option: Option, props: {type: "toggle", title: "Enable generation of favicon color automatically", key: "generateCustomFavicon", default: true}},
           {option: Option, props: {type: "toggle", title: "Enable custom favicon for Salesforce", key: "customFaviconSF", default: true}},
           {option: AllHostsColorPickerOption, props: {currentHost: this.sfHost}},
