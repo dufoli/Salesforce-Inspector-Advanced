@@ -21,15 +21,16 @@ require("./dev-build.js");
 
 fs.copySync("addon", target, {
   filter(path) {
-    let file = path.replace("\\", "/");
+    let file = path.replace(/\\/g, "/");
     return !file.startsWith("addon/test-") // Skip the test framework
       && !file.endsWith("-test.js") // Skip individual tests
-      && !file.includes("addon/testing/") // Skip the testing folder
+      && !file.includes("addon/testing") // Skip the testing folder
       // Skip files in .gitignore
       && !file.endsWith(".zip")
       && !file.endsWith(".xpi")
-      // Skip the manifest source file
-      && file != "addon/manifest-template.json"
+      // Skip the manifest source files
+      && file != "addon/manifest-chrome.json"
+      && file != "addon/manifest-firefox.json"
       // Skip files where the release version will use minified versions instead
       && file != "addon/react.js"
       && file != "addon/react-dom.js";
@@ -52,8 +53,8 @@ replace.sync({
 if (process.env.ENVIRONMENT_TYPE == "BETA") {
   replace.sync({
     files: target + "/manifest.json",
-    replace: '"name": "Salesforce inspector",',
-    with: '"name": "Salesforce inspector BETA",'
+    from: /"name": "([^"]*)",/,
+    to: '"name": "$1 BETA",'
   });
 }
 

@@ -7,12 +7,6 @@
     "128": "icon128.png"
   },
   "minimum_chrome_version": "88",
-  "applications": {
-    "gecko": {
-      "id": "salesforceinspector@advanced",
-      "strict_min_version": "60.0"
-    }
-  },
   "permissions": [
     "cookies",
     "storage"
@@ -104,9 +98,8 @@
     }
   ],
   "background": {
-    "scripts": [
-      "background.js"
-    ]
+    "service_worker": "background.js",
+    "type": "module"
   },
   "web_accessible_resources": [
     {
@@ -152,6 +145,6 @@
       "extension_ids": []
     }
   ],
-  "incognito": "spanning",
-  "manifest_version": 2
+  "incognito": "split",
+  "manifest_version": 3
 }
