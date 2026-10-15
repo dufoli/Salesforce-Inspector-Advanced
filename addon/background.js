@@ -113,8 +113,9 @@ if (chrome.commands) {
     });
   });
 }
-if (chrome.action) {
-  chrome.action.onClicked.addListener(() => {
+const browserAction = chrome.action || chrome.browserAction;
+if (browserAction) {
+  browserAction.onClicked.addListener(() => {
     chrome.tabs.create({
       url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/options.html?host=${sfHost}`
     });

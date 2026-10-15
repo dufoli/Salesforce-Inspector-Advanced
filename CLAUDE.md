@@ -13,8 +13,8 @@ All extension source lives in `addon/` as **plain, unbundled JS/HTML/CSS** — t
 ```
 npm install                    # install devDependencies (eslint, fs-extra, replace-in-file, zip-dir)
 npm run eslint                 # lint the whole repo (must pass; CI/Travis runs this)
-npm run chrome-dev-build       # generate addon/manifest.json for Chrome (MV3) from manifest-template.json
-npm run firefox-dev-build      # generate addon/manifest.json for Firefox (MV2) from manifest-template.json
+npm run chrome-dev-build       # copy addon/manifest-chrome.json (MV3) to addon/manifest.json
+npm run firefox-dev-build      # copy addon/manifest-firefox.json (MV2) to addon/manifest.json
 npm run chrome-release-build   # full release zip in target/chrome/
 npm run firefox-release-build  # full release zip in target/firefox/
 ```
@@ -23,7 +23,7 @@ There is no `npm test` script — see "Unit tests" below, they run in-browser, n
 
 ### Loading the extension locally
 
-1. Run `npm run chrome-dev-build` (or `firefox-dev-build`) to regenerate `addon/manifest.json` — it's generated from `addon/manifest-template.json` by `scripts/dev-build.js` and is gitignored, so it must be rebuilt after pulling changes to the template or before first load.
+1. Run `npm run chrome-dev-build` (or `firefox-dev-build`) to write `addon/manifest.json` — `scripts/dev-build.js` copies `addon/manifest-<browser>.json` over it. The committed `manifest.json` is the Chrome one, so always run the matching build before loading in Firefox (otherwise Firefox fails with "background.service_worker is currently disabled").
 2. Chrome: `chrome://extensions/` → enable Developer mode → Load unpacked → select `addon/`.
 3. Firefox: `about:debugging` → Load Temporary Add-on → select `addon/manifest.json`.
 
@@ -79,7 +79,7 @@ Any code that talks to Salesforce should go through `sfConn`, not raw `fetch`/`X
 
 ### Build/manifest split
 
-`addon/manifest-template.json` is the source of truth; `addon/manifest.json` is generated and gitignored. `scripts/dev-build.js` branches on Chrome (MV3, service worker, split incognito) vs Firefox (MV2, background scripts, spanning incognito, includes `applications.gecko`) — check that script before hand-editing manifest behavior. `scripts/release-build.js` reuses `dev-build.js`, copies `addon/` to `target/<browser>/dist`, strips test files, swaps in minified React, and zips the result. CI (`.circleci/config.yml`) auto-publishes the Chrome build via `scripts/deploy_to_chrome_web_store.sh`; `.travis.yml` runs lint + both release builds as a check; `.github/workflows/ci.yml` deploys the `docs/` site (mkdocs-material) to GitHub Pages on push to master/main/beta.
+There are two hand-maintained manifests, the sources of truth: `addon/manifest-chrome.json` (MV3, `background.service_worker` + `type: module`, `action`, `host_permissions`, split incognito) and `addon/manifest-firefox.json` (MV2, `background.scripts`, `browser_action`, host patterns in `permissions`, spanning incognito, `applications.gecko`). `addon/manifest.json` is only the output of `scripts/dev-build.js` — never edit it directly. **Any manifest change (version bump, new page in `web_accessible_resources`, permission, content script, command) must be made in both files** — nothing checks they stay in sync. `background.js` must keep working in both contexts (e.g. `chrome.action || chrome.browserAction`). `scripts/release-build.js` reuses `dev-build.js`, copies `addon/` to `target/<browser>/dist` (excluding the `manifest-*.json` sources and test files), swaps in minified React, renames the extension with a " BETA" suffix when `ENVIRONMENT_TYPE=BETA`, and zips the result. CI (`.circleci/config.yml`) auto-publishes the Chrome build via `scripts/deploy_to_chrome_web_store.sh`; `.travis.yml` runs lint + both release builds as a check; `.github/workflows/ci.yml` deploys the `docs/` site (mkdocs-material) to GitHub Pages on push to master/main/beta.
 
 ## Design principles (from README — keep in mind for any UI/behavior change)
 

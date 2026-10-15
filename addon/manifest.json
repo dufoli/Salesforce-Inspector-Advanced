@@ -6,45 +6,16 @@
   "icons": {
     "128": "icon128.png"
   },
-  "minimum_chrome_version": "88",
-  "permissions": [
-    "cookies",
-    "storage"
-  ],
-  "action": {
-    "default_title": "Export data"
-  },
-  "commands": {
-    "apex-runner": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+C",
-        "mac": "Command+Shift+C"
-      },
-      "description": "Run apex code"
-    },
-    "data-export": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+E",
-        "mac": "Command+Shift+E"
-      },
-      "description": "Export data"
-    },
-    "data-import": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+I",
-        "mac": "Command+Shift+I"
-      },
-      "description": "Import data"
-    },
-    "streaming": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+S"
-      },
-      "description": "Manage streaming"
+  "applications": {
+    "gecko": {
+      "id": "salesforceinspector@advanced",
+      "strict_min_version": "60.0"
     }
   },
-  "host_permissions": [
+  "permissions": [
+    "cookies",
+    "storage",
+    "unlimitedStorage",
     "https://*.salesforce.com/*",
     "https://*.force.com/*",
     "https://*.cloudforce.com/*",
@@ -98,53 +69,28 @@
     }
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "scripts": [
+      "background.js"
+    ]
   },
   "web_accessible_resources": [
-    {
-      "resources": [
-        "popup.html",
-        "apex-runner.html",
-        "apex-code.html",
-        "log.html",
-        "streaming.html",
-        "data-export.html",
-        "data-import.html",
-        "data-transfer.html",
-        "inspect.html",
-        "metadata-retrieve.html",
-        "explore-api.html",
-        "limits.html",
-        "formula-helper.html",
-        "options.html",
-        "dependency.html",
-        "org-analyzer.html"
-      ],
-      "matches": [
-        "https://*.salesforce.com/*",
-        "https://*.visual.force.com/*",
-        "https://*.vf.force.com/*",
-        "https://*.lightning.force.com/*",
-        "https://*.cloudforce.com/*",
-        "https://*.visualforce.com/*",
-        "https://*.sfcrmapps.cn/*",
-        "https://*.sfcrmproducts.cn/*",
-        "https://*.salesforce.mil/*",
-        "https://*.visual.force.mil/*",
-        "https://*.vf.force.mil/*",
-        "https://*.lightning.force.mil/*",
-        "https://*.cloudforce.mil/*",
-        "https://*.visualforce.mil/*",
-        "https://*.crmforce.mil/*",
-        "https://*.lightning.force.com.mcas.ms/*",
-        "https://*.salesforce-setup.com/*",
-        "https://*.builder.salesforce-experience.com/*",
-        "https://*.force.com/*"
-      ],
-      "extension_ids": []
-    }
+    "popup.html",
+    "apex-runner.html",
+    "apex-code.html",
+    "log.html",
+    "streaming.html",
+    "data-export.html",
+    "data-import.html",
+    "data-transfer.html",
+    "inspect.html",
+    "metadata-retrieve.html",
+    "explore-api.html",
+    "limits.html",
+    "formula-helper.html",
+    "options.html",
+    "dependency.html",
+    "org-analyzer.html"
   ],
-  "incognito": "split",
-  "manifest_version": 3
+  "incognito": "spanning",
+  "manifest_version": 2
 }
