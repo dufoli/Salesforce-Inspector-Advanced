@@ -1614,8 +1614,8 @@ class AllDataBoxSObject extends React.PureComponent {
             "recordTypeId": (record.RecordType) ? record.RecordType.Id : "",
             "recordName": (record.Name) ? record.Name : (record[nameField] ? record[nameField] : ""),
             "recordTypeName": (record.RecordType) ? record.RecordType.DeveloperName : "",
-            "createdBy": record.CreatedBy.Alias,
-            "lastModifiedBy": record.LastModifiedBy.Alias,
+            "createdBy": record.CreatedBy ? record.CreatedBy.Alias : "",
+            "lastModifiedBy": record.LastModifiedBy ? record.LastModifiedBy.Alias : "",
             "created": createdDate.toLocaleDateString() + " " + createdDate.toLocaleTimeString(),
             "lastModified": lastModifiedDate.toLocaleDateString() + " " + lastModifiedDate.toLocaleTimeString(),
           }
@@ -1627,6 +1627,10 @@ class AllDataBoxSObject extends React.PureComponent {
         this.restCallForRecordDetails(["FIELDS(STANDARD)", "LastModifiedBy.Alias", "CreatedBy.Alias"], selectedValue);
       } else if (e.message.includes("Didn't understand relationship 'RecordType'")){
         this.restCallForRecordDetails(fields.filter(field => !field.startsWith("RecordType.")), selectedValue);
+      } else if (/Didn't understand relationship '(LastModifiedBy|CreatedBy)'/.test(e.message)) {
+        //some objects (ApexLog...) have no audit relationships
+        let relationship = e.message.match(/relationship '(\w+)'/)[1];
+        this.restCallForRecordDetails(fields.filter(field => !field.startsWith(relationship)), selectedValue);
       } else {
         throw e;
       }
