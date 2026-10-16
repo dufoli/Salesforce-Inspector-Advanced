@@ -85,6 +85,73 @@ export function tokenizeCode(src, {keywordColor, keywordCaseSensitive = false, s
   return segments;
 }
 
+/**
+ * Undo/redo history of the editor textarea. The browser's native history does not see edits made
+ * with setRangeText or by assigning value, so pages record the textarea states here instead.
+ */
+export class EditHistory {
+  constructor() {
+    this.textarea = null;
+    this.stack = [];
+    this.offset = -1;
+  }
+  attach(textarea) {
+    this.textarea = textarea;
+    this.stack = [this.snapshot(0)];
+    this.offset = 0;
+  }
+  snapshot(timestamp) {
+    let {value, selectionStart, selectionEnd} = this.textarea;
+    return {value, selectionStart, selectionEnd, timestamp};
+  }
+  /**
+   * Records the current textarea state.
+   * @param {boolean} mergeTyping when true, consecutive keystrokes extending the same word within a
+   * few seconds update the last entry instead of creating a new one, so undo removes whole words.
+   */
+  record(mergeTyping = false) {
+    const HISTORY_LIMIT = 100;
+    const HISTORY_TIME_GAP = 3000;
+    if (!this.textarea) {
+      return;
+    }
+    //drop redo entries
+    this.stack = this.stack.slice(0, this.offset + 1);
+    let last = this.stack[this.offset];
+    let current = this.snapshot(Date.now());
+    if (mergeTyping && last && Date.now() - last.timestamp < HISTORY_TIME_GAP) {
+      let lastWord = last.value.substring(0, last.selectionStart).match(/[a-z0-9]+$/i);
+      let newLastWord = current.value.substring(0, current.selectionStart).match(/[a-z0-9]+$/i);
+      if (lastWord && newLastWord && newLastWord[0].startsWith(lastWord[0])) {
+        current.timestamp = last.timestamp; //keep previous timestamp to write every 3 seconds at least
+        this.stack[this.offset] = current;
+        return;
+      }
+    }
+    this.stack.push(current);
+    if (this.stack.length > HISTORY_LIMIT) {
+      this.stack.shift();
+    }
+    this.offset = this.stack.length - 1;
+  }
+  undo() {
+    return this.restore(this.offset - 1);
+  }
+  redo() {
+    return this.restore(this.offset + 1);
+  }
+  restore(offset) {
+    if (!this.textarea || offset < 0 || offset >= this.stack.length) {
+      return false;
+    }
+    this.offset = offset;
+    let {value, selectionStart, selectionEnd} = this.stack[offset];
+    this.textarea.value = value;
+    this.textarea.setSelectionRange(selectionStart, selectionEnd);
+    return true;
+  }
+}
+
 export class Editor extends React.Component {
   constructor(props) {
     super(props);
@@ -188,9 +255,9 @@ export class Editor extends React.Component {
     model.editorAutocompleteHandler(e);
     model.didUpdate();
   }
-  handleChange(e) {
+  handleChange() {
     let {model} = this.props;
-    model.handleEditorChange(e.currentTarget.value, e.currentTarget.selectionStart, e.currentTarget.selectionEnd);
+    model.handleEditorChange(true);
   }
   handlekeyDown(e) {
     // We do not want to perform Salesforce API calls for autocomplete on every keystroke, so we only perform these when the user pressed Ctrl+Space
@@ -358,11 +425,16 @@ export class Editor extends React.Component {
         let indentRgEx = new RegExp("\n(" + tabChar + ")+$", "g");
         if (selectionStart == selectionEnd && textBeforeCaret.match(indentRgEx)) {
           e.preventDefault();
-          model.editor.setRangeText("", selectionStart, selectionStart - tabChar.length, "preserve");
+          model.editor.setRangeText("", selectionStart - tabChar.length, selectionStart, "end");
         }
         //TODO if previous input without other keydown (even move)is openChar then delete open and closeChar
         break;
       }
+    }
+    // Edits made with setRangeText above do not fire an input event, so record them in the
+    // undo history ourselves, as one entry per keystroke.
+    if (model.editor.value !== value) {
+      model.handleEditorChange(false);
     }
     if (!model.displaySuggestion && e.key != " " && e.key != "ArrowRight" && e.key != "ArrowLeft" && e.key != "ArrowDown" && e.key != "ArrowUp" && e.key != "Enter" && e.key != "Escape" && e.key != "Tab" && e.key != "Shift" && e.key != "Alt" && e.key != "Control" && e.key != "AltGraph" && e.key != "Meta" && model.autoSelectFirstSuggestion) {
       // relationship traversal: show the related object's fields, the input event refreshes the results
