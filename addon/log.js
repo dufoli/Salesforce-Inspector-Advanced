@@ -26,10 +26,8 @@ class LogParser {
     if (banNamespaces.includes(cls)) { //skip system namespace
       return;
     }
+    //class is selected at the end of parseLog, once rootNode is available
     this.apexClasses.add(cls);
-    if (this.apexClasses.size == 1) {
-      this.selectApexClass(cls);
-    }
   }
   visiteNode(currentNode, idx, arr) {
     return this.visiteAllNode(currentNode, false, arr).filter(n => (n.lineNumber == idx));
@@ -59,7 +57,7 @@ class LogParser {
           line: l,
           number: i + 1
         }));
-        let nodes = this.visiteAllNode(this.rootNode, false, []);
+        let nodes = this.rootNode ? this.visiteAllNode(this.rootNode, false, []) : [];
         nodes.filter(n => n.lineNumber).forEach((n) => {
           if (this.apexClassBody[n.lineNumber - 1].color == null) {
             this.apexClassBody[n.lineNumber - 1].color = "#90ff90";
@@ -100,6 +98,9 @@ class LogParser {
     this.rootNode = node;
     let result = [];
     [this.nodes, this.maxLvlNodes] = this.flatternNode(node.child, result, 1, 1);
+    if (this.apexClasses.size > 0) {
+      this.selectApexClass(this.apexClasses.values().next().value);
+    }
   }
   flatternNode(child, result, lvl, maxLvlNodes) {
     if (lvl > maxLvlNodes) {
@@ -849,23 +850,23 @@ class SOQLNode extends ApexNode {
   }
   explain(l) {
     //Index on User : [Id], cardinality: 1, sobjectCardinality: 575, relativeCost 0.006
-    if (l.length > 3) {
-      let explaination = l[3].split("],");
-      let dbIndex = explaination[0].split(" : [");
-      this.SObjectName = dbIndex[0].substring(9);
-      this.fields = dbIndex[1].split(",");
-      explaination[1].split(",").map((p) => {
-        let pair = p.trim().split(/: /).filter(el => el);
-        if (pair.length > 2) {
-          let val = pair.pop();
-          pair = [pair.join(""), val];
-        }
-        if (pair[0] == "cardinality" || pair[0] == "sobjectCardinality" || pair[0] == "relativeCost") {
-          this[pair[0]] = Number(pair[1]);
-        } else {
-          this[pair[0]] = pair[1];
-        }
-      });
+    //TableScan on Account : [], cardinality: 0, sobjectCardinality: 0, relativeCost 1.0
+    //format is not guaranteed, never throw here or the whole log parsing is aborted
+    if (l.length <= 3 || !l[3]) {
+      return;
+    }
+    let plan = l.slice(3).join("|");
+    let index = plan.match(/^\s*(.*?)\s+on\s+(\S+)\s*:\s*\[([^\]]*)\]/);
+    if (index) {
+      this.operationType = index[1];
+      this.SObjectName = index[2];
+      this.fields = index[3].split(",").map(f => f.trim()).filter(f => f);
+    }
+    for (let key of ["cardinality", "sobjectCardinality", "relativeCost"]) {
+      let m = plan.match(new RegExp("\\b" + key + ":?\\s+([0-9.eE+-]+)"));
+      if (m && !isNaN(Number(m[1]))) {
+        this[key] = Number(m[1]);
+      }
     }
   }
 }
