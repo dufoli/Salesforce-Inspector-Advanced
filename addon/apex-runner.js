@@ -4,7 +4,7 @@ import {PageHeader} from "./page-header.js";
 /* global initButton */
 import {Enumerable, DescribeInfo} from "./data-load.js";
 import {QueryHistory, HistoryBox} from "./history-box.js";
-import {Editor} from "./editor.js";
+import {Editor, EditHistory} from "./editor.js";
 import {ScrollTable, TableModel, RecordTable} from "./record-table.js";
 import {AIAssistant} from "./ai-assistant.js";
 
@@ -57,10 +57,9 @@ class Model {
     this.loopContinueOnError = false;
     this.editor = null;
     this.openLogOnExecute = true;
-    this.historyOffset = -1;
+    this.editHistory = new EditHistory();
     this.runningTestId = null;
     this.testStatus = "PENDING";
-    this.historyStack = [];//text + timestamp
     this.initialScript = "";
     this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => {
       this.editorAutocompleteHandler({newDescribe: true});
@@ -201,12 +200,7 @@ class Model {
   setEditor(editor) {
     this.editor = editor;
     editor.value = this.initialScript;
-    this.historyStack = [{
-      value: this.initialScript,
-      selectionStart: 0,
-      selectionEnd: 0
-    }];
-    this.historyOffset = 0;
+    this.editHistory.attach(editor);
     this.initialScript = null;
   }
   toggleHelp() {
@@ -218,14 +212,14 @@ class Model {
   selectHistoryEntry() {
     if (this.selectedHistoryEntry != null) {
       this.editor.value = this.selectedHistoryEntry.script;
-      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+      this.editHistory.record();
       this.editorAutocompleteHandler();
       this.selectedHistoryEntry = null;
     }
   }
   selectScript(val) {
     this.editor.value = val.value.trimStart();
-    this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+    this.editHistory.record();
     this.editor.focus();
   }
   addToHistory() {
@@ -891,70 +885,20 @@ class Model {
       return null;
     });
   }
-  //TODO migrate to editor Model common to apex runner and data export
   applyEdit(value, selectionStart, selectionEnd, mode = "preserve") {
     if (this.editor) {
       this.editor.setRangeText(value, selectionStart, selectionEnd, mode);
-      this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+      this.editHistory.record();
     }
   }
   undoEdit() {
-    if (this.editor && this.historyOffset > 0) {
-      this.historyOffset--;
-      let previous = this.historyStack[this.historyOffset];
-      this.editor.value = previous.value;
-      this.editor.selectionStart = previous.selectionStart;
-      this.editor.selectionEnd = previous.selectionEnd;
-    }
+    this.editHistory.undo();
   }
   redoEdit() {
-    if (this.editor && this.historyOffset < this.historyStack.length - 1) {
-      this.historyOffset++;
-      let next = this.historyStack[this.historyOffset];
-      this.editor.value = next.value;
-      this.editor.selectionStart = next.selectionStart;
-      this.editor.selectionEnd = next.selectionEnd;
-    }
+    this.editHistory.redo();
   }
-  writeEditHistory(value, selectionStart, selectionEnd, force) {
-    const HISTORY_LIMIT = 100;
-    const HISTORY_TIME_GAP = 3000;
-    //remove history after offset
-    if (this.historyOffset != -1 && this.historyOffset < this.historyStack.length - 1) {
-      this.historyStack = this.historyStack.slice(0, this.historyOffset + 1);
-    }
-    //remove first elements if limit reached
-    if (this.historyStack.length > 0 && this.historyOffset > -1 && this.historyStack.length > HISTORY_LIMIT) {
-      let cnt = this.historyStack.length - HISTORY_LIMIT;
-      this.historyStack = this.historyStack.slice(cnt);
-      this.historyOffset = Math.max(this.historyOffset - cnt, 0);
-    }
-    if (!force && this.historyOffset >= 0) {
-      let last = this.historyStack[this.historyOffset];
-      let lastWord = last.value.substring(0, last.selectionStart).match(/[a-z0-9]+$/i);
-      let newLastWord = value.substring(0, selectionStart).match(/[a-z0-9]+$/i);
-      if (last
-          && Date.now() - last.timestamp < HISTORY_TIME_GAP
-          && lastWord && newLastWord && newLastWord[0].startsWith(lastWord[0])) {
-        this.historyStack[this.historyOffset] = {
-          value, //overwrite last entry
-          selectionStart,
-          selectionEnd,
-          timestamp: last.timestamp //keep previous timestamp to write every 3 seconds at least
-        };
-        return;
-      }
-    }
-    this.historyOffset++;
-    this.historyStack.push({
-      value,
-      selectionStart,
-      selectionEnd,
-      timestamp: Date.now()
-    });
-  }
-  handleEditorChange(value, selectionStart, selectionEnd) {
-    this.writeEditHistory(value, selectionStart, selectionEnd, false);
+  handleEditorChange(mergeTyping) {
+    this.editHistory.record(mergeTyping);
   }
   doExecute(loopIndex) {
     let vm = this; // eslint-disable-line consistent-this
@@ -1572,7 +1516,7 @@ class Model {
 
       if (this.editor) {
         this.editor.value = apexCode;
-        this.writeEditHistory(this.editor.value, this.editor.selectionStart, this.editor.selectionEnd, true);
+        this.editHistory.record();
         this.editorAutocompleteHandler();
       }
 
