@@ -1538,28 +1538,22 @@ class AllDataBoxSObject extends React.PureComponent {
   }
 
   componentDidMount() {
-    let {contextRecordId, contextSobject} = this.props;
-    this.updateSelection(contextRecordId, contextSobject);
+    let {contextRecordId} = this.props;
+    this.updateSelection(contextRecordId);
   }
 
   componentDidUpdate(prevProps) {
     let {contextRecordId, sobjectsLoading, contextSobject} = this.props;
     if (prevProps.contextRecordId !== contextRecordId || prevProps.contextSobject !== contextSobject) {
-      this.updateSelection(contextRecordId, contextSobject);
+      this.updateSelection(contextRecordId);
     }
     if (prevProps.sobjectsLoading !== sobjectsLoading && !sobjectsLoading) {
-      this.updateSelection(contextRecordId, contextSobject);
+      this.updateSelection(contextRecordId);
     }
   }
 
-  async updateSelection(query, contextSobject) {
-    let match;
-    if (query === "list"){
-      match = this.getBestMatch(contextSobject);
-    } else {
-      match = this.getBestMatch(query);
-    }
-
+  async updateSelection(query) {
+    let match = this.getBestMatch(query);
     await this.setState({selectedValue: match});
     this.loadRecordIdDetails();
   }
@@ -3318,49 +3312,107 @@ class Autocomplete extends React.PureComponent {
   }
 }
 
-function getRecordId(href) {
-  let url = new URL(href);
-  // Find record ID from URL
-  // Salesforce and Console (+ Hyperforce China Lightning & Classic)
-  if (url.hostname.endsWith(".salesforce.com") || url.hostname.endsWith(".salesforce.mil") || url.hostname.endsWith(".sfcrmapps.cn") || url.hostname.endsWith(".sfcrmproducts.cn")) {
-    let match = url.pathname.match(/\/([a-zA-Z0-9]{3}|[a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})(?:\/|$)/);
-    if (match) {
-      let res = match[1];
-      if (res.includes("0000") || res.length == 3) {
-        return match[1];
+// 15 chars: the 6th char is reserved and always "0"; 18 chars: the last 3 chars must be the case-safe checksum of the first 15
+function isSalesforceId(value) {
+  if (typeof value != "string") {
+    return false;
+  }
+  if (value.startsWith("000")) {
+      return false;
+  }
+  if (/^[a-zA-Z0-9]{18}$/.test(value)) {
+    let checksum = "";
+    for (let chunk = 0; chunk < 3; chunk++) {
+      let bits = 0;
+      for (let i = 0; i < 5; i++) {
+        let c = value[(chunk * 5) + i];
+        if (c >= "A" && c <= "Z") {
+          bits += 1 << i;
+        }
       }
+      checksum += "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"[bits];
+    }
+    return value.substring(15) == checksum;
+  }
+  return /^[a-zA-Z0-9]{15}$/.test(value);
+}
+
+// Rules are host independent: the extension only runs on Salesforce domains, and those keep changing
+// (enhanced domains, salesforce-setup.com, Experience builder, Hyperforce China, GovCloud, MCAS proxy...)
+function getRecordId(href, nested = false) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch (e) {
+    return null;
+  }
+  let segments = url.pathname.split("/").filter(s => s);
+
+  // Flow Builder: flowId (version) wins over flowDefId (definition)
+  if (url.pathname.includes("/builder_platform_interaction/")) {
+    let flowId = url.searchParams.get("flowId");
+    if (isSalesforceId(flowId)) {
+      return flowId;
     }
   }
 
-  // Lightning Experience
-  const lightningHostnames = [
-    ".lightning.force.com",
-    ".lightning.force.mil",
-    ".lightning.crmforce.mil",
-    ".lightning.force.com.mcas.ms"
-  ];
-  if (lightningHostnames.some(hostname => url.hostname.endsWith(hostname))) {
-    let match;
-    if (url.pathname == "/one/one.app") {
-      match = url.hash.match(/\/sObject\/([a-zA-Z0-9]+)(?:\/|$)/);
-    } else {
-      match = url.pathname.match(/\/lightning\/[r|o]\/[a-zA-Z0-9_]+\/([a-zA-Z0-9]+)/);
+  // Lightning Setup wrapping a Classic page: /lightning/setup/X/page?address=%2F01p...%3Fid%3D...
+  let address = url.searchParams.get("address");
+  if (address && !nested) {
+    if (!address.startsWith("/")) {
+      try {
+        address = decodeURIComponent(address);
+      } catch (e) {
+        address = null;
+      }
     }
+    let res = address && address.startsWith("/") && getRecordId(url.origin + address, true);
+    if (res) {
+      return res;
+    }
+  }
+
+  // Lightning (pre Spring '18 URLs): #/sObject/<Id or SObject name>/...
+  if (url.pathname == "/one/one.app") {
+    let match = url.hash.match(/\/sObject\/([a-zA-Z0-9_]+)(?:[/?]|$)/);
     if (match) {
       return match[1];
     }
   }
-  // Visualforce
-  let searchParams = new URLSearchParams(url.search.substring(1));
-  {
-    let idParam = searchParams.get("id");
-    if (idParam) {
-      return idParam;
+
+  if (segments[0] == "lightning") {
+    // /lightning/r/<SObject>/<Id>/view or /lightning/r/<Id>/view
+    if (segments[1] == "r") {
+      let id = segments.slice(2, 4).find(isSalesforceId);
+      if (id) {
+        return id;
+      }
+    }
+    // /lightning/o/<SObject>/list|home|new
+    if (segments[1] == "o" && segments[2]) {
+      return segments[2];
     }
   }
-  // Visualforce page that does not follow standard Visualforce naming
-  for (let [, p] of searchParams) {
-    if (p.match(/^([a-zA-Z0-9]{3}|[a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})$/) && p.includes("0000")) {
+
+  // Any path segment that is an ID, the deepest is the most specific
+  // (Classic /001.../e, Setup /ObjectManager/01I.../FieldsAndRelationships/00N.../view, Experience /s/detail/001...)
+  let pathId = segments.filter(isSalesforceId).pop();
+  if (pathId) {
+    return pathId;
+  }
+
+  // Classic key prefix: /001, /001/o, /001/e
+  if (/^\/[a-zA-Z0-9]{3}(?:\/[oe])?\/?$/.test(url.pathname)) {
+    return segments[0];
+  }
+
+  // Visualforce: standard id parameter first, then any parameter holding an ID
+  let idParam = url.searchParams.get("id");
+  if (isSalesforceId(idParam)) {
+    return idParam;
+  }
+  for (let [, p] of url.searchParams) {
+    if (isSalesforceId(p)) {
       return p;
     }
   }
