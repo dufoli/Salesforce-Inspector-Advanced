@@ -529,7 +529,15 @@ class App extends React.PureComponent {
   onGetNewToken(e) {
     e.preventDefault();
     let {sfHost} = this.props;
+    //the OAuth callback (data-export.html) stores the token in the shared extension localStorage: reload the popup to restart all calls with it
+    removeEventListener("storage", this.onTokenStored);
+    addEventListener("storage", this.onTokenStored);
     sfConn.authenticate(sfHost);
+  }
+  onTokenStored(e) {
+    if (e.key?.endsWith("_access__token") && e.newValue) {
+      location.reload();
+    }
   }
   handleSecureWithConnectedApp(e) {
     e.preventDefault();
