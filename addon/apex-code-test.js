@@ -2,7 +2,7 @@
 export async function apexCodeTest(test) {
   console.log('TEST apexCode');
   let {assertEquals, assertThrows, loadPage} = test;
-  let {failedTestsToRun, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode} = await loadPage('apex-code.html');
+  let {traceFlagChange, failedTestsToRun, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode} = await loadPage('apex-code.html');
 
   // Coverage: a line covered by one test is covered, even if another test leaves it uncovered
   let merged = mergeCoverage([
@@ -22,6 +22,18 @@ export async function apexCodeTest(test) {
     {ApexClassId: '01p000000000002', MethodName: 'd', Outcome: 'Fail'}
   ]));
   assertEquals([], failedTestsToRun([{ApexClassId: '01p000000000001', MethodName: 'a', Outcome: 'Pass'}]));
+
+  // Debug logs: an active trace flag lasting until the end is kept, otherwise the developer log one is extended or inserted
+  let now = new Date('2026-01-01T10:00:00.000Z');
+  let until = new Date('2026-01-01T10:15:00.000Z');
+  let period = {StartDate: '2026-01-01T10:00:00.000Z', ExpirationDate: '2026-01-01T10:15:00.000Z'};
+  assertEquals(null, traceFlagChange([{Id: '7tf1', LogType: 'USER_DEBUG', StartDate: '2026-01-01T09:00:00.000Z', ExpirationDate: '2026-01-01T11:00:00.000Z'}], now, until));
+  assertEquals(null, traceFlagChange([{Id: '7tf1', LogType: 'DEVELOPER_LOG', StartDate: null, ExpirationDate: '2026-01-01T11:00:00.000Z'}], now, until));
+  assertEquals({id: '7tf2', body: period}, traceFlagChange([
+    {Id: '7tf1', LogType: 'USER_DEBUG', StartDate: '2026-01-01T09:00:00.000Z', ExpirationDate: '2026-01-01T10:05:00.000Z'},
+    {Id: '7tf2', LogType: 'DEVELOPER_LOG', StartDate: '2025-12-01T09:00:00.000Z', ExpirationDate: '2025-12-01T10:00:00.000Z'}
+  ], now, until));
+  assertEquals({id: null, body: Object.assign({LogType: 'DEVELOPER_LOG'}, period)}, traceFlagChange([], now, until));
 
   // Tokenizer: keywords, strings (escaped quotes, empty strings) and comments
   let keywordColor = new Map([['public', 'blue'], ['return', 'violet']]);

@@ -29,6 +29,8 @@ To run tests, add test classes in the right panel: the test classes which alread
 
 To run the tests of a module again, type a name and click **Save set**: the tests to run are saved as a test set, then **Load a test set...** replaces the tests to run by the classes of the test set. Test sets are saved in the browser by class name, so a test set created in a sandbox also works in production and in the other sandboxes; the classes which do not exist in the current org are listed. Click **Run Tests**: when the run is complete, the results are listed (check **Failed tests only** to hide the passed ones, click **Rerun Failed Tests** to run again only the failed test methods) and the coverage switches to **Last run**, the lines executed by these tests only. **Org coverage** shows the coverage of all the tests of the org. Click a line of a failed test's stack trace to go to that line.
 
+Check **Debug logs** to log the test runs: before running tests, the page sets a trace flag on the current user, with the debug level and the duration (minutes) of the options (`SFDC_DevConsole` and 15 minutes by default), or extends the existing one. A **Log** link next to each test result opens the debug log of its test class in the log viewer.
+
 The **Last run** coverage needs the coverage per test, so it is empty when the org stores only aggregated code coverage (Apex Test Execution options in Setup).
 
 ## Clone a User

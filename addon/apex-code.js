@@ -15,6 +15,7 @@ const apexKeywordColor = new Map([
 
 const pollDelay = 2000;
 const testSetsStorageKey = "insextApexTestSets";
+const debugLogsStorageKey = "insextApexTestDebugLogs";
 const finalTestStatuses = ["Completed", "Failed", "Aborted"];
 
 function soqlString(value) {
@@ -123,6 +124,21 @@ export function splitTokensByLine(segments) {
 }
 
 /**
+ * Change to make on the trace flags of the user so that its activity is logged from now until a date:
+ * null when an active trace flag already lasts until then, otherwise the developer log trace flag to update
+ * (Salesforce allows one trace flag per log type and user) or to insert (no id).
+ */
+export function traceFlagChange(traceFlags, now, until) {
+  let started = f => !f.StartDate || new Date(f.StartDate) <= now;
+  if (traceFlags.some(f => started(f) && new Date(f.ExpirationDate) >= until)) {
+    return null;
+  }
+  let flag = traceFlags.find(f => f.LogType == "DEVELOPER_LOG");
+  let body = {StartDate: now.toISOString(), ExpirationDate: until.toISOString()};
+  return flag ? {id: flag.Id, body} : {id: null, body: Object.assign({LogType: "DEVELOPER_LOG"}, body)};
+}
+
+/**
  * Parses an Apex stack trace into frames, e.g. "Class.MyService.doIt: line 3, column 1"
  * gives {kind: "Class", path: "MyService.doIt", line: 3}. Lines which are not frames have no kind.
  */
@@ -160,6 +176,7 @@ export class Model {
     this.testRun = null; // {jobId, status, total, done, results}
     this.targetLine = null;
     this.failedTestsOnly = false;
+    this.debugLogs = localStorage.getItem(debugLogsStorageKey) == "true";
     this.pollTimer = null;
 
     this.spinFor(this.loadAllCode());
@@ -396,7 +413,40 @@ export class Model {
     return this.startTestRun({tests}, tests.map(t => t.classId));
   }
 
+  setDebugLogs(debugLogs) {
+    this.debugLogs = debugLogs;
+    localStorage.setItem(debugLogsStorageKey, debugLogs);
+  }
+
+  // Sets a trace flag on the current user, with the debug level and the duration of the options, so the test run is logged
+  async enableDebugLogs() {
+    let {userId} = await sfConn.getUserInfo();
+    let minutes = Number(localStorage.getItem("debugLogTimeMinutes")) || 15;
+    let now = new Date();
+    let until = new Date(now.getTime() + (minutes * 60 * 1000));
+    let traceFlags = await this.queryAll("SELECT Id, LogType, StartDate, ExpirationDate FROM TraceFlag WHERE TracedEntityId = " + soqlString(userId)
+      + " AND LogType IN ('DEVELOPER_LOG', 'USER_DEBUG')", true);
+    let change = traceFlagChange(traceFlags, now, until);
+    if (!change) {
+      return;
+    }
+    let url = "/services/data/v" + apiVersion + "/tooling/sobjects/TraceFlag/";
+    if (change.id) {
+      await sfConn.rest(url + change.id, {method: "PATCH", body: change.body});
+      return;
+    }
+    let debugLevel = localStorage.getItem(this.sfHost + "_debugLogDebugLevel") || "SFDC_DevConsole";
+    let debugLevels = await this.queryAll("SELECT Id FROM DebugLevel WHERE DeveloperName = " + soqlString(debugLevel), true);
+    if (debugLevels.length == 0) {
+      throw new Error("Debug level \"" + debugLevel + "\" not found, change it in the options (Debug Log Debug Level).");
+    }
+    await sfConn.rest(url, {method: "POST", body: Object.assign({TracedEntityId: userId, DebugLevelId: debugLevels[0].Id}, change.body)});
+  }
+
   async startTestRun(body, testIds) {
+    if (this.debugLogs) {
+      await this.enableDebugLogs();
+    }
     let jobId;
     try {
       jobId = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/runTestsAsynchronous/", {method: "POST", body});
@@ -430,7 +480,7 @@ export class Model {
       this.pollTestRun(testRun);
       return;
     }
-    testRun.results = await this.queryAll("SELECT ApexClassId, ApexClass.Name, MethodName, Outcome, Message, StackTrace, RunTime FROM ApexTestResult WHERE AsyncApexJobId = "
+    testRun.results = await this.queryAll("SELECT ApexClassId, ApexClass.Name, MethodName, Outcome, Message, StackTrace, RunTime, ApexLogId FROM ApexTestResult WHERE AsyncApexJobId = "
       + soqlString(testRun.jobId) + " ORDER BY ApexClass.Name, MethodName");
     testRun.status = "Completed";
     if (this.testRun == testRun) {
@@ -478,6 +528,13 @@ export class Model {
         element.scrollIntoView({block: "center"});
       }
     });
+  }
+
+  logLink(logId) {
+    let args = new URLSearchParams();
+    args.set("host", this.sfHost);
+    args.set("recordId", logId);
+    return "log.html?" + args;
   }
 
   setupLink() {
@@ -628,6 +685,10 @@ class TestPanel extends React.Component {
           ? h("button", {title: "Run again only the failed test methods", onClick: () => model.spinFor(model.rerunFailedTests())}, "Rerun Failed Tests") : null,
         testRun ? h("span", {className: "test-status"}, running ? testRun.status + (testRun.total ? " " + testRun.done + "/" + testRun.total : "") + "..." : "Completed") : null
       ),
+      h("label", {className: "debug-logs", title: "Before running tests, enable the debug logs of the current user (trace flag with the debug level and the duration of the options) to open the log of each test class"},
+        h("input", {type: "checkbox", checked: model.debugLogs, onChange: e => { model.setDebugLogs(e.target.checked); model.didUpdate(); }}),
+        " Debug logs"
+      ),
       testRun && testRun.results.length ? h("div", {className: "test-results"},
         h("h3", {}, "Results (" + testRun.results.filter(r => r.Outcome == "Pass").length + "/" + testRun.results.length + " passed)"),
         h("label", {className: "failed-only"},
@@ -636,7 +697,8 @@ class TestPanel extends React.Component {
         ),
         testRun.results.filter(r => !model.failedTestsOnly || r.Outcome != "Pass").map((r, i) => h("div", {key: i, className: "test-result " + (r.Outcome == "Pass" ? "pass" : "fail")},
           h("div", {className: "test-name"}, (r.Outcome == "Pass" ? "✔ " : "✘ ") + (r.ApexClass ? r.ApexClass.Name : "") + "." + r.MethodName,
-            r.RunTime != null ? h("span", {className: "test-time"}, " " + r.RunTime + " ms") : null),
+            r.RunTime != null ? h("span", {className: "test-time"}, " " + r.RunTime + " ms") : null,
+            r.ApexLogId ? h("a", {href: model.logLink(r.ApexLogId), target: "_blank", className: "test-log", title: "Open the debug log of this test class"}, "Log") : null),
           r.Message ? h("div", {className: "test-message"}, r.Message) : null,
           parseStackTrace(r.StackTrace).map((frame, fi) => frame.kind
             ? h("a", {key: fi, href: "#", className: "stack-frame", title: "Go to line", onClick: e => { e.preventDefault(); model.openFrame(frame); }}, frame.text)
@@ -694,7 +756,7 @@ class App extends React.Component {
     };
     ReactDOM.render(h(App, {model}), root);
     if (parent && parent.isUnitTest) { // for unit tests
-      parent.insextTestLoaded({Model, model, sfConn, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode});
+      parent.insextTestLoaded({Model, model, sfConn, traceFlagChange, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode});
     }
   });
 }
