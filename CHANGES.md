@@ -4,6 +4,7 @@
 - Apex code: new "Debug logs" checkbox to enable the debug logs of the current user before a test run, and open the log of each test class from its results
 - Popup: refresh the popup once the OAuth authentication is finished, without reopening it
 - Data export: fix the "Stop" button pushed off screen when the status and performance info are too long (e.g. a query returning many batches); the performance info now moves below the status [issue 351](https://github.com/dufoli/Salesforce-Inspector-Advanced/issues/351)
+- Org analyzer: fix rules with a long name (e.g. "Apex trigger with SOQL/DML instead of service class") hiding their high API usage icon and overflowing into the next column; the name now wraps
 
 ## Version 1.42
 

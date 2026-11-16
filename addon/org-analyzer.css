@@ -45,14 +45,22 @@
 }
 
 .rule-item label {
+  /* override ".area label {white-space: nowrap}" from data-export.css so long rule names wrap inside their column */
+  white-space: normal;
+  overflow-wrap: anywhere;
   display: flex;
   align-items: flex-start;
   gap: 4px;
   cursor: pointer;
 }
 
-.rule-item .checkbox-control {
+.rule-item .checkbox-control,
+.rule-item .high-api-usage-icon {
   flex-shrink: 0;
+}
+
+.rule-item .high-api-usage-icon {
+  margin-top: 2px;
 }
 
 .priority-summary {

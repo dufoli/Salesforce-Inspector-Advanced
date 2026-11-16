@@ -93,6 +93,8 @@ Open it from the popup and go to the "Org Analyzer" button. It scans your org fo
 6. Once the analysis is over, the number of API requests it used (org-wide daily counter, approximate) and the remaining ones are shown next to the status.
 7. Click the download icon to save the results as a CSV (including the Setup links).
 
+  ![image](screenshots/org_analyser.png)
+
 > **Warning**
 > The Org Analyzer makes extensive API calls. Monitor your org's API limits and save results via the CSV download for later reference.
 
