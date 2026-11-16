@@ -2,6 +2,7 @@
 import {sfConn, apiVersion} from "./inspector.js";
 import {PageHeader} from "./page-header.js";
 import {FlameChartComponent} from "./flamechart/wrappers/react/flame-chart-component.js";
+import {parseLimitUsage, summarizeLimits, limitSeverity} from "./log-analysis.js";
 /* global initButton */
 
 const banNamespaces = ["ApexPages", "AppLauncher", "Approval", "Auth", "Cache", "Canvas", "ChatterAnswers", "CommerceBuyGrp", "CommerceExtension", "CommerceOrders", "CommercePayments", "CommerceTax", "ComplianceMgmt", "Compression", "ConnectApi", "Context", "Database", "Datacloud", "DataRetrieval", "DataSource", "DataWeave", "Dom", "embeddedai", "EventBus", "ExternalService", "Flow", "Flowtesting", "flowtesting", "FormulaEval", "fsccashflow", "Functions", "IndustriesDigitalLending", "industriesDigitalLending", "Invocable", "InvoiceWriteOff", "IsvPartners", "KbManagement", "LxScheduler", "Messaging", "Metadata", "PlaceQuote", "Pref_center", "Process", "QuickAction", "Reports", "RevSalesTrxn", "RevSignaling", "RichMessaging", "Salesforce_Backup", "Schema", "Search", "Sfc", "Sfdc_Checkout", "Sfdc_Enablement", "sfdc_enablement", "sfdc_surveys", "Site", "Slack", "Support", "System", "TerritoryMgmt", "TxnSecurity", "UserProvisioning", "VisualEditor", "Wave"];
@@ -21,6 +22,8 @@ class LogParser {
     this.apexClassBody = [];
     this.apexClassName = "";
     this.model = model;
+    this.limitUsages = [];
+    this.limitScope = "cumulative";
   }
   addApexClass(cls) {
     if (banNamespaces.includes(cls)) { //skip system namespace
@@ -285,11 +288,20 @@ class LogParser {
           break;
         }
         case "CUMULATIVE_LIMIT_USAGE": {
+          this.limitScope = "cumulative";
           new CumulativeLimitUsageNode(l, this, node);
           break;
         }
-        case "LIMIT_USAGE_FOR_NS": { //handle in CUMULATIVE_LIMIT_USAGE
-          node.setLimits(l);
+        case "TESTING_LIMITS": {
+          this.limitScope = "testing";
+          break;
+        }
+        case "LIMIT_USAGE_FOR_NS": {
+          let limits = parseLimitUsage(l.slice(3).join("|"));
+          this.limitUsages.push({scope: this.limitScope, namespace: l[2] || "(default)", limits, line: this.index});
+          if (node instanceof CumulativeLimitUsageNode) {
+            node.limits = limits;
+          }
           break;
         }
         case "USER_DEBUG": {
@@ -532,7 +544,6 @@ class LogParser {
         case "SYSTEM_MODE_EXIT":
         case "TEMPLATE_PROCESSING_ERROR" :
         case "TEMPLATED_ASSET" :
-        case "TESTING_LIMITS":
         case "TOTAL_EMAIL_RECIPIENTS_QUEUED":
         case "TRANSFORMATION_SUMMARY" :
         case "USER_DEBUG_DEBUG" :
@@ -971,16 +982,6 @@ class VFEvaluateFormulaNode extends ApexNode {
 class CumulativeLimitUsageNode extends LogNode {
   constructor(splittedLine, logParser, node) {
     super(splittedLine, logParser, node, "CUMULATIVE_LIMIT_USAGE_END");
-  }
-  setLimits(l) {
-    let limits = l.slice(3).join("|").split("\n");
-    for (let i = 0; i < limits.length; i++) {
-      if (!limits[i]) {
-        continue;
-      }
-      let pair = limits[i].split(": ");
-      this[pair[0].replace("Number of ", "").trim().replace(" ", "_")] = pair[1];
-    }
   }
 }
 
@@ -1886,6 +1887,12 @@ class LogTabNavigation extends React.Component {
         tabTitle: "Tab5",
         title: "Ressource",
         content: RessourceView
+      },
+      {
+        id: 6,
+        tabTitle: "Tab6",
+        title: "Limits",
+        content: LimitsView
       }
     ];
     this.onTabSelect = this.onTabSelect.bind(this);
@@ -2291,6 +2298,67 @@ class RessourceView extends React.Component {
             h("tr", {className: "slds-hint-parent", key: "RessourceNode" + i},
               h("td", {scope: "row", className: "slds-cell-wrap"}, h("a", {href: "#", onClick: () => this.onSelectRessource(node)}, node.query)),
               h("td", {}, node.count)
+            )
+          )
+        )
+      )
+    );
+  }
+}
+
+const limitColors = {success: "#2e844a", warning: "#dd7a01", error: "#ea001e"};
+class LimitsView extends React.Component {
+  formatValue(name, value) {
+    if (name == "Maximum heap size") {
+      if (value >= 1024 * 1024) {
+        return (value / (1024 * 1024)).toFixed(2) + " MB";
+      }
+      return value >= 1024 ? (value / 1024).toFixed(1) + " KB" : value + " B";
+    }
+    if (name.endsWith("time")) {
+      return value.toLocaleString() + " ms";
+    }
+    return value.toLocaleString();
+  }
+  formatPercent(percent) {
+    return percent.toFixed(percent > 0 && percent < 1 ? 2 : 0) + " %";
+  }
+  render() {
+    let groups = summarizeLimits(this.props.model.logParser.limitUsages);
+    if (groups.length == 0) {
+      return h("div", {className: "slds-p-around_medium"},
+        h("p", {}, "No governor limit usage found in this log."),
+        h("p", {className: "slds-text-color_weak"}, "Limits are logged in CUMULATIVE_LIMIT_USAGE blocks: set the Apex Profiling debug level to INFO or higher, and check that the log is not truncated.")
+      );
+    }
+    return h("div", {style: {overflow: "auto", height: "inherit"}, className: "slds-p-around_small"},
+      groups.map(group =>
+        h("div", {key: group.scope + group.namespace, className: "slds-m-bottom_medium"},
+          h("h3", {className: "slds-text-heading_small slds-m-bottom_x-small"}, (group.scope == "testing" ? "Test limits - " : "") + "Namespace " + group.namespace),
+          h("table", {className: "slds-table slds-table_cell-buffer slds-table_bordered slds-table_fixed-layout"},
+            h("thead", {},
+              h("tr", {className: "slds-line-height_reset"},
+                h("th", {scope: "col", style: {width: "30%"}}, "Limit"),
+                h("th", {scope: "col", style: {width: "40%"}}, "Usage"),
+                h("th", {scope: "col", style: {width: "20%"}}, "Used / Max"),
+                h("th", {scope: "col", style: {width: "10%"}}, "%")
+              )
+            ),
+            h("tbody", {},
+              group.limits.map(limit => {
+                let color = limitColors[limitSeverity(limit.percent)];
+                let width = Math.min(limit.percent, 100);
+                return h("tr", {key: limit.name, className: "slds-hint-parent" + (limit.used == 0 ? " slds-text-color_weak" : "")},
+                  h("td", {className: "slds-truncate", title: limit.name}, limit.name),
+                  h("td", {},
+                    h("div", {className: "slds-progress-bar slds-progress-bar_medium", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(width), "aria-label": limit.name},
+                      h("span", {className: "slds-progress-bar__value", style: {width: width + "%", background: color}})
+                    )
+                  ),
+                  h("td", {}, this.formatValue(limit.name, limit.used) + " / " + this.formatValue(limit.name, limit.max)),
+                  h("td", {style: {color: limit.used > 0 ? color : undefined, fontWeight: limit.percent >= 50 ? "bold" : undefined}}, this.formatPercent(limit.percent))
+                );
+              })
             )
           )
         )

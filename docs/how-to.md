@@ -80,6 +80,7 @@ The analyzer has 5 tabs:
 
 - **Apex**: pick an Apex class from the dropdown to view its source with line numbers; lines that produced log output are highlighted, click one to see the matching log lines on the right (and click a log line to jump back to it in the Raw log tab).
 - **Ressource**: lists every distinct SOQL, SOSL, DML and callout found in the log with an occurrence count; click one to jump to it in the Raw log tab. Use the filter dropdown to narrow it to one kind (CALLOUT/SOQL/SOSL/DML).
+- **Limits**: governor limits consumed by the transaction (SOQL queries, query rows, DML, CPU time, heap size...), one table per namespace, with used/max values, percent and a progress bar (orange from 50%, red from 80%). The highest value seen in the log's `CUMULATIVE_LIMIT_USAGE` blocks is kept; limits measured between `Test.startTest()` and `Test.stopTest()` are shown separately as "Test limits". Requires the Apex Profiling debug level at INFO or higher.
 
 ## Org Analyzer
 

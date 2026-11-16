@@ -6,6 +6,7 @@ import {dataExportTest} from "./data-export-test.js";
 import {flowAnalyzeTest} from "./flow-analyze-test.js";
 import {dataTransferTest} from "./data-transfer-test.js";
 import {apexCodeTest} from "./apex-code-test.js";
+import {logAnalysisTest} from "./log-analysis-test.js";
 
 let seenError = false;
 class Test {
@@ -115,7 +116,8 @@ addEventListener("load", () => {
         dataExportTest,
         flowAnalyzeTest,
         dataTransferTest,
-        apexCodeTest
+        apexCodeTest,
+        logAnalysisTest
       };
 
       // If specific tests are requested, run only those
@@ -140,6 +142,7 @@ addEventListener("load", () => {
         await flowAnalyzeTest(test);
         await dataTransferTest(test);
         await apexCodeTest(test);
+        await logAnalysisTest(test);
       }
 
       test.assert(!seenError, "Expected no error");
