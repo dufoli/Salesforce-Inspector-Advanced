@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Salesforce Inspector Advanced - Orgs</title>
+    <link rel="stylesheet" href="org-launcher.css">
+  </head>
+  <body>
+    <div class="header">
+      <input id="search" type="search" placeholder="Search orgs..." autocomplete="off" autofocus>
+      <button id="add-btn" type="button" title="Add an org">+</button>
+    </div>
+    <form id="org-form" hidden>
+      <label>Name<input id="form-label" type="text" placeholder="e.g. Acme PROD"></label>
+      <label>URL<input id="form-url" type="text" placeholder="https://mydomain.my.salesforce.com" required></label>
+      <label>Username (optional)<input id="form-username" type="text" placeholder="user@example.com" autocomplete="off"></label>
+      <label>Landing page
+        <span class="landing-row">
+          <select id="form-landing">
+            <option value="">Home</option>
+            <option value="setup">Setup</option>
+            <option value="custom">Custom path</option>
+          </select>
+          <input id="form-landing-path" type="text" placeholder="/lightning/o/Account/list" hidden>
+        </span>
+      </label>
+      <div id="org-settings">
+        <label>Favicon color
+          <span class="favicon-row">
+            <input id="form-favicon-picker" type="color">
+            <input id="form-favicon" type="text" placeholder="Auto (#rrggbb or image URL)">
+          </span>
+        </label>
+        <label>Consumer key (External Client App)<input id="form-client-id" type="text" placeholder="Default" autocomplete="off"></label>
+      </div>
+      <div class="form-error" id="form-error"></div>
+      <div class="form-actions">
+        <button type="button" id="form-current" title="Fill with the org of the current tab">Use current tab</button>
+        <span class="spacer"></span>
+        <button type="button" id="form-cancel">Cancel</button>
+        <button type="submit" id="form-save" class="primary">Save</button>
+      </div>
+    </form>
+    <ul id="org-list"></ul>
+    <div id="empty" class="empty" hidden></div>
+    <div class="footer">
+      <span id="status" class="status">Shift: new window · Alt: private window</span>
+      <a href="#" id="options-link">Options</a>
+    </div>
+    <script type="module" src="org-launcher.js"></script>
+  </body>
+</html>

@@ -113,11 +113,4 @@ if (chrome.commands) {
     });
   });
 }
-const browserAction = chrome.action || chrome.browserAction;
-if (browserAction) {
-  browserAction.onClicked.addListener(() => {
-    chrome.tabs.create({
-      url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/options.html?host=${sfHost}`
-    });
-  });
-}
+// The toolbar button opens org-launcher.html (default_popup in the manifests), so there is no onClicked listener.

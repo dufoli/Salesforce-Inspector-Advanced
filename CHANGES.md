@@ -1,6 +1,7 @@
 # Release Notes
 ## Version 1.43
 
+- Org launcher: the extension toolbar button now opens a menu of saved orgs, with a search box, to open the login page of an org in one click. An org saves its URL (Lightning, Visualforce and Setup URLs are converted to the My Domain URL), a name and an optional username prefilled on the login page; passwords are never stored. The current tab org is prefilled when adding one. Each org has an options button opening the options page for this org, and the "Options" link of this menu opens it for the current tab org. The favicon color and the External Client App consumer key of an org can be set when adding or editing it. Each org can have a landing page (Home, Setup or a custom path), be opened in a new window (Shift+click) or a private window (Alt+click), and its username is copied by clicking it. The org of the current tab is shown first
 - Log viewer: new "Limits" tab showing the governor limit usage of the log (per namespace, and test limits apart) with value, percent and a colored progress bar (orange from 50%, red from 80%); fix the log parsing failing on test logs with a `TESTING_LIMITS` block
 - Apex code: new "Debug logs" checkbox to enable the debug logs of the current user before a test run, and open the log of each test class from its results
 - Popup: refresh the popup once the OAuth authentication is finished, without reopening it

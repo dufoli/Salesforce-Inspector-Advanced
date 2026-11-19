@@ -12,7 +12,8 @@
     "storage"
   ],
   "action": {
-    "default_title": "Export data"
+    "default_title": "Salesforce Inspector Advanced - Orgs",
+    "default_popup": "org-launcher.html"
   },
   "commands": {
     "apex-runner": {

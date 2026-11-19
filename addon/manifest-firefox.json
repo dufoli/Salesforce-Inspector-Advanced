@@ -12,6 +12,10 @@
       "strict_min_version": "60.0"
     }
   },
+  "browser_action": {
+    "default_title": "Salesforce Inspector Advanced - Orgs",
+    "default_popup": "org-launcher.html"
+  },
   "permissions": [
     "cookies",
     "storage",

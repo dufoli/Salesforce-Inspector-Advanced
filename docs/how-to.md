@@ -1,5 +1,21 @@
 # How to
 
+## Org launcher (toolbar button)
+
+Click the extension button in the browser toolbar to open the list of your saved orgs:
+
+- Type in the search box to filter by name, URL or username, use the arrow keys to select an org and Enter to open it.
+- Click an org to open its login page in a new tab. If a username is saved, it is prefilled on the login page.
+- Click `+` to add an org: a name, the org URL (e.g. `https://mydomain.my.salesforce.com`, `https://login.salesforce.com` or `https://test.salesforce.com`) and an optional username. When the current tab is a Salesforce org, its URL is prefilled, otherwise use "Use current tab". Lightning, Visualforce and Setup URLs are converted to the My Domain URL.
+- `Shift`+click (or `Shift`+`Enter`) opens the org in a new window, `Alt`+click (or `Alt`+`Enter`) in a private window. A private window needs the extension to be allowed in private browsing ("Allow in Incognito" in Chrome, "Run in Private Windows" in Firefox).
+- Each org has a landing page opened once logged in: Home, Setup, or a custom path (e.g. `/lightning/o/Account/list`; a pasted full URL is reduced to its path).
+- The org of the current tab is shown first, with a "current tab" badge.
+- Click the username of an org to copy it to the clipboard.
+- Hover an org to open it in a new window (⧉) or a private window (🕶), open its options page (⚙), edit it or delete it.
+- When adding or editing an org, you can also set its favicon color (color picker, `#rrggbb` or an image URL; empty = automatic color) and the consumer key of the External Client App used for OAuth (empty = default). These are the same settings as in the options page. They are hidden for `login.salesforce.com` / `test.salesforce.com`, which are not an org.
+- The password is never stored. Saved orgs are kept in the extension local storage of the browser.
+- The extension options page is opened from the "Options" link at the bottom.
+
 ## Apex Runner
 
 In order to run anonymous apex code, you can use apex runner.
