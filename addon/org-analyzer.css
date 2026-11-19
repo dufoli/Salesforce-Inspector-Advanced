@@ -92,3 +92,43 @@
   font-size: 12px;
   color: #706e6b;
 }
+
+/* Collapsible rules header: the results keep most of the page */
+.rules-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rules-toggle-icon {
+  display: inline-block;
+  font-size: 10px;
+  color: #706e6b;
+  transition: transform 0.15s ease;
+}
+
+/* Not ".expanded": data-export.css gives that class a 200px height */
+.rules-toggle-icon.rules-toggle-open {
+  transform: rotate(90deg);
+}
+
+.rules-count {
+  font-size: 12px;
+  color: #706e6b;
+}
+
+/* data-export.css prevents the page from scrolling: here the unfolded rules can push the results below
+   the window, so the page scrolls down to them. The results keep most of the window height once reached. */
+body {
+  overflow-y: auto;
+}
+
+#result-area {
+  min-height: 70vh;
+}

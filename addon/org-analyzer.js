@@ -52,6 +52,24 @@ class ApexAnalyzer {
     let apexBatchableWithoutJobsRule = this.model.isRuleEnable("Apex job schedulable with no jobs in 365 days");
     let apexSoqlInjectionRule = this.model.isRuleEnable("Apex SOQL injection: missing escape on parameter");
 
+    let inactiveTriggerRule = this.model.isRuleEnable("Inactive Apex trigger");
+    let severalTriggersRule = this.model.isRuleEnable("Entity with several Apex triggers");
+    for (let {ruleName, enabled, analyse} of [
+      {ruleName: "Org-wide code coverage below 75%", enabled: this.model.isRuleEnable("Org-wide code coverage below 75%"), analyse: () => this.analyseOrgWideCoverage()},
+      {ruleName: "Inactive Apex trigger", enabled: inactiveTriggerRule || severalTriggersRule, analyse: () => this.analyseTriggers(inactiveTriggerRule, severalTriggersRule)},
+      {ruleName: "Component with old API Version", enabled: this.model.isRuleEnable("Component with old API Version"), analyse: () => this.analyseComponentApiVersions()},
+    ]) {
+      if (!enabled) {
+        continue;
+      }
+      try {
+        await analyse();
+      } catch (error) {
+        console.error(ruleName, error);
+        this.model.reportRuleFailure(ruleName, error.message);
+      }
+    }
+
     try {
       if (apexLowCoverageRule) {
         let logs = [];
@@ -61,8 +79,15 @@ class ApexAnalyzer {
           console.error(error);
         });
         for (let coverage of result.rows) {
-          if (coverage.NumLinesCovered * 100 / (coverage.NumLinesCovered + coverage.NumLinesUncovered) < 75){
-            logs.push({reference: coverage.ApexClassOrTrigger.Name, name: "Apex Class with poor code coverage", description: "This Apex class has a code coverage below 75%. Consider improving the test coverage to meet Salesforce deployment requirements.", priority: 3, setupLink: this.model.apexSetupLink(coverage.ApexClassOrTriggerId)});
+          let percent = coverage.NumLinesCovered * 100 / (coverage.NumLinesCovered + coverage.NumLinesUncovered);
+          if (percent < 75){
+            // A trigger without any coverage blocks every deployment to production; below 50% coverage is a formality, not a safety net
+            let isTrigger = coverage.ApexClassOrTriggerId.startsWith("01q");
+            let priority = isTrigger && percent == 0 ? 1 : (percent < 50 ? 2 : 3);
+            let description = isTrigger && percent == 0
+              ? "This Apex trigger has no code coverage: Salesforce blocks any deployment to production while a trigger is at 0%."
+              : `This Apex ${isTrigger ? "trigger" : "class"} has a code coverage of ${Math.floor(percent)}%, below the 75% required to deploy to production. Consider improving its tests.`;
+            logs.push({reference: coverage.ApexClassOrTrigger.Name, name: "Apex Class with poor code coverage", description, priority, setupLink: this.model.apexSetupLink(coverage.ApexClassOrTriggerId)});
           }
         }
         this.recordTable.addToTable(logs, {column: "priority"});
@@ -432,6 +457,83 @@ class ApexAnalyzer {
       }
     } catch (error) {
       console.error("Error analyzing Apex code patterns:", error);
+    }
+  }
+
+  async analyseOrgWideCoverage() {
+    const ruleName = "Org-wide code coverage below 75%";
+    let result = await this.model.queryAll("SELECT PercentCovered FROM ApexOrgWideCoverage", ruleName, {tooling: true});
+    let percent = result.rows[0]?.PercentCovered;
+    if (percent == null || percent >= 75) {
+      return;
+    }
+    this.model.addResults([{
+      reference: "Org-wide coverage: " + percent + "%",
+      name: ruleName,
+      // Covered lines over total lines: a class average would hide one huge uncovered class behind many small covered ones
+      description: `The org-wide code coverage is ${percent}% of the Apex lines: Salesforce requires 75% to deploy to production. The value comes from the last test runs: run all the tests to get an accurate value.`,
+      priority: 1,
+      setupLink: this.model.setupLink("/lightning/setup/ApexClasses/home")
+    }]);
+  }
+
+  async analyseTriggers(inactiveTriggerRule, severalTriggersRule) {
+    let result = await this.model.queryAll("SELECT Id, Name, TableEnumOrId, Status FROM ApexTrigger WHERE NamespacePrefix = null", "Inactive Apex trigger");
+    let logs = [];
+    let activeByObject = new Map();
+    for (let trigger of result.rows) {
+      if (trigger.Status == "Inactive") {
+        if (inactiveTriggerRule) {
+          logs.push({
+            reference: trigger.Name + " (" + trigger.TableEnumOrId + ")",
+            name: "Inactive Apex trigger",
+            description: "This trigger is inactive: it does nothing, but it still needs test coverage to deploy and it confuses anyone reading the object. Delete it if it is no longer needed.",
+            priority: 4,
+            setupLink: this.model.apexSetupLink(trigger.Id)
+          });
+        }
+      } else if (trigger.Status == "Active" && trigger.TableEnumOrId) {
+        let names = activeByObject.get(trigger.TableEnumOrId) || [];
+        names.push(trigger.Name);
+        activeByObject.set(trigger.TableEnumOrId, names);
+      }
+    }
+    if (severalTriggersRule) {
+      for (let [objectName, names] of activeByObject) {
+        if (names.length < 2) {
+          continue;
+        }
+        logs.push({
+          reference: objectName,
+          name: "Entity with several Apex triggers",
+          description: `This object has ${names.length} active Apex triggers (${names.join(", ")}). Salesforce does not guarantee their execution order: merge them into one trigger per object delegating to a handler class.`,
+          priority: 3,
+          setupLink: this.model.objectSetupLink(objectName, "ApexTriggers")
+        });
+      }
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseComponentApiVersions() {
+    const ruleName = "Component with old API Version";
+    // Same thresholds as "Apex Class with old API Version", for the other code components
+    let components = [
+      {type: "Apex trigger", query: "SELECT Id, Name, ApiVersion FROM ApexTrigger WHERE NamespacePrefix = null AND ApiVersion < 50", link: c => this.model.apexSetupLink(c.Id)},
+      {type: "Visualforce page", query: "SELECT Id, Name, ApiVersion FROM ApexPage WHERE NamespacePrefix = null AND ApiVersion < 50", link: c => this.model.setupLink("/lightning/setup/ApexPages/page?address=%2F" + c.Id)},
+      {type: "Visualforce component", query: "SELECT Id, Name, ApiVersion FROM ApexComponent WHERE NamespacePrefix = null AND ApiVersion < 50", link: c => this.model.setupLink("/lightning/setup/ApexComponents/page?address=%2F" + c.Id)},
+      {type: "Aura component", query: "SELECT Id, DeveloperName, ApiVersion FROM AuraDefinitionBundle WHERE NamespacePrefix = null AND ApiVersion < 50", link: () => this.model.setupLink("/lightning/setup/LightningComponentBundles/home")},
+      {type: "Lightning web component", query: "SELECT Id, DeveloperName, ApiVersion FROM LightningComponentBundle WHERE NamespacePrefix = null AND ApiVersion < 50", link: () => this.model.setupLink("/lightning/setup/LightningComponentBundles/home")},
+    ];
+    for (let component of components) {
+      let result = await this.model.queryAll(component.query, ruleName, {tooling: true});
+      this.model.addResults(result.rows.map(c => ({
+        reference: c.Name || c.DeveloperName,
+        name: ruleName,
+        description: `This ${component.type} is using an old API version (${c.ApiVersion}). Its behavior depends on this version: update it to a recent version and test it.`,
+        priority: c.ApiVersion < 30 ? 1 : (c.ApiVersion < 40 ? 2 : 3),
+        setupLink: component.link(c)
+      })));
     }
   }
 }
@@ -1055,6 +1157,20 @@ class AutomationAnalyzer {
     let processBuilderRule = this.model.isRuleEnable("Process Builder to migrate to Flow");
     let workflowRule = this.model.isRuleEnable("Workflow Rule to migrate to Flow");
     let flowOldApiVersionRule = this.model.isRuleEnable("Flow with old API Version");
+    for (let [ruleName, analyse] of [
+      ["Flow close to the version limit", () => this.analyseFlowVersions()],
+      ["Inactive validation rule", () => this.analyseInactiveValidationRules()],
+    ]) {
+      if (!this.model.isRuleEnable(ruleName)) {
+        continue;
+      }
+      try {
+        await analyse();
+      } catch (error) {
+        console.error(ruleName, error);
+        this.model.reportRuleFailure(ruleName, error.message);
+      }
+    }
     if (!processBuilderRule && !workflowRule && !flowOldApiVersionRule) {
       return;
     }
@@ -1136,6 +1252,53 @@ class AutomationAnalyzer {
     } catch (error) {
       console.error("Error analyzing Process Builder, Workflow Rules and Flows:", error);
     }
+  }
+
+  async analyseFlowVersions() {
+    const ruleName = "Flow close to the version limit";
+    // A flow can have at most 50 versions, and old versions are never deleted automatically
+    const maxVersions = 50;
+    let result = await this.model.queryAll("SELECT DefinitionId, Definition.DeveloperName, Definition.NamespacePrefix, Status FROM Flow", ruleName, {tooling: true});
+    let byDefinition = new Map();
+    for (let flow of result.rows) {
+      if (flow.Definition?.NamespacePrefix) {
+        continue;
+      }
+      let stats = byDefinition.get(flow.DefinitionId) || {name: flow.Definition?.DeveloperName || flow.DefinitionId, versions: 0, obsolete: 0};
+      stats.versions++;
+      if (flow.Status == "Obsolete" || flow.Status == "InvalidDraft") {
+        stats.obsolete++;
+      }
+      byDefinition.set(flow.DefinitionId, stats);
+    }
+    let logs = [];
+    for (let [definitionId, stats] of byDefinition) {
+      let ratio = stats.versions / maxVersions;
+      if (ratio < limitWarningRatio) {
+        continue;
+      }
+      logs.push({
+        reference: stats.name,
+        name: ruleName,
+        description: `This flow has ${stats.versions} of the ${maxVersions} versions allowed, ${stats.obsolete} of them obsolete or invalid. Once the limit is reached no new version can be saved: delete the old versions (e.g. with "Clear old flow versions" in the Inspector popup, on the flow).`,
+        priority: limitPriority(ratio),
+        setupLink: this.model.setupLink("/lightning/setup/Flows/page?address=%2F" + definitionId)
+      });
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseInactiveValidationRules() {
+    const ruleName = "Inactive validation rule";
+    let result = await this.model.queryAll("SELECT Id, ValidationName, EntityDefinitionId FROM ValidationRule WHERE Active = false AND NamespacePrefix = null", ruleName, {tooling: true});
+    let entityName = await this.model.resolveEntityNames(result.rows.map(rule => rule.EntityDefinitionId), ruleName);
+    this.model.addResults(result.rows.map(rule => ({
+      reference: entityName(rule.EntityDefinitionId) + "." + rule.ValidationName,
+      name: ruleName,
+      description: "This validation rule is inactive: it does nothing except mislead the next person reading the object. Delete it if it is no longer needed.",
+      priority: 5,
+      setupLink: this.model.objectSetupLink(rule.EntityDefinitionId, "ValidationRules/" + rule.Id)
+    })));
   }
 }
 
@@ -1405,6 +1568,355 @@ class EntityAnalyzer {
     }
   }
 }
+// Share of a limit used: from 70% it is worth knowing, from 90% the headroom is smaller than a busy day
+const limitWarningRatio = 0.7;
+const limitCriticalRatio = 0.9;
+function limitPriority(ratio) {
+  if (ratio >= 1) {
+    return 1;
+  }
+  return ratio >= limitCriticalRatio ? 2 : 3;
+}
+function formatPercent(ratio) {
+  return Math.round(ratio * 100) + "%";
+}
+function formatDate(value) {
+  return value ? new Date(value).toLocaleDateString() : "N/A";
+}
+
+class OperationsAnalyzer {
+  constructor(model) {
+    this.model = model;
+  }
+  async analyse() {
+    let rules = [
+      ["Org limit near maximum", () => this.analyseOrgLimits()],
+      ["Async Apex job failures", () => this.analyseAsyncJobs()],
+      ["Scheduled job in error", () => this.analyseScheduledJobs()],
+      ["Paused flow interviews", () => this.analysePausedInterviews()],
+      ["License near saturation", () => this.analyseLicenseUsage()],
+      ["License expiring soon", () => this.analyseLicenseExpiration()],
+    ];
+    for (let [ruleName, analyse] of rules) {
+      if (!this.model.isRuleEnable(ruleName)) {
+        continue;
+      }
+      try {
+        await analyse();
+      } catch (error) {
+        console.error(ruleName, error);
+        this.model.reportRuleFailure(ruleName, error.message);
+      }
+    }
+  }
+
+  async analyseOrgLimits() {
+    const ruleName = "Org limit near maximum";
+    // A limit with a tiny maximum (e.g. 1 or 2) swings from 0% to 100% with a single operation: noise, not health
+    const minimumMax = 5;
+    let limits = await sfConn.rest("/services/data/v" + apiVersion + "/limits");
+    let logs = [];
+    for (let [name, limit] of Object.entries(limits)) {
+      if (!limit || !(limit.Max >= minimumMax)) {
+        continue;
+      }
+      let ratio = (limit.Max - limit.Remaining) / limit.Max;
+      if (ratio < limitWarningRatio) {
+        continue;
+      }
+      let isStorage = name == "DataStorageMB" || name == "FileStorageMB";
+      logs.push({
+        reference: name,
+        name: ruleName,
+        description: `${formatPercent(ratio)} of this limit is used (${limit.Max - limit.Remaining} / ${limit.Max}). ` + (isStorage
+          ? "Once the storage is full, records or files can no longer be created: delete or archive data, or buy more storage."
+          : "When it is reached, the operations counted by this limit fail until it resets: find which integration or process consumes it."),
+        priority: limitPriority(ratio),
+        setupLink: this.model.setupLink(isStorage ? "/lightning/setup/CompanyResourceDisk/home" : "/lightning/setup/SystemOverview/home")
+      });
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseAsyncJobs() {
+    const ruleName = "Async Apex job failures";
+    // A failure rate, not a count: 10 failures out of 10 jobs is not the same org as 10 out of 10,000.
+    // BatchApexWorker (one row per batch chunk) is excluded, the parent BatchApex job reports the errors.
+    let query = "SELECT ApexClass.Name className, Status, COUNT(Id) jobs, SUM(NumberOfErrors) errors FROM AsyncApexJob"
+      + " WHERE CreatedDate = LAST_N_DAYS:7 AND JobType IN ('BatchApex', 'Future', 'Queueable', 'ScheduledApex')"
+      + " GROUP BY ApexClass.Name, Status";
+    let result = await this.model.queryAll(query, ruleName);
+    let byClass = new Map();
+    for (let row of result.rows) {
+      let stats = byClass.get(row.className) || {jobs: 0, failed: 0, batchErrors: 0};
+      stats.jobs += row.jobs;
+      if (row.Status == "Failed") {
+        stats.failed += row.jobs;
+      }
+      stats.batchErrors += row.errors || 0;
+      byClass.set(row.className, stats);
+    }
+    let logs = [];
+    for (let [className, stats] of byClass) {
+      if (stats.failed == 0 && stats.batchErrors == 0) {
+        continue;
+      }
+      let failureRatio = stats.failed / stats.jobs;
+      logs.push({
+        reference: className || "(unknown class)",
+        name: ruleName,
+        description: `In the last 7 days, ${stats.failed} of the ${stats.jobs} jobs of this class failed (${formatPercent(failureRatio)})`
+          + (stats.batchErrors ? ` and its batches reported ${stats.batchErrors} failed chunks` : "")
+          + ". Check the error of the failed jobs in Apex Jobs.",
+        priority: failureRatio >= 0.5 ? 2 : 3,
+        setupLink: this.model.setupLink("/lightning/setup/AsyncApexJobs/home")
+      });
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseScheduledJobs() {
+    const ruleName = "Scheduled job in error";
+    let query = "SELECT Id, CronJobDetail.Name, CronJobDetail.JobType, State, PreviousFireTime, NextFireTime FROM CronTrigger WHERE State IN ('ERROR', 'BLOCKED', 'PAUSED_BLOCKED')";
+    let result = await this.model.queryAll(query, ruleName);
+    let logs = result.rows.map(job => ({
+      reference: job.CronJobDetail?.Name || job.Id,
+      name: ruleName,
+      description: job.State == "ERROR"
+        ? `This scheduled job is in error and will not run again. Last run: ${formatDate(job.PreviousFireTime)}. Fix the cause and schedule it again.`
+        : `This scheduled job is blocked (${job.State}): it waits for another job of the same class to finish. Last run: ${formatDate(job.PreviousFireTime)}.`,
+      priority: job.State == "ERROR" ? 2 : 3,
+      setupLink: this.model.setupLink("/lightning/setup/ScheduledJobs/home")
+    }));
+    this.model.addResults(logs);
+  }
+
+  async analysePausedInterviews() {
+    const ruleName = "Paused flow interviews";
+    // A few paused interviews are normal (screen flows resumed later, waits). Hundreds mean users abandon
+    // a screen flow or a resume condition never happens.
+    const warningCount = 50;
+    const highCount = 500;
+    let count = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT COUNT() FROM FlowInterview WHERE InterviewStatus = 'Paused'"));
+    if (count.totalSize < warningCount) {
+      return;
+    }
+    let oldest = await sfConn.rest("/services/data/v" + apiVersion + "/query/?q=" + encodeURIComponent("SELECT CreatedDate FROM FlowInterview WHERE InterviewStatus = 'Paused' ORDER BY CreatedDate LIMIT 1"));
+    this.model.addResults([{
+      reference: count.totalSize + " paused interviews",
+      name: ruleName,
+      description: `${count.totalSize} flow interviews are paused, the oldest since ${formatDate(oldest.records[0]?.CreatedDate)}. Each one is a flow run that started and never finished: check whether users abandon a screen flow or a resume event never happens, then delete the obsolete ones.`,
+      priority: count.totalSize >= highCount ? 3 : 4,
+      setupLink: this.model.setupLink("/lightning/setup/Pausedflows/home")
+    }]);
+  }
+
+  async analyseLicenseUsage() {
+    const ruleName = "License near saturation";
+    let logs = [];
+    let addLicense = (reference, kind, used, total, setupPath) => {
+      if (!(total > 0)) {
+        return; // 0 or -1 (site license): nothing to saturate
+      }
+      let ratio = used / total;
+      if (ratio < limitCriticalRatio) {
+        return;
+      }
+      logs.push({
+        reference,
+        name: ruleName,
+        description: `${used} of the ${total} ${kind} licenses are assigned (${formatPercent(ratio)}). The next users to onboard will wait for a purchase: reclaim the licenses of inactive users or buy more.`,
+        priority: ratio >= 1 ? 3 : 4,
+        setupLink: this.model.setupLink(setupPath)
+      });
+    };
+    let userLicenses = await this.model.queryAll("SELECT Name, TotalLicenses, UsedLicenses FROM UserLicense WHERE Status = 'Active'", ruleName);
+    for (let license of userLicenses.rows) {
+      addLicense(license.Name, "user", license.UsedLicenses, license.TotalLicenses, "/lightning/setup/CompanyProfileInfo/home");
+    }
+    let permissionSetLicenses = await this.model.queryAll("SELECT MasterLabel, TotalLicenses, UsedLicenses FROM PermissionSetLicense WHERE Status = 'Active'", ruleName);
+    for (let license of permissionSetLicenses.rows) {
+      addLicense(license.MasterLabel, "permission set", license.UsedLicenses, license.TotalLicenses, "/lightning/setup/CompanyProfileInfo/home");
+    }
+    let packageLicenses = await this.model.queryAll("SELECT NamespacePrefix, AllowedLicenses, UsedLicenses FROM PackageLicense WHERE Status = 'Active'", ruleName);
+    for (let license of packageLicenses.rows) {
+      addLicense(license.NamespacePrefix, "package", license.UsedLicenses, license.AllowedLicenses, "/lightning/setup/ImportedPackage/home");
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseLicenseExpiration() {
+    const ruleName = "License expiring soon";
+    // Two months is enough notice to renew before anyone loses access
+    const expirationDays = 60;
+    let logs = [];
+    let addExpiration = (reference, kind, expirationDate, setupPath) => {
+      let daysLeft = Math.ceil((new Date(expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
+      logs.push({
+        reference,
+        name: ruleName,
+        description: daysLeft < 0
+          ? `This ${kind} license expired on ${formatDate(expirationDate)}.`
+          : `This ${kind} license expires on ${formatDate(expirationDate)} (in ${daysLeft} days): renew it before its users lose access.`,
+        priority: daysLeft < 15 ? 2 : 3,
+        setupLink: this.model.setupLink(setupPath)
+      });
+    };
+    let packageLicenses = await this.model.queryAll(`SELECT NamespacePrefix, ExpirationDate FROM PackageLicense WHERE Status = 'Active' AND ExpirationDate != null AND ExpirationDate <= NEXT_N_DAYS:${expirationDays}`, ruleName);
+    for (let license of packageLicenses.rows) {
+      addExpiration(license.NamespacePrefix, "package", license.ExpirationDate, "/lightning/setup/ImportedPackage/home");
+    }
+    let permissionSetLicenses = await this.model.queryAll(`SELECT MasterLabel, ExpirationDate FROM PermissionSetLicense WHERE Status = 'Active' AND ExpirationDate != null AND ExpirationDate <= NEXT_N_DAYS:${expirationDays}`, ruleName);
+    for (let license of permissionSetLicenses.rows) {
+      addExpiration(license.MasterLabel, "permission set", license.ExpirationDate, "/lightning/setup/CompanyProfileInfo/home");
+    }
+    this.model.addResults(logs);
+  }
+}
+
+class SecuritySignalsAnalyzer {
+  constructor(model) {
+    this.model = model;
+  }
+  async analyse() {
+    let rules = [
+      ["Security Health Check risk", () => this.analyseHealthCheck()],
+      ["Login with outdated TLS", () => this.analyseTlsLogins()],
+      ["Elevated permission granted by permission set", () => this.analyseElevatedPermissions()],
+      ["Object with public default sharing", () => this.analyseDefaultSharing()],
+    ];
+    for (let [ruleName, analyse] of rules) {
+      if (!this.model.isRuleEnable(ruleName)) {
+        continue;
+      }
+      try {
+        await analyse();
+      } catch (error) {
+        console.error(ruleName, error);
+        this.model.reportRuleFailure(ruleName, error.message);
+      }
+    }
+  }
+
+  async analyseHealthCheck() {
+    const ruleName = "Security Health Check risk";
+    let logs = [];
+    let setupLink = this.model.setupLink("/lightning/setup/HealthCheck/home");
+    let score = await this.model.queryAll("SELECT Score FROM SecurityHealthCheck", ruleName, {tooling: true});
+    let scoreValue = Number(score.rows[0]?.Score);
+    // At or above 80 nothing needs attention this week, below 55 something is wrong now
+    if (score.rows.length > 0 && scoreValue < 80) {
+      logs.push({
+        reference: "Health Check score: " + scoreValue,
+        name: ruleName,
+        description: `The Salesforce Security Health Check score of the org is ${scoreValue}/100 (measured by Salesforce against its baseline). Fix the high risk settings first.`,
+        priority: scoreValue < 55 ? 2 : 3,
+        setupLink
+      });
+    }
+    let risks = await this.model.queryAll("SELECT RiskType, Setting, SettingGroup, OrgValue, StandardValue FROM SecurityHealthCheckRisks", ruleName, {tooling: true});
+    for (let risk of risks.rows) {
+      if (risk.RiskType != "HIGH_RISK" && risk.RiskType != "MEDIUM_RISK") {
+        continue;
+      }
+      logs.push({
+        reference: (risk.SettingGroup ? risk.SettingGroup + ": " : "") + risk.Setting,
+        name: ruleName,
+        description: `${risk.RiskType == "HIGH_RISK" ? "High" : "Medium"} risk setting: the org value is "${risk.OrgValue}" while the Salesforce baseline is "${risk.StandardValue}".`,
+        priority: risk.RiskType == "HIGH_RISK" ? 2 : 3,
+        setupLink
+      });
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseTlsLogins() {
+    const ruleName = "Login with outdated TLS";
+    // Salesforce requires TLS 1.2: a login below it comes from a client that should no longer be able to connect
+    let query = "SELECT UserId, Application, TlsProtocol FROM LoginHistory WHERE LoginTime = LAST_N_DAYS:7 AND TlsProtocol IN ('TLS 1.0', 'TLS 1.1') ORDER BY LoginTime DESC LIMIT 2000";
+    let result = await this.model.queryAll(query, ruleName);
+    let byApplication = new Map();
+    for (let login of result.rows) {
+      let key = (login.Application || "Unknown application") + " (" + login.TlsProtocol + ")";
+      let stats = byApplication.get(key) || {logins: 0, users: new Set()};
+      stats.logins++;
+      stats.users.add(login.UserId);
+      byApplication.set(key, stats);
+    }
+    let logs = [...byApplication].map(([reference, stats]) => ({
+      reference,
+      name: ruleName,
+      description: `${stats.logins} logins of ${stats.users.size} user(s) in the last 7 days used an outdated TLS version. Salesforce requires TLS 1.2: upgrade this client or integration before it stops working.`,
+      priority: 2,
+      setupLink: this.model.setupLink("/lightning/setup/OrgLoginHistory/home")
+    }));
+    this.model.addResults(logs);
+  }
+
+  async analyseElevatedPermissions() {
+    const ruleName = "Elevated permission granted by permission set";
+    // Permissions that bypass every other control. Profiles are left to "Too many System Administrators":
+    // a permission set grants them outside of the profile, where they are easy to miss.
+    const permissions = [
+      {field: "PermissionsModifyAllData", label: "Modify All Data", priority: 2},
+      {field: "PermissionsViewAllData", label: "View All Data", priority: 2},
+      {field: "PermissionsManageUsers", label: "Manage Users", priority: 3},
+      {field: "PermissionsAuthorApex", label: "Author Apex", priority: 3},
+      {field: "PermissionsCustomizeApplication", label: "Customize Application", priority: 4},
+    ];
+    let query = "SELECT PermissionSetId, PermissionSet.Label, PermissionSet.Type, AssigneeId, " + permissions.map(p => "PermissionSet." + p.field).join(", ")
+      + " FROM PermissionSetAssignment WHERE Assignee.IsActive = true AND PermissionSet.IsOwnedByProfile = false AND ("
+      + permissions.map(p => "PermissionSet." + p.field + " = true").join(" OR ") + ")";
+    let result = await this.model.queryAll(query, ruleName);
+    let byPermissionSet = new Map();
+    for (let assignment of result.rows) {
+      let stats = byPermissionSet.get(assignment.PermissionSetId) || {permissionSet: assignment.PermissionSet, users: new Set()};
+      stats.users.add(assignment.AssigneeId);
+      byPermissionSet.set(assignment.PermissionSetId, stats);
+    }
+    let logs = [];
+    for (let [permissionSetId, stats] of byPermissionSet) {
+      let granted = permissions.filter(p => stats.permissionSet[p.field]);
+      let isGroup = stats.permissionSet.Type == "Group";
+      logs.push({
+        reference: stats.permissionSet.Label || permissionSetId,
+        name: ruleName,
+        description: `This permission set${isGroup ? " group" : ""} grants ${granted.map(p => p.label).join(", ")} to ${stats.users.size} active user(s). Check that each of them needs it, and prefer narrower permissions.`,
+        priority: Math.min(...granted.map(p => p.priority)),
+        setupLink: this.model.setupLink(isGroup ? "/lightning/setup/PermSetGroups/home" : "/lightning/setup/PermSets/page?address=%2F" + permissionSetId)
+      });
+    }
+    this.model.addResults(logs);
+  }
+
+  async analyseDefaultSharing() {
+    const ruleName = "Object with public default sharing";
+    const openModels = ["Read", "ReadWrite", "ReadWriteTransfer", "FullAccess"];
+    const modelLabels = {Read: "Public Read Only", ReadWrite: "Public Read/Write", ReadWriteTransfer: "Public Read/Write/Transfer", FullAccess: "Public Full Access"};
+    // EntityDefinition doesn't support queryMore: custom objects only, ordered to keep the result stable
+    let query = "SELECT DurableId, QualifiedApiName, InternalSharingModel, ExternalSharingModel FROM EntityDefinition WHERE IsCustomizable = true AND PublisherId != 'System' ORDER BY QualifiedApiName";
+    let result = await this.model.queryAll(query, ruleName, {tooling: true});
+    let logs = [];
+    for (let entity of result.rows) {
+      let externalOpen = openModels.includes(entity.ExternalSharingModel);
+      let internalOpen = openModels.includes(entity.InternalSharingModel);
+      if (!externalOpen && !internalOpen) {
+        continue;
+      }
+      logs.push({
+        reference: entity.QualifiedApiName,
+        name: ruleName,
+        description: externalOpen
+          ? `The external default access is ${modelLabels[entity.ExternalSharingModel]}: every external user (Experience Cloud, portal) can see its records. Make sure this was decided on purpose.`
+          : `The internal default access is ${modelLabels[entity.InternalSharingModel]}: every internal user can see its records. An open default is fine when decided on purpose, check it was.`,
+        priority: externalOpen ? 3 : 5,
+        setupLink: this.model.setupLink("/lightning/setup/SecuritySharing/home")
+      });
+    }
+    this.model.addResults(logs);
+  }
+}
+
 class Model {
   constructor(sfHost) {
     this.sfHost = sfHost;
@@ -1471,8 +1983,25 @@ class Model {
       {name: "Process Builder to migrate to Flow", category: "Automation & UI", selected: true, help: "Active Process Builder processes."},
       {name: "Workflow Rule to migrate to Flow", category: "Automation & UI", selected: true, help: "Non-managed Workflow Rules, active or not (the active flag can't be queried in bulk)."},
       {name: "Flow with old API Version", category: "Automation & UI", selected: true, help: "Active non-managed flows with an API version below 50 (higher priority below 40 and 30)."},
+      {name: "Flow close to the version limit", category: "Automation & UI", selected: true, help: "Non-managed flows using 70% or more of the 50 versions allowed (higher priority from 90%)."},
+      {name: "Inactive validation rule", category: "Automation & UI", selected: true, help: "Non-managed inactive validation rules."},
+      {name: "Org-wide code coverage below 75%", category: "Apex", selected: true, help: "Org-wide Apex code coverage (lines) below the 75% required to deploy to production, from the last test runs."},
+      {name: "Inactive Apex trigger", category: "Apex", selected: true, help: "Non-managed inactive Apex triggers."},
+      {name: "Entity with several Apex triggers", category: "Apex", selected: true, help: "Objects with more than one active non-managed Apex trigger: their execution order is not guaranteed."},
+      {name: "Component with old API Version", category: "Apex", selected: true, help: "Non-managed Apex triggers, Visualforce pages and components, Aura and Lightning web components with an API version below 50 (higher priority below 40 and 30)."},
+      {name: "Security Health Check risk", category: "Security", selected: true, help: "Security Health Check score below 80, and its high and medium risk settings."},
+      {name: "Login with outdated TLS", category: "Security", selected: true, help: "Logins of the last 7 days with TLS 1.0 or 1.1, by application (the last 2,000 such logins)."},
+      {name: "Elevated permission granted by permission set", category: "Security", selected: true, help: "Permission sets and groups granting Modify All Data, View All Data, Manage Users, Author Apex or Customize Application to active users."},
+      {name: "Object with public default sharing", category: "Security", selected: true, help: "Custom objects with a public internal (Info) or external default access."},
+      {name: "Org limit near maximum", category: "Limits & Operations", selected: true, help: "Org limits (API requests, storage, ...) used at 70% or more (higher priority from 90%), ignoring limits with a maximum below 5."},
+      {name: "Async Apex job failures", category: "Limits & Operations", selected: true, help: "Apex classes with failed batch, future, queueable or scheduled jobs, or failed batch chunks, in the last 7 days."},
+      {name: "Scheduled job in error", category: "Limits & Operations", selected: true, help: "Scheduled jobs in error or blocked."},
+      {name: "Paused flow interviews", category: "Limits & Operations", selected: true, help: "50 paused flow interviews or more (higher priority from 500)."},
+      {name: "License near saturation", category: "Limits & Operations", selected: true, help: "User, permission set and package licenses assigned at 90% or more."},
+      {name: "License expiring soon", category: "Limits & Operations", selected: true, help: "Package and permission set licenses expiring within 60 days."},
     ];
     this.loadRuleSelection();
+    this.rulesCollapsed = localStorage.getItem(rulesCollapsedStorageKey) == "true";
   }
   applyResultFilter() {
     let filters = [];
@@ -1496,6 +2025,14 @@ class Model {
       }
     } catch (e) {
       console.warn("Could not load the org analyzer rule selection", e);
+    }
+  }
+  setRulesCollapsed(collapsed) {
+    this.rulesCollapsed = collapsed;
+    try {
+      localStorage.setItem(rulesCollapsedStorageKey, collapsed ? "true" : "false");
+    } catch (e) {
+      console.warn("Could not save the org analyzer rules state", e);
     }
   }
   saveRuleSelection() {
@@ -1617,11 +2154,43 @@ class Model {
     this.recordTable.addToTable([{reference: ruleName, name: "Rule failed", description: "This rule could not be evaluated, its result is incomplete: " + message, priority: 1}], {column: "priority"});
     this.resultTableModel.dataChange(this.recordTable);
   }
+  // Run a REST or Tooling query with all its batches. A failed query is reported as a "Rule failed" result
+  // and returns {rows: [], failed: true}, so the caller can skip conclusions drawn from an empty result.
+  async queryAll(soql, ruleName, {tooling = false} = {}) {
+    let result = {rows: []};
+    await this.batchHandler(sfConn.rest("/services/data/v" + apiVersion + (tooling ? "/tooling" : "") + "/query/?q=" + encodeURIComponent(soql), {}), result, ruleName)
+      .catch(error => {
+        console.error(error);
+        result.failed = true;
+      });
+    return result;
+  }
+  addResults(logs) {
+    if (logs.length == 0) {
+      return;
+    }
+    this.recordTable.addToTable(logs, {column: "priority"});
+    this.resultTableModel.dataChange(this.recordTable);
+    this.didUpdate();
+  }
+  // EntityDefinitionId of ValidationRule & co is the API name for standard objects and the 01I id for custom ones
+  async resolveEntityNames(entityIds, ruleName) {
+    let names = new Map();
+    let customIds = [...new Set(entityIds.filter(id => id && id.startsWith("01I")).map(id => id.substring(0, 15)))];
+    for (let index = 0; index < customIds.length; index += 200) {
+      let ids = customIds.slice(index, index + 200).map(id => "'" + id + "'").join(", ");
+      let result = await this.queryAll("SELECT DurableId, QualifiedApiName FROM EntityDefinition WHERE DurableId IN (" + ids + ")", ruleName, {tooling: true});
+      for (let entity of result.rows) {
+        names.set(entity.DurableId.substring(0, 15), entity.QualifiedApiName);
+      }
+    }
+    return id => (id && id.startsWith("01I") ? names.get(id.substring(0, 15)) || id : id);
+  }
   async startAnalyze(){
     //this.logs = [];
     this.analyzeStatus = "Running";
     this.progressCurrent = 0;
-    this.progressTotal = 6; // Total number of analyzers
+    this.progressTotal = 8; // Total number of analyzers
     this.progressCurrentStep = "";
     this.apiUsage = null;
     this.didUpdate();
@@ -1663,6 +2232,18 @@ class Model {
     this.didUpdate();
     await analyser.analyse();
 
+    analyser = new SecuritySignalsAnalyzer(this);
+    this.progressCurrentStep = "Analyzing Security Signals...";
+    this.progressCurrent = 7;
+    this.didUpdate();
+    await analyser.analyse();
+
+    analyser = new OperationsAnalyzer(this);
+    this.progressCurrentStep = "Analyzing Limits & Operations...";
+    this.progressCurrent = 8;
+    this.didUpdate();
+    await analyser.analyse();
+
     // Org-wide counter: other integrations running meanwhile are counted too
     let apiRequestsAfter = await this.getDailyApiRequests();
     if (apiRequestsBefore && apiRequestsAfter) {
@@ -1692,7 +2273,8 @@ class Model {
 let h = React.createElement;
 
 const unselectedRulesStorageKey = "orgAnalyzerUnselectedRules";
-const ruleCategories = ["Objects & Fields", "Security", "Apex", "Users", "Automation & UI"];
+const rulesCollapsedStorageKey = "orgAnalyzerRulesCollapsed";
+const ruleCategories = ["Objects & Fields", "Security", "Apex", "Users", "Automation & UI", "Limits & Operations"];
 const priorityLabels = {1: "Critical", 2: "High", 3: "Medium", 4: "Low", 5: "Info"};
 const priorityColors = {1: "#f9d2cf", 2: "#fde0c5", 3: "#fff1c2", 4: "#dcecf9", 5: "#eeeeee"};
 
@@ -1700,6 +2282,7 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.onStartClick = this.onStartClick.bind(this);
+    this.onToggleRules = this.onToggleRules.bind(this);
     this.onStopAnalyze = this.onStopAnalyze.bind(this);
     this.onSelectPriorityFilter = this.onSelectPriorityFilter.bind(this);
     this.onSelectRuleFilter = this.onSelectRuleFilter.bind(this);
@@ -1715,7 +2298,14 @@ class App extends React.Component {
   }
   onStartClick() {
     let {model} = this.props;
+    // Fold the rules to give the room to the results
+    model.setRulesCollapsed(true);
     model.startAnalyze();
+  }
+  onToggleRules() {
+    let {model} = this.props;
+    model.setRulesCollapsed(!model.rulesCollapsed);
+    model.didUpdate();
   }
   onStopAnalyze() {
     let {model} = this.props;
@@ -1786,8 +2376,12 @@ class App extends React.Component {
               )
             )
           ),
-          h("h1", {}, "Rules"),
-          h("div", {},
+          h("button", {className: "rules-toggle", onClick: this.onToggleRules, "aria-expanded": !model.rulesCollapsed, title: model.rulesCollapsed ? "Show the rules" : "Hide the rules"},
+            h("span", {className: "rules-toggle-icon" + (model.rulesCollapsed ? "" : " rules-toggle-open")}, "▶"),
+            h("h1", {}, "Rules"),
+            h("span", {className: "rules-count"}, `${model.rules.filter(rule => rule.selected).length} / ${model.rules.length} selected`)
+          ),
+          h("div", {hidden: model.rulesCollapsed},
             h("span", {}, "Select the rules you want to run: "),
             h("label", {},
               h("input", {type: "checkbox", className: "checkbox-control", ref: "selectref", checked: selectAllChecked, onChange: this.onSelectAllChange}),
