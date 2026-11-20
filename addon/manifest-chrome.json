@@ -94,7 +94,8 @@
       ],
       "js": [
         "button.js",
-        "inspect-inline.js"
+        "inspect-inline.js",
+        "formula-inline.js"
       ]
     }
   ],

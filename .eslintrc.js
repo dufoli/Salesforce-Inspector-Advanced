@@ -22,6 +22,7 @@ module.exports = {
         "addon/background.js",
         "addon/button.js",
         "addon/inspect-inline.js",
+        "addon/formula-inline.js",
         // React cannot be loaded as modules yet. See https://github.com/facebook/react/issues/10021 and https://github.com/facebook/react/issues/11503
         "addon/react-dom.js",
         "addon/react-dom.min.js",

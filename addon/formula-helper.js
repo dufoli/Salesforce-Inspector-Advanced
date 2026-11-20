@@ -1,5 +1,5 @@
 /* global React ReactDOM */
-import {sfConn} from "./inspector.js";
+import {sfConn, apiVersion} from "./inspector.js";
 import {SfHomeLink} from "./page-header.js";
 /* global initButton */
 import {DescribeInfo, copyToClipboard} from "./data-load.js";
@@ -53,9 +53,21 @@ const FORMULA_KEYWORD_COLOR = new Map([
   ["null", "blue"],
 ]);
 
+// Matches a 15/18 chars Salesforce id with the custom object key prefix (01I).
+const CUSTOM_OBJECT_ID = /^01I[a-zA-Z0-9]{12}([a-zA-Z0-9]{3})?$/;
+// Tooling sobjects that carry the object a formula belongs to, by record key prefix.
+const FORMULA_OWNER_BY_PREFIX = {"00N": "CustomField", "03d": "ValidationRule"};
+
 class Model {
-  constructor(sfHost, initialFormula) {
+  // embedded: true when hosted in an iframe on a native Salesforce formula page (see
+  // formula-inline.js); the formula is then exchanged with the parent page via postMessage.
+  constructor(sfHost, initialFormula, {embedded = false} = {}) {
     this.sfHost = sfHost;
+    this.embedded = embedded;
+    // In embedded mode, never push a value to the parent before having received its formula,
+    // otherwise the editor's initial empty value would wipe the native textarea.
+    this.parentFormulaReceived = false;
+    this.applyingParentFormula = false;
     this.reactCallback = null;
     this.spinnerCount = 0;
     this.errorMessages = [];
@@ -127,6 +139,56 @@ class Model {
     this.didUpdate();
   }
 
+  // Embedded mode: turns the hints scraped from the native page (an object API name, a custom
+  // object id, or the id of the field / validation rule being edited) into an object API name.
+  // Best effort: on failure the object stays empty and the user can pick it in the toolbar.
+  async resolveObject(objectHint, recordId) {
+    let toolingQuery = async soql => {
+      let res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(soql));
+      return res.records && res.records[0];
+    };
+    try {
+      if (objectHint && !CUSTOM_OBJECT_ID.test(objectHint)) {
+        this.setObject(objectHint);
+        return;
+      }
+      let record = null;
+      if (objectHint) {
+        record = await toolingQuery("SELECT QualifiedApiName FROM EntityDefinition WHERE DurableId = '" + objectHint + "'");
+        record = record && {EntityDefinition: record};
+      } else if (recordId && FORMULA_OWNER_BY_PREFIX[recordId.slice(0, 3)]) {
+        record = await toolingQuery("SELECT EntityDefinition.QualifiedApiName FROM " + FORMULA_OWNER_BY_PREFIX[recordId.slice(0, 3)] + " WHERE Id = '" + recordId + "'");
+      }
+      if (record && record.EntityDefinition && record.EntityDefinition.QualifiedApiName) {
+        this.setObject(record.EntityDefinition.QualifiedApiName);
+      }
+    } catch (err) {
+      console.error("Unable to resolve the formula object", err);
+    }
+  }
+
+  // Embedded mode: formula received from the native textarea (initial value, or changed by the
+  // native Insert Field / Insert Operator buttons).
+  setFormulaFromParent(value) {
+    this.parentFormulaReceived = true;
+    if (!this.editor) {
+      this.initialScript = value;
+      return;
+    }
+    if (this.editor.value == value) {
+      return;
+    }
+    this.applyingParentFormula = true;
+    try {
+      this.editor.value = value;
+      this.editHistory.record();
+      this.onFormulaChanged(value);
+    } finally {
+      this.applyingParentFormula = false;
+    }
+    this.didUpdate();
+  }
+
   objectOptions() {
     let {globalStatus, globalDescribe} = this.describeInfo.describeGlobal(false);
     if (globalStatus != "ready") {
@@ -142,7 +204,7 @@ class Model {
     editor.value = this.initialScript;
     this.editHistory.attach(editor);
     this.initialScript = null;
-    this.recomputeProblems(editor.value);
+    this.onFormulaChanged(editor.value);
   }
 
   recalculateSize() {
@@ -153,25 +215,25 @@ class Model {
     if (this.editor) {
       this.editor.setRangeText(value, selectionStart, selectionEnd, mode);
       this.editHistory.record();
-      this.recomputeProblems(this.editor.value);
+      this.onFormulaChanged(this.editor.value);
     }
   }
 
   undoEdit() {
     if (this.editHistory.undo()) {
-      this.recomputeProblems(this.editor.value);
+      this.onFormulaChanged(this.editor.value);
     }
   }
 
   redoEdit() {
     if (this.editHistory.redo()) {
-      this.recomputeProblems(this.editor.value);
+      this.onFormulaChanged(this.editor.value);
     }
   }
 
   handleEditorChange(mergeTyping) {
     this.editHistory.record(mergeTyping);
-    this.recomputeProblems(this.editor.value);
+    this.onFormulaChanged(this.editor.value);
   }
 
   showSuggestion(force) {
@@ -268,8 +330,11 @@ class Model {
 
   // --- Problems (real-time client-side checks) ---
 
-  recomputeProblems(value) {
+  onFormulaChanged(value) {
     this.problems = analyzeFormula(tokenize(value));
+    if (this.embedded && this.parentFormulaReceived && !this.applyingParentFormula) {
+      parent.postMessage({insextFormulaChange: value}, "*");
+    }
   }
 
   selectProblem(problem) {
@@ -427,7 +492,7 @@ class Model {
     this.editor.focus();
     this.editor.setRangeText(formatted, 0, this.editor.value.length, "end");
     this.editHistory.record();
-    this.recomputeProblems(this.editor.value);
+    this.onFormulaChanged(this.editor.value);
     this.didUpdate();
   }
 
@@ -565,8 +630,8 @@ class App extends React.Component {
   render() {
     let {vm} = this.props;
     document.title = vm.title();
-    return h("div", {},
-      h("div", {className: "object-bar"},
+    return h("div", {className: vm.embedded ? "embedded" : ""},
+      vm.embedded ? null : h("div", {className: "object-bar"},
         h("img", {id: "spinner", src: SPINNER_GIF, hidden: vm.spinnerCount == 0}),
         h(SfHomeLink, {sfHost: vm.sfHost}),
         h("h1", {}, "Formula Helper")
@@ -578,7 +643,8 @@ class App extends React.Component {
           h("input", {id: "formula-object", list: "formula-object-list", value: vm.selectedObject, placeholder: "e.g. Account", onChange: e => vm.setObject(e.target.value)}),
           h("datalist", {id: "formula-object-list"}, vm.objectOptions().map(o => h("option", {value: o.name, key: o.name}))),
           h("button", {onClick: () => vm.formatCurrentFormula(), disabled: vm.problems.some(p => p.blocking), title: "Pretty-print the formula"}, "Format"),
-          h("button", {onClick: () => vm.copyResult()}, vm.copyStatus || "Copy result"),
+          vm.embedded ? null : h("button", {onClick: () => vm.copyResult()}, vm.copyStatus || "Copy result"),
+          vm.embedded ? h("img", {className: "embedded-spinner", src: SPINNER_GIF, hidden: vm.spinnerCount == 0}) : null,
           h("button", {onClick: this.onGenerateWithAI, title: "Generate formula with AI", className: "ai-generate-btn"}, "🤖 Generate with AI")
         ),
         h(Editor, {model: vm, keywordColor: FORMULA_KEYWORD_COLOR, keywordCaseSensitive: false, stringDelimiter: "\"", enableComments: false}),
@@ -641,14 +707,30 @@ class App extends React.Component {
 {
   let args = new URLSearchParams(location.search.slice(1));
   let sfHost = args.get("host");
-  initButton(sfHost, true);
+  let embedded = args.get("embedded") == "1";
+  if (!embedded) {
+    initButton(sfHost, true);
+  }
   sfConn.getSession(sfHost).then(() => {
     let root = document.getElementById("root");
-    let vm = new Model(sfHost, args.get("formula") || DEFAULT_FORMULA);
+    let vm = new Model(sfHost, embedded ? "" : args.get("formula") || DEFAULT_FORMULA, {embedded});
     vm.reactCallback = cb => {
       ReactDOM.render(h(App, {vm}), root, cb);
     };
-    ReactDOM.render(h(App, {vm}), root);
+    if (embedded) {
+      // The parent (formula-inline.js) answers with the native textarea value, see setFormulaFromParent.
+      addEventListener("message", e => {
+        if (e.source == parent && typeof e.data.insextFormulaSet == "string") {
+          vm.setFormulaFromParent(e.data.insextFormulaSet);
+        }
+      });
+    }
+    ReactDOM.render(h(App, {vm}), root, () => {
+      if (embedded) {
+        parent.postMessage({insextFormulaReady: true}, "*");
+        vm.resolveObject(args.get("object"), args.get("recordId"));
+      }
+    });
   });
 
   {

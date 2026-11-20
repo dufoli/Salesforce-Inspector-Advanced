@@ -471,3 +471,25 @@ body {
   font-style: italic;
   text-align: center;
 }
+
+/*******************************************
+* Embedded mode (iframe on a native SF     *
+* formula page, see formula-inline.js)     *
+*******************************************/
+.embedded .body {
+  padding: 4px;
+}
+.embedded .formula-toolbar {
+  margin-bottom: 4px;
+}
+.embedded .embedded-spinner {
+  width: 16px;
+  height: 16px;
+}
+.embedded .editor_textarea {
+  min-width: 0;
+  width: 100%;
+}
+.embedded .problems-panel ul {
+  max-height: 80px;
+}

@@ -1,5 +1,5 @@
 /* exported initButton */
-/* global showStdPageDetails */
+/* global showStdPageDetails initFormulaEditor */
 "use strict";
 
 
@@ -18,6 +18,7 @@ if (document.querySelector("body.sfdcBody, body.ApexCSIPage, #auraLoadingBox, #s
   currentBrowser.runtime.sendMessage({message: "getSfHost", url: location.href}, sfHost => {
     if (sfHost) {
       initButton(sfHost, false);
+      initFormulaEditor(sfHost);
     }
   });
 }
