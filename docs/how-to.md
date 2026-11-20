@@ -4,6 +4,8 @@
 
 Click the extension button in the browser toolbar to open the list of your saved orgs:
 
+![Org launcher](screenshots/org-launcher.png)
+
 - Type in the search box to filter by name, URL or username, use the arrow keys to select an org and Enter to open it.
 - Click an org to open its login page in a new tab. If a username is saved, it is prefilled on the login page.
 - Click `+` to add an org: a name, the org URL (e.g. `https://mydomain.my.salesforce.com`, `https://login.salesforce.com` or `https://test.salesforce.com`) and an optional username. When the current tab is a Salesforce org, its URL is prefilled, otherwise use "Use current tab". Lightning, Visualforce and Setup URLs are converted to the My Domain URL.
@@ -497,4 +499,14 @@ A standalone tool for writing and cleaning up Salesforce formulas: syntax highli
 
 ### Salesforce Inspector Advanced Editor directly in Setup
 
-On the Setup page of a formula field or a validation rule, a **Salesforce Inspector Advanced Editor** toggle is shown above the native formula textarea. Switch it on to replace the textarea with the Formula Helper editor (syntax highlighting, `Ctrl+Space` autocompletion, Problems panel, Format and AI generation); switch it off to go back to the native textarea. The toggle is off by default and its state is remembered for the next formula pages. The object is detected from the page when possible (otherwise pick it in the editor toolbar). Every change is written back to the native textarea, so Salesforce's **Check Syntax** and **Save** buttons work as usual, and the native **Insert Field** / **Insert Operator** buttons keep working too. If another formula editor was added to the page (e.g. by another extension), it is hidden when this editor is switched on, and the formula saved is always the one of the visible editor.
+You can use the Formula Helper editor directly on the Setup page of a formula field or a validation rule, without copying and pasting.
+
+![Formula editor in Setup](screenshots/formula_inplace_editor.png)
+
+- A **Salesforce Inspector Advanced Editor** toggle is shown above the native formula textarea. Switch it on to replace the textarea with the Formula Helper editor; switch it off to go back to the native textarea. The toggle is off by default and its state is remembered for the next formula pages.
+- **Object**: the object of the formula is detected from the page when possible (`Contact` in the screenshot); otherwise type it in this field. It drives the field autocompletion, including relationship fields such as `Account.Name`.
+- **Autocompletion**: functions (marked with `Σ`), operators and fields are suggested as you type, or with `Ctrl+Space` depending on the editor suggestions option.
+- **Problems** panel: errors are listed as you type, with their line and column, e.g. a missing argument before `)` or `IF() expects 3 argument(s), got 2` for an incomplete `IF(ISBLANK(Account.Name), )`. Click a problem to jump to it.
+- **Format** pretty-prints a nested formula, and **Generate with AI** writes a formula from a description.
+- Every change is written back to the native textarea, so Salesforce's **Check Syntax** and **Save** buttons work as usual, and the native **Insert Field** / **Insert Operator** buttons keep working too. Use **Check Syntax** for the final server-side check: the Problems panel is a local, best-effort check.
+- If another formula editor was added to the page (e.g. by another extension), it is hidden when this editor is switched on, and the formula saved is always the one of the visible editor.
