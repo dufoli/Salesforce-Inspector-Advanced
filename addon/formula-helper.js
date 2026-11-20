@@ -729,6 +729,11 @@ class App extends React.Component {
       if (embedded) {
         parent.postMessage({insextFormulaReady: true}, "*");
         vm.resolveObject(args.get("object"), args.get("recordId"));
+        // The parent sizes the iframe to the content (toolbar, editor, problems), which changes
+        // with the problems list or when the editor is resized by hand.
+        new ResizeObserver(() => {
+          parent.postMessage({insextFormulaHeight: Math.ceil(root.getBoundingClientRect().height)}, "*");
+        }).observe(root);
       }
     });
   });

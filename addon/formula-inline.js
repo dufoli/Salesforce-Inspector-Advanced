@@ -15,6 +15,8 @@ const FOREIGN_EDITOR_SELECTOR = ".CodeMirror, .monaco-editor, .ace_editor";
 const EDITOR_LIBRARY_CLASS = /^(CodeMirror|cm-|monaco|ace_)/;
 // Stop hiding foreign editors past this many insertions, to never loop against another extension.
 const MAX_FOREIGN_EDITOR_HIDES = 10;
+// Iframe min height (px), see the insextFormulaHeight message.
+const MIN_FRAME_HEIGHT = 260;
 
 function initFormulaEditor(sfHost) {
   let textareas = Array.from(document.querySelectorAll(FORMULA_TEXTAREA_SELECTOR));
@@ -150,6 +152,10 @@ function attachFormulaToggle(sfHost, textarea, enabled) {
       sendFormula();
     } else if (typeof e.data.insextFormulaChange == "string") {
       writeTextarea(e.data.insextFormulaChange);
+    } else if (typeof e.data.insextFormulaHeight == "number") {
+      // Min height so the autocomplete list (absolute, 200px) of a short formula isn't clipped;
+      // +2 for the iframe border.
+      iframe.style.height = Math.max(MIN_FRAME_HEIGHT, e.data.insextFormulaHeight + 2) + "px";
     }
   }
 
@@ -159,7 +165,10 @@ function attachFormulaToggle(sfHost, textarea, enabled) {
     iframe = document.createElement("iframe");
     iframe.className = "insext-formula-frame";
     iframe.src = chrome.runtime.getURL("formula-helper.html") + "?" + args;
-    iframe.style.width = Math.max(textarea.offsetWidth, 600) + "px";
+    // Measured before hiding anything: the textarea may already be hidden by another editor
+    // (offsetWidth 0), then that editor gives the width the user is used to.
+    let width = Math.max(textarea.offsetWidth, ...foreignEditorElements().map(el => el.offsetWidth), 600);
+    iframe.style.width = width + "px";
     textarea.style.display = "none";
     textarea.parentNode.insertBefore(iframe, textarea.nextSibling);
     hideForeignEditors();

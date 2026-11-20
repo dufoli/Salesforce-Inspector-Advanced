@@ -486,6 +486,10 @@ body {
   width: 16px;
   height: 16px;
 }
+/* the editor height must not depend on the iframe height, which is sized to the content */
+.embedded .editor_container {
+  max-height: none !important;
+}
 .embedded .editor_textarea {
   min-width: 0;
   width: 100%;
