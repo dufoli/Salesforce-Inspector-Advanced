@@ -504,7 +504,7 @@ You can use the Formula Helper editor directly on the Setup page of a formula fi
 ![Formula editor in Setup](screenshots/formula_inplace_editor.png)
 
 - A **Salesforce Inspector Advanced Editor** toggle is shown above the native formula textarea. Switch it on to replace the textarea with the Formula Helper editor; switch it off to go back to the native textarea. The toggle is off by default and its state is remembered for the next formula pages.
-- **Object**: the object of the formula is detected from the page when possible (`Contact` in the screenshot); otherwise type it in this field. It drives the field autocompletion, including relationship fields such as `Account.Name`.
+- **Object**: the object of the formula is detected from the page when possible (`Contact` in the screenshot); otherwise type it in this field. It drives the field autocompletion: fields, and lookup relationships (e.g. `Account` next to `AccountId`). Picking a relationship inserts `Account.` and lists the fields of the related object, to build `Account.Name`.
 - **Autocompletion**: functions (marked with `Σ`), operators and fields are suggested as you type, or with `Ctrl+Space` depending on the editor suggestions option.
 - **Problems** panel: errors are listed as you type, with their line and column, e.g. a missing argument before `)` or `IF() expects 3 argument(s), got 2` for an incomplete `IF(ISBLANK(Account.Name), )`. Click a problem to jump to it.
 - **Format** pretty-prints a nested formula, and **Generate with AI** writes a formula from a description.

@@ -311,7 +311,10 @@ class Model {
   // just placing the caret at the end like a plain field/operator insertion.
   insertSuggestion(r, selStart, selEnd) {
     this.applyEdit(r.value + (r.suffix || ""), selStart, selEnd, "end");
-    if (this.autoSelectFirstSuggestion) {
+    if (r.autocompleteType == "relationshipName") {
+      // Keep the list open on the related object's fields, e.g. "Account." → Name, Industry...
+      this.displaySuggestion = true;
+    } else if (this.autoSelectFirstSuggestion) {
       // the first suggestion is always active, so keeping the list open would make Enter/Tab keep selecting
       this.displaySuggestion = false;
     }
@@ -360,11 +363,10 @@ class Model {
         return;
       }
       let relName = remainingParts[0];
-      let {sobjectStatus, sobjectDescribe} = vm.describeInfo.describeSobject(false, objectName, () => {
-        vm.autocompleteState = "";
-        vm.editorAutocompleteHandler({newDescribe: true});
-        vm.didUpdate();
-      });
+      // No onUpdate callback: DescribeInfo calls it synchronously when the describe is already
+      // loaded, which would re-enter this handler forever. A describe that finishes loading
+      // refreshes the suggestions through the DescribeInfo didUpdate callback (see constructor).
+      let {sobjectStatus, sobjectDescribe} = vm.describeInfo.describeSobject(false, objectName);
       if (sobjectStatus != "ready" || !sobjectDescribe) {
         cb(null);
         return;
@@ -389,9 +391,15 @@ class Model {
       return [];
     }
     let t = term.toLowerCase();
-    return sobjectDescribe.fields
+    let fields = sobjectDescribe.fields
       .filter(f => f.name.toLowerCase().includes(t) || (f.label && f.label.toLowerCase().includes(t)))
       .map(f => ({value: f.name, title: f.label + " (" + f.name + ")", suffix: "", autocompleteType: "fieldName", dataType: (f.type || "").toLowerCase(), rank: 0}));
+    // Lookups (e.g. Account for AccountId), followed by "." to traverse to the related object's fields
+    let relationships = sobjectDescribe.fields
+      .filter(f => f.relationshipName && f.referenceTo && f.referenceTo.length > 0)
+      .filter(f => f.relationshipName.toLowerCase().includes(t) || (f.label && f.label.toLowerCase().includes(t)))
+      .map(f => ({value: f.relationshipName, title: f.label + " (" + f.relationshipName + " → " + f.referenceTo.join(", ") + ")", suffix: ".", autocompleteType: "relationshipName", dataType: "", rank: 0}));
+    return [...fields, ...relationships];
   }
 
   buildFunctionSuggestions(term) {
