@@ -173,8 +173,8 @@ function filterOrgs() {
       let text = [org.label, org.url, org.username].join(" ").toLowerCase();
       return terms.every(term => text.includes(term));
     })
-    // The org of the active tab first, then by name
-    .sort((a, b) => isCurrentOrg(b) - isCurrentOrg(a) || a.label.localeCompare(b.label));
+    // The org of the active tab first, then in the saved order (sort is stable)
+    .sort((a, b) => isCurrentOrg(b) - isCurrentOrg(a));
   if (selectedIndex >= filteredOrgs.length) {
     selectedIndex = Math.max(0, filteredOrgs.length - 1);
   }
@@ -265,6 +265,7 @@ function render() {
 
     li.append(info, actions);
     li.addEventListener("click", e => openOrg(org, openModeFromEvent(e)));
+    addDragHandlers(li, org);
     orgList.append(li);
   });
   if (filteredOrgs.length == 0) {
@@ -275,6 +276,71 @@ function render() {
   } else {
     emptyMessage.hidden = true;
   }
+}
+
+// Move the org with the id movedId just before or after the org with the id targetId
+export function moveOrg(list, movedId, targetId, after) {
+  let moved = list.find(o => o.id == movedId);
+  if (!moved || movedId == targetId) {
+    return list;
+  }
+  let rest = list.filter(o => o.id != movedId);
+  let index = rest.findIndex(o => o.id == targetId);
+  if (index < 0) {
+    return list;
+  }
+  rest.splice(after ? index + 1 : index, 0, moved);
+  return rest;
+}
+
+let draggedId = null;
+
+function clearDropMarker(li) {
+  li.classList.remove("drop-before", "drop-after");
+}
+
+function isDropAfter(e, li) {
+  let rect = li.getBoundingClientRect();
+  return e.clientY > rect.top + (rect.height / 2);
+}
+
+function addDragHandlers(li, org) {
+  li.draggable = true;
+  li.addEventListener("dragstart", e => {
+    draggedId = org.id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", org.id); // Firefox does not start a drag without data
+    li.classList.add("dragging");
+  });
+  li.addEventListener("dragend", () => {
+    draggedId = null;
+    li.classList.remove("dragging");
+  });
+  li.addEventListener("dragover", e => {
+    if (!draggedId || draggedId == org.id) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    let after = isDropAfter(e, li);
+    li.classList.toggle("drop-before", !after);
+    li.classList.toggle("drop-after", after);
+  });
+  li.addEventListener("dragleave", () => clearDropMarker(li));
+  li.addEventListener("drop", async e => {
+    e.preventDefault();
+    clearDropMarker(li);
+    if (!draggedId) {
+      return;
+    }
+    let movedId = draggedId;
+    draggedId = null;
+    orgs = moveOrg(orgs, movedId, org.id, isDropAfter(e, li));
+    await saveOrgs();
+    filterOrgs();
+    selectedIndex = Math.max(0, filteredOrgs.findIndex(o => o.id == movedId));
+    render();
+  });
 }
 
 function openModeFromEvent(e) {

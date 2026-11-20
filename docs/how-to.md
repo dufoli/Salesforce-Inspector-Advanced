@@ -9,6 +9,7 @@ Click the extension button in the browser toolbar to open the list of your saved
 - Click `+` to add an org: a name, the org URL (e.g. `https://mydomain.my.salesforce.com`, `https://login.salesforce.com` or `https://test.salesforce.com`) and an optional username. When the current tab is a Salesforce org, its URL is prefilled, otherwise use "Use current tab". Lightning, Visualforce and Setup URLs are converted to the My Domain URL.
 - `Shift`+click (or `Shift`+`Enter`) opens the org in a new window, `Alt`+click (or `Alt`+`Enter`) in a private window. A private window needs the extension to be allowed in private browsing ("Allow in Incognito" in Chrome, "Run in Private Windows" in Firefox).
 - Each org has a landing page opened once logged in: Home, Setup, or a custom path (e.g. `/lightning/o/Account/list`; a pasted full URL is reduced to its path).
+- Drag and drop an org to reorder the list. The order is saved.
 - The org of the current tab is shown first, with a "current tab" badge.
 - Click the username of an org to copy it to the clipboard.
 - Hover an org to open it in a new window (⧉) or a private window (🕶), open its options page (⚙), edit it or delete it.
