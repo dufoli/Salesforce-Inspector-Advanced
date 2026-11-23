@@ -1,43 +1,56 @@
 "use strict";
 let sfHost = "";
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // Perform cookie operations in the background page, because not all foreground pages have access to the cookie API.
-  // Firefox does not support incognito split mode, so we use sender.tab.cookieStoreId to select the right cookie store.
-  // Chrome does not support sender.tab.cookieStoreId, which means it is undefined, and we end up using the default cookie store according to incognito split mode.
-  if (request.message == "getSfHost") {
-    const currentDomain = new URL(request.url).hostname;
-    // When on a *.visual.force.com page, the session in the cookie does not have API access,
-    // so we read the corresponding session from *.salesforce.com page.
-    // The first part of the session cookie is the OrgID,
-    // which we use as key to support being logged in to multiple orgs at once.
-    // http://salesforce.stackexchange.com/questions/23277/different-session-ids-in-different-contexts
-    // There is no straight forward way to unambiguously understand if the user authenticated against salesforce.com or cloudforce.com
-    // (and thereby the domain of the relevant cookie) cookie domains are therefore tried in sequence.
-    chrome.cookies.get({url: request.url, name: "sid", storeId: sender.tab.cookieStoreId}, cookie => {
-      if (!cookie || currentDomain.endsWith(".mcas.ms")) { //Domain used by Microsoft Defender for Cloud Apps, where sid exists but cannot be read
-        sendResponse(currentDomain);
+
+// Resolves the API host of the org a page belongs to, or null when the page has no Salesforce session (e.g. Trailhead).
+// When on a *.visual.force.com page, the session in the cookie does not have API access,
+// so we read the corresponding session from *.salesforce.com page.
+// The first part of the session cookie is the OrgID,
+// which we use as key to support being logged in to multiple orgs at once.
+// http://salesforce.stackexchange.com/questions/23277/different-session-ids-in-different-contexts
+// There is no straight forward way to unambiguously understand if the user authenticated against salesforce.com or cloudforce.com
+// (and thereby the domain of the relevant cookie) cookie domains are therefore tried in sequence.
+// Firefox does not support incognito split mode, so we use the tab's cookieStoreId to select the right cookie store.
+// Chrome does not support cookieStoreId, which means it is undefined, and we end up using the default cookie store according to incognito split mode.
+function findSfHost(url, storeId) {
+  return new Promise(resolve => {
+    const currentDomain = new URL(url).hostname;
+    chrome.cookies.get({url, name: "sid", storeId}, cookie => {
+      if (!cookie) {
+        resolve(null);
+        return;
+      }
+      if (currentDomain.endsWith(".mcas.ms")) { //Domain used by Microsoft Defender for Cloud Apps, where sid exists but cannot be read
+        resolve(currentDomain);
         return;
       }
       const [orgId] = cookie.value.split("!");
       const orderedDomains = ["salesforce.com", "cloudforce.com", "salesforce.mil", "cloudforce.mil", "sfcrmproducts.cn", "force.com", "salesforce-setup.com", "visualforce.com", "sfcrmapps.cn", "force.mil", "visualforce.mil", "crmforce.mil"];
-
-      orderedDomains.forEach(currentDomain => {
-        chrome.cookies.getAll({name: "sid", domain: currentDomain, secure: true, storeId: sender.tab.cookieStoreId}, cookies => {
+      let pending = orderedDomains.length;
+      orderedDomains.forEach(cookieDomain => {
+        chrome.cookies.getAll({name: "sid", domain: cookieDomain, secure: true, storeId}, cookies => {
           let filteredCookies = cookies.filter(c => c.value.startsWith(orgId + "!"));
           let sessionCookie = null;
           if (filteredCookies.length > 1) {
-            sessionCookie = filteredCookies.find(c => c.domain.startsWith(currentDomain.split(".")[0]));
+            sessionCookie = filteredCookies.find(c => c.domain.startsWith(cookieDomain.split(".")[0]));
           }
           if (filteredCookies.length === 1) {
             sessionCookie = filteredCookies[0];
           }
           if (sessionCookie) {
-            sendResponse(sessionCookie.domain);
-            return;
+            resolve(sessionCookie.domain); // first match wins, later resolve calls are ignored
+          } else if (--pending == 0) {
+            resolve(currentDomain);
           }
         });
       });
     });
+  });
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Perform cookie operations in the background page, because not all foreground pages have access to the cookie API.
+  if (request.message == "getSfHost") {
+    findSfHost(request.url, sender.tab.cookieStoreId).then(host => sendResponse(host || new URL(request.url).hostname));
     return true; // Tell Chrome that we want to call sendResponse asynchronously.
   }
   if (request.message == "getSessionHosts") {
@@ -106,10 +119,13 @@ chrome.runtime.onInstalled.addListener(({reason}) => {
   }
 });
 if (chrome.commands) {
-  chrome.commands.onCommand.addListener((command) => {
+  chrome.commands.onCommand.addListener(async (command, tab) => {
     //TODO home to open setup
+    // Prefer the org of the active tab; tab.url is only exposed for hosts we have permission on, i.e. Salesforce domains.
+    let host = tab?.url?.startsWith("https://") ? await findSfHost(tab.url, tab.cookieStoreId) : null;
+    host = host || sfHost; // fall back to the last org used by the extension
     chrome.tabs.create({
-      url: `chrome-extension://${chrome.i18n.getMessage("@@extension_id")}/${command}.html?host=${sfHost}`
+      url: chrome.runtime.getURL(host ? `${command}.html?host=${host}` : "org-launcher.html")
     });
   });
 }

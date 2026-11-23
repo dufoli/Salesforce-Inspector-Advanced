@@ -16,33 +16,44 @@
     "default_popup": "org-launcher.html"
   },
   "commands": {
-    "apex-runner": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+C",
-        "mac": "Command+Shift+C"
-      },
-      "description": "Run apex code"
-    },
     "data-export": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+E",
-        "mac": "Command+Shift+E"
-      },
       "description": "Export data"
     },
     "data-import": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+I",
-        "mac": "Command+Shift+I"
-      },
       "description": "Import data"
     },
+    "data-transfer": {
+      "description": "Transfer data between orgs"
+    },
+    "apex-runner": {
+      "description": "Run apex code"
+    },
+    "apex-code": {
+      "description": "Browse apex code & coverage"
+    },
     "streaming": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+S"
-      },
       "description": "Manage streaming"
+    },
+    "metadata-retrieve": {
+      "description": "Retrieve metadata"
+    },
+    "dependency": {
+      "description": "Explore dependencies"
+    },
+    "formula-helper": {
+      "description": "Formula helper"
+    },
+    "explore-api": {
+      "description": "Explore API"
+    },
+    "limits": {
+      "description": "Org limits"
+    },
+    "org-analyzer": {
+      "description": "Analyze org"
+    },
+    "options": {
+      "description": "Options"
     }
   },
   "host_permissions": [
