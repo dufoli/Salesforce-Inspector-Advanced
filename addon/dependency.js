@@ -12,6 +12,16 @@ function getFieldValue(record, path) {
   return path.split(".").reduce((value, key) => (value == null ? undefined : value[key]), record);
 }
 
+// Escapes a value for a SOQL string literal (backslash first, then quote).
+function soqlString(value) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+// Escapes a value for a SOQL LIKE pattern, where % and _ are wildcards.
+function soqlLike(value) {
+  return soqlString(value).replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 class Model {
   constructor({sfHost, args}) {
     this.sfHost = sfHost;
@@ -19,11 +29,12 @@ class Model {
     this.error = null;
     this.name = args.get("name") || "";
     this.type = args.get("type") || "";
-    this.processedIds = new Set(); // Track processed IDs for hierarchy
+    this.rootKey = null; // Component key of the searched component
     this.dependenciesByType = {}; // Group dependencies by type
     this.expandedTypes = new Set(); // Track which accordion sections are expanded
-    this.expandedItems = new Set(); // Track which dependency items are expanded
-    this.childDependencies = new Map(); // Map of parent item key to child dependencies
+    this.expandedItems = new Set(); // Path keys of the expanded items (a component can appear at several places)
+    this.childDependencies = new Map(); // Component key to its sub dependencies, fetched once per search
+    this.loadingItems = new Set(); // Component keys whose sub dependencies are being fetched
     this.flowScanProgress = null; // {done, total} while scanning flowsToRescan for subflow references
     this.metadataTypes = [
       //StandardEntity or User
@@ -91,8 +102,7 @@ class Model {
         conditions.push(typeMap.filter);
       }
       if (searchTerm) {
-        const escapedTerm = searchTerm.replace(/'/g, "\\'");
-        conditions.push(`${typeMap.nameField} LIKE '%${escapedTerm}%'`);
+        conditions.push(`${typeMap.nameField} LIKE '%${soqlLike(searchTerm)}%'`);
       }
       if (conditions.length > 0) {
         query += ` WHERE ${conditions.join(" AND ")}`;
@@ -121,8 +131,7 @@ class Model {
       throw new Error("Unknown metadata type: " + type);
     }
 
-    const escapedName = name.replace(/'/g, "\\'");
-    const conditions = [`${typeMap.nameField} = '${escapedName}'`];
+    const conditions = [`${typeMap.nameField} = '${soqlString(name)}'`];
     if (typeMap.filter) {
       conditions.push(typeMap.filter);
     }
@@ -209,8 +218,18 @@ class Model {
       this.flowScanProgress = {done: 0, total: flowsToRescan.length};
       this.didUpdate();
     }
+    // A flow whose Metadata cannot be read must not stop the scan; it is only skipped, and the
+    // sync date is not moved forward so that it is scanned again next time.
+    let scanFailed = false;
     for (const flow of flowsToRescan) {
-      const flowRes = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT Id,Definition.DeveloperName,Metadata FROM Flow WHERE Id='" + flow.Id + "'"), {method: "GET"});
+      let flowRes;
+      try {
+        flowRes = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT Id,Definition.DeveloperName,Metadata FROM Flow WHERE Id='" + flow.Id + "'"), {method: "GET"});
+      } catch (err) {
+        console.error("Error reading flow metadata " + flow.Id + ":", err);
+        scanFailed = true;
+        flowRes = {records: []};
+      }
       flowRes.records.forEach(flowDetail => {
         const records = Model.getCalledFlowNames(flowDetail.Metadata).map(flowName => {
           const refId = flowNameToId.get(flowName);
@@ -244,7 +263,7 @@ class Model {
     this.flowScanProgress = null;
 
     const flowRecords = Array.from(recordsByCallerId.values()).flat();
-    await setCache(cacheKey, {lastSyncDate: maxLastModified, flowRecords});
+    await setCache(cacheKey, {lastSyncDate: scanFailed ? lastSyncDate : maxLastModified, flowRecords});
     return flowRecords;
   }
 
@@ -266,8 +285,7 @@ class Model {
   // direction "child": components that this one references (MetadataComponentId = id)
   async queryDependencies(componentId, type, direction) {
     const filterField = direction === "parent" ? "RefMetadataComponentId" : "MetadataComponentId";
-    const escapedId = componentId.replace(/'/g, "\\'");
-    const query = `SELECT MetadataComponentId,MetadataComponentName,MetadataComponentType,RefMetadataComponentName,RefMetadataComponentType,RefMetadataComponentId FROM MetadataComponentDependency WHERE ${filterField} = '${escapedId}'`;
+    const query = `SELECT MetadataComponentId,MetadataComponentName,MetadataComponentType,RefMetadataComponentName,RefMetadataComponentType,RefMetadataComponentId FROM MetadataComponentDependency WHERE ${filterField} = '${soqlString(componentId)}'`;
     const res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
     let records = res.records || [];
 
@@ -307,10 +325,11 @@ class Model {
 
     this.error = null;
     this.direction = dependencyType;
-    this.processedIds.clear();
+    this.rootKey = Model.componentKey(type, name);
     this.dependenciesByType = {};
     this.expandedItems.clear();
     this.childDependencies.clear();
+    this.loadingItems.clear();
     this.flowSubflowRecordsPromise = null;
 
     try {
@@ -320,7 +339,6 @@ class Model {
         this.didUpdate();
         return;
       }
-      this.processedIds.add(componentId);
 
       const deps = await this.queryDependencies(componentId, type, dependencyType);
       deps.forEach(dep => {
@@ -346,6 +364,7 @@ class Model {
 
   setType(type) {
     this.type = type;
+    this.componentNameSuggestions = []; // suggestions of the previous type
     this.didUpdate();
   }
 
@@ -374,87 +393,77 @@ class Model {
 
   // Expands an item in the same direction as the search: up to the components using it
   // after a parent search, down to the components it uses after a child search.
-  async fetchSubDependencies(itemKey, dependency) {
-    if (this.childDependencies.has(itemKey)) {
-      // Already fetched, just toggle
-      this.toggleItemExpanded(itemKey);
+  // The sub dependencies are cached by component (componentKey), the expansion is tracked by
+  // position in the tree (pathKey), so the same component can be expanded at several places.
+  async fetchSubDependencies(pathKey, dependency) {
+    const componentType = dependency.MetadataComponentType;
+    const componentKey = Model.componentKey(componentType, dependency.MetadataComponentName);
+    if (this.childDependencies.has(componentKey)) {
+      this.toggleItemExpanded(pathKey);
       return;
     }
+    if (this.loadingItems.has(componentKey)) {
+      return; // a click while fetching must not toggle twice
+    }
 
+    this.loadingItems.add(componentKey);
+    this.didUpdate();
     try {
-      const componentType = dependency.MetadataComponentType;
       let componentId = dependency.MetadataComponentId;
       // The flow scan records use the id of the active version
       if (componentType === "Flow" || componentType === "FlowDefinition") {
         componentId = (await this.getComponentId(componentType, dependency.MetadataComponentName)) || componentId;
       }
-      if (!componentId || this.processedIds.has(componentId)) {
-        this.toggleItemExpanded(itemKey);
-        return;
-      }
-
-      this.processedIds.add(componentId);
-      const subDeps = await this.queryDependencies(componentId, componentType, this.direction || "child");
+      const subDeps = componentId ? await this.queryDependencies(componentId, componentType, this.direction || "child") : [];
       await this.enrichDependencies(subDeps);
-      this.childDependencies.set(itemKey, subDeps);
-      this.toggleItemExpanded(itemKey);
+      this.childDependencies.set(componentKey, subDeps);
+      this.expandedItems.add(pathKey);
     } catch (err) {
       console.error("Error fetching sub dependencies:", err);
+      this.error = "Error fetching dependencies of " + dependency.MetadataComponentName + ": " + (err.message || JSON.stringify(err));
+    } finally {
+      this.loadingItems.delete(componentKey);
+      this.didUpdate();
     }
+  }
+
+  static componentKey(type, name) {
+    return `${type}:${name}`;
   }
   async enrichDependencies(dependencies) {
     if (!dependencies || dependencies.length === 0) {
       return;
     }
 
-    // Collect all CustomField dependencies that need enrichment
-    const fieldIds = dependencies.filter(dep => !dep.objectName && dep.MetadataComponentType === "CustomField").map(dep => dep.MetadataComponentId);
-    fieldIds.concat(dependencies.filter(dep => !dep.objectName && dep.refMetadataComponentType === "CustomField").map(dep => dep.refMetadataComponentId));
-    if (fieldIds.length === 0) {
+    // Only the displayed component (MetadataComponent*) needs its object name, for its link and package.xml
+    const fieldDeps = dependencies.filter(dep => !dep.objectName && dep.MetadataComponentType === "CustomField" && dep.MetadataComponentId);
+    if (fieldDeps.length === 0) {
       return;
     }
-
-    // Extract object names from field names (format: ObjectName.FieldName)
-    const objectIdToObjectName = new Map();
-    const query = `SELECT Id, TableEnumOrId, DeveloperName FROM CustomField WHERE Id IN ('${fieldIds.join("','")}')`;
+    const fieldIds = Array.from(new Set(fieldDeps.map(dep => dep.MetadataComponentId)));
+    const query = `SELECT Id, TableEnumOrId FROM CustomField WHERE Id IN ('${fieldIds.map(soqlString).join("','")}')`;
 
     try {
       const result = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
-      const fieldRecords = result.records || [];
+      // TableEnumOrId is the API name of a standard object (e.g. "Account") or the 01I id of a custom object
+      const fieldIdToTable = new Map((result.records || []).filter(f => f.TableEnumOrId).map(f => [f.Id.substring(0, 15), f.TableEnumOrId]));
+      const isId = value => /^01I[a-zA-Z0-9]{12}(?:[a-zA-Z0-9]{3})?$/.test(value);
 
-      // Create a map of field ID to TableEnumOrId
-      const fieldIdToSobjectId = new Map();
-      fieldRecords.forEach(field => {
-        if (field.TableEnumOrId) {
-          fieldIdToSobjectId.set(field.Id, field.TableEnumOrId);
-        }
-      });
-      const idPattern = /\b[a-zA-Z0-9]{5}0[a-zA-Z0-9]{9}(?:[a-zA-Z0-9]{3})?\b/g;
-
-      // Query EntityDefinition to get object names from TableEnumOrId
-      const sobjectIds = Array.from(new Set(fieldIdToSobjectId.values())).filter(id => id && idPattern.test(id));
-      if (sobjectIds.length > 0) {
-        const sobjectQuery = `SELECT Id, QualifiedApiName FROM EntityDefinition WHERE Id IN ('${sobjectIds.join("','")}')`;
+      // Custom objects: the 01I id is the DurableId of EntityDefinition
+      const objectIdToName = new Map();
+      const objectIds = Array.from(new Set(Array.from(fieldIdToTable.values()).filter(isId)));
+      if (objectIds.length > 0) {
+        const sobjectQuery = `SELECT DurableId, QualifiedApiName FROM EntityDefinition WHERE DurableId IN ('${objectIds.map(soqlString).join("','")}')`;
         const sobjectResult = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(sobjectQuery), {method: "GET"});
-        const sobjects = sobjectResult.records || [];
-        sobjects.forEach(sobject => {
-          objectIdToObjectName.set(sobject.Id, sobject.QualifiedApiName);
+        (sobjectResult.records || []).forEach(sobject => {
+          objectIdToName.set(sobject.DurableId.substring(0, 15), sobject.QualifiedApiName);
         });
       }
 
-      // Apply object names to dependencies for the link
-      dependencies.forEach(dep => {
-        if (!dep.objectName && dep.MetadataComponentType === "CustomField" && dep.MetadataComponentId) {
-          const objectId = fieldIdToSobjectId.get(dep.MetadataComponentId);
-          if (objectId) {
-            dep.objectName = objectIdToObjectName.get(objectId);
-          }
-        }
-        if (!dep.objectName && dep.refMetadataComponentType === "CustomField" && dep.refMetadataComponentId) {
-          const objectId = fieldIdToSobjectId.get(dep.refMetadataComponentId);
-          if (objectId) {
-            dep.objectName = objectIdToObjectName.get(objectId);
-          }
+      fieldDeps.forEach(dep => {
+        const table = fieldIdToTable.get(dep.MetadataComponentId.substring(0, 15));
+        if (table) {
+          dep.objectName = isId(table) ? objectIdToName.get(table.substring(0, 15)) : table;
         }
       });
     } catch (err) {
@@ -467,31 +476,22 @@ class Model {
 
     // Collect all unique dependencies by type
     Object.keys(this.dependenciesByType).forEach(type => {
+      if (type === "Unknown") {
+        return; // not a metadata type, would make the package invalid
+      }
       const deps = this.dependenciesByType[type];
       const uniqueNames = new Set();
 
       deps.forEach(dep => {
         let name = dep.MetadataComponentName;
-
-        // Handle namespaced components
-        if (dep.MetadataComponentNamespace) {
-          name = name.replace(`${dep.MetadataComponentNamespace}__`, "");
+        if (!name) {
+          return;
         }
-
-        // Handle CustomField format (Object.Field)
-        if (type === "CustomField" && name.includes(".")) {
-          const parts = name.split(".");
-          if (parts.length === 2) {
-            // Add object and field separately
-            const objectName = parts[0];
-            const fieldName = parts[1];
-            uniqueNames.add(`${objectName}.${fieldName}`);
-          } else {
-            uniqueNames.add(name);
-          }
-        } else {
-          uniqueNames.add(name);
+        // A CustomField member must be Object.Field__c; the dependency only gives the field developer name
+        if (type === "CustomField" && !name.includes(".") && dep.objectName) {
+          name = `${dep.objectName}.${name}${name.endsWith("__c") ? "" : "__c"}`;
         }
+        uniqueNames.add(name);
       });
 
       if (uniqueNames.size > 0) {
@@ -519,7 +519,7 @@ class Model {
       xml += "  </types>\n";
     });
 
-    xml += "  <version>58.0</version>\n";
+    xml += `  <version>${apiVersion}</version>\n`;
     xml += "</Package>";
 
     return xml;
@@ -576,8 +576,6 @@ class Model {
         return `https://${this.sfHost}/lightning/setup/StaticResources/page?address=%2F${componentId}`;
       case "LightningComponent":
         return `https://${this.sfHost}/lightning/setup/LightningComponents/page?address=%2F${componentId}`;
-      case "ValidationRule":
-        return `https://${this.sfHost}/lightning/setup/ObjectManager/${componentId}/ValidationRules/view`;
       case "CustomLabel":
         return `https://${this.sfHost}/lightning/setup/CustomLabels/page?address=%2F${componentId}`;
       case "LightningWebComponent":
@@ -587,16 +585,17 @@ class Model {
         return `https://${this.sfHost}/lightning/setup/EmailTemplates/page?address=%2F${componentId}`;
       case "WorkflowAlert":
         return `https://${this.sfHost}/lightning/setup/WorkflowAlerts/page?address=%2F${componentId}`;
-      case "WebLink":
-        return `https://${this.sfHost}/lightning/setup/ObjectManager/${componentId}/ButtonsLinksAndActions/view`;
-      case "Layout":
-        return `https://${this.sfHost}/lightning/setup/ObjectManager/${componentId}/PageLayouts/view`;
+      // ValidationRule, WebLink and Layout: Object Manager URLs need the object, which the
+      // dependency does not give, so they use the id URL (default) that Salesforce redirects.
       case "FlexiPage":
         return `https://${this.sfHost}/lightning/setup/FlexiPages/page?address=%2F${componentId}`;
       case "CustomObject":
         return `https://${this.sfHost}/lightning/setup/ObjectManager/${componentId}/Details/view`;
       case "CustomField":
-        return `https://${this.sfHost}/lightning/setup/ObjectManager/${dependency.objectName}/FieldsAndRelationships/${componentId}/view`;
+        if (dependency.objectName) {
+          return `https://${this.sfHost}/lightning/setup/ObjectManager/${dependency.objectName}/FieldsAndRelationships/${componentId}/view`;
+        }
+        return `https://${this.sfHost}/${componentId}`;
       default:
         // Use API URL as fallback
         return `https://${this.sfHost}/${componentId}`;
@@ -636,21 +635,30 @@ class DependencyItem extends React.Component {
     this.onExpandClick = this.onExpandClick.bind(this);
   }
 
+  getKeys() {
+    const {dependency, ancestors = []} = this.props;
+    const componentKey = Model.componentKey(dependency.MetadataComponentType, dependency.MetadataComponentName);
+    return {componentKey, pathKey: [...ancestors, componentKey].join("/")};
+  }
+
   onExpandClick(e) {
     e.stopPropagation();
     const {model, dependency} = this.props;
-    const itemKey = `${dependency.MetadataComponentType}:${dependency.MetadataComponentName}`;
-    model.fetchSubDependencies(itemKey, dependency);
+    model.fetchSubDependencies(this.getKeys().pathKey, dependency);
   }
 
   render() {
-    const {model, dependency} = this.props;
-    const itemKey = `${dependency.MetadataComponentType}:${dependency.MetadataComponentName}`;
-    const isExpanded = model.expandedItems.has(itemKey);
+    const {model, dependency, ancestors = []} = this.props;
+    const {componentKey, pathKey} = this.getKeys();
+    // Expanding a component already shown above it (dependency cycle) would only repeat the tree
+    const isCycle = componentKey === model.rootKey || ancestors.includes(componentKey);
+    const isLoading = model.loadingItems.has(componentKey);
+    const isExpanded = model.expandedItems.has(pathKey);
     const typeInfo = model.typeToObjectMap.get(dependency.MetadataComponentType);
     const iconName = typeInfo?.icon || "fallback";
     const link = model.getComponentLink(dependency);
-    const hasChildren = model.childDependencies.has(itemKey) && model.childDependencies.get(itemKey).length > 0;
+    const children = model.childDependencies.get(componentKey) || [];
+    const fetched = model.childDependencies.has(componentKey);
 
     const {isSubdependency = false} = this.props;
     const itemStyle = {
@@ -672,9 +680,9 @@ class DependencyItem extends React.Component {
       },
       h("button", {
         className: "slds-button slds-button_icon slds-m-right_x-small slds-button_icon-small",
-        disabled: !dependency.MetadataComponentId,
+        disabled: !dependency.MetadataComponentId || isLoading,
         onClick: this.onExpandClick,
-        hidden: !dependency.MetadataComponentId,
+        hidden: !dependency.MetadataComponentId || isCycle,
         title: model.direction === "parent" ? "Show the components using it" : "Show the components it uses"
       },
       h("svg", {
@@ -702,22 +710,27 @@ class DependencyItem extends React.Component {
           }, dependency.MetadataComponentName),
           h("span", {className: "slds-text-body_small slds-m-left_small slds-text-color_weak"},
             dependency.MetadataComponentType
-          )
+          ),
+          isCycle && h("span", {className: "slds-text-body_small slds-m-left_small slds-text-color_weak"}, "(cyclic dependency)"),
+          isLoading && h("span", {className: "slds-text-body_small slds-m-left_small slds-text-color_weak"}, "Loading...")
         )
       )
       ),
-      isExpanded && hasChildren && h("div", {
+      isExpanded && fetched && h("div", {
         className: "dependency-children",
         style: childrenStyle
       },
-      model.childDependencies.get(itemKey).map((childDep, idx) =>
-        h(DependencyItem, {
-          key: `${itemKey}-${idx}`,
-          model,
-          dependency: childDep,
-          isSubdependency: true
-        })
-      )
+      children.length > 0
+        ? children.map((childDep, idx) =>
+          h(DependencyItem, {
+            key: `${pathKey}-${idx}`,
+            model,
+            dependency: childDep,
+            ancestors: [...ancestors, componentKey],
+            isSubdependency: true
+          })
+        )
+        : h("p", {className: "slds-text-body_small slds-text-color_weak"}, "No dependencies found")
       )
     );
   }
@@ -773,6 +786,9 @@ class DependencyAccordion extends React.Component {
     }
 
     if (types.length === 0) {
+      if (model.error) {
+        return null; // the error is already shown, "No dependencies found" would be misleading
+      }
       return h("div", {className: "slds-text-align_center slds-p-around_large"},
         h("p", {}, "No dependencies found")
       );
@@ -1211,7 +1227,7 @@ class App extends React.Component {
             padding: "0.5rem"
           }
         },
-        h(DependencyAccordion, {model, hidden: model.error != null})
+        h(DependencyAccordion, {model})
         )
       )
     );
