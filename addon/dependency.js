@@ -140,14 +140,34 @@ class Model {
     }
   }
 
-  // Precomputes "flow X calls subflow Y" dependency records for every active flow, so that
+  // Names of the flows a flow calls: Subflow elements, Action elements calling a flow
+  // (actionCalls with actionType "flow", the usual way to call an autolaunched flow) and
+  // screen actions calling a flow. MetadataComponentDependency reports none of these reliably.
+  static getCalledFlowNames(metadata) {
+    if (!metadata) {
+      return [];
+    }
+    const names = new Set();
+    (metadata.subflows || []).forEach(sf => sf.flowName && names.add(sf.flowName));
+    const addFlowActions = actions => (actions || []).forEach(action => {
+      if (action.actionType === "flow" && action.actionName) {
+        names.add(action.actionName);
+      }
+    });
+    addFlowActions(metadata.actionCalls);
+    (metadata.screens || []).forEach(screen => addFlowActions(screen.actions));
+    return Array.from(names);
+  }
+
+  // Precomputes "flow X calls flow Y" dependency records for every active flow, so that
   // finding who calls a given flow is a simple filter by id instead of a per-search scan.
-  // Metadata.subflows only gives the called flow's name, not its id, hence the name->id map
+  // The flow metadata only gives the called flow's name, not its id, hence the name->id map
   // (built from a cheap full listing query, always refreshed). Fetching each flow's Metadata
-  // to look for subflow calls is the expensive part (one Tooling API query per flow), so that
+  // to look for flow calls is the expensive part (one Tooling API query per flow), so that
   // part stays incremental: only flows created/modified since the last sync are re-scanned.
   async getFlowSubflowRecords() {
-    const cacheKey = "flowSubflowRecords_" + sfConn.instanceHostname;
+    // Bump the version whenever getCalledFlowNames changes, so that flows already scanned are scanned again.
+    const cacheKey = "flowSubflowRecords_v2_" + sfConn.instanceHostname;
     const cached = await getCacheRaw(cacheKey);
     let lastSyncDate = cached ? cached.lastSyncDate : null;
     const recordsByCallerId = new Map(cached ? cached.flowRecords.reduce((acc, rec) => {
@@ -161,6 +181,10 @@ class Model {
     // Cheap (no Metadata field), always fetched in full so the name->id map stays complete and correct.
     const listQuery = "SELECT Id,Definition.DeveloperName,LastModifiedDate FROM Flow WHERE Status = 'Active'";
     const resFlows = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(listQuery), {method: "GET"});
+    for (let page = resFlows; !page.done && page.nextRecordsUrl;) {
+      page = await sfConn.rest(page.nextRecordsUrl, {method: "GET"});
+      resFlows.records.push(...page.records);
+    }
 
     const flowNameToId = new Map(resFlows.records.map(f => [f.Definition.DeveloperName, f.Id]));
     const activeIds = new Set(resFlows.records.map(f => f.Id));
@@ -188,9 +212,8 @@ class Model {
     for (const flow of flowsToRescan) {
       const flowRes = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent("SELECT Id,Definition.DeveloperName,Metadata FROM Flow WHERE Id='" + flow.Id + "'"), {method: "GET"});
       flowRes.records.forEach(flowDetail => {
-        const subflows = (flowDetail.Metadata && flowDetail.Metadata.subflows) || [];
-        const records = subflows.map(sf => {
-          const refId = flowNameToId.get(sf.flowName);
+        const records = Model.getCalledFlowNames(flowDetail.Metadata).map(flowName => {
+          const refId = flowNameToId.get(flowName);
           if (!refId) {
             return null; // referenced flow is not currently active/known - nothing to filter on
           }
@@ -203,7 +226,7 @@ class Model {
             MetadataComponentName: flowDetail.Definition.DeveloperName,
             MetadataComponentType: "Flow",
             RefMetadataComponentId: refId,
-            RefMetadataComponentName: sf.flowName,
+            RefMetadataComponentName: flowName,
             RefMetadataComponentType: "Flow"
           };
         }).filter(Boolean);
@@ -225,124 +248,95 @@ class Model {
     return flowRecords;
   }
 
-  async fetchDependenciesInternal(type, name, dependencyType = "child", parentKey = null) {
-    const parentId = parentKey ? null : null; // parentKey is used instead of parentId for child tracking
+  // The flow call records are computed once per search and reused when expanding items,
+  // since getFlowSubflowRecords always runs a full listing query of the active flows.
+  getFlowSubflowRecordsCached() {
+    if (!this.flowSubflowRecordsPromise) {
+      this.flowSubflowRecordsPromise = this.getFlowSubflowRecords().catch(err => {
+        this.flowSubflowRecordsPromise = null;
+        throw err;
+      });
+    }
+    return this.flowSubflowRecordsPromise;
+  }
+
+  // Dependencies of a component in the given direction, normalized so that MetadataComponent*
+  // is always the component to display and RefMetadataComponent* the one we searched from.
+  // direction "parent": components that reference this one (RefMetadataComponentId = id)
+  // direction "child": components that this one references (MetadataComponentId = id)
+  async queryDependencies(componentId, type, direction) {
+    const filterField = direction === "parent" ? "RefMetadataComponentId" : "MetadataComponentId";
+    const escapedId = componentId.replace(/'/g, "\\'");
+    const query = `SELECT MetadataComponentId,MetadataComponentName,MetadataComponentType,RefMetadataComponentName,RefMetadataComponentType,RefMetadataComponentId FROM MetadataComponentDependency WHERE ${filterField} = '${escapedId}'`;
+    const res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
+    let records = res.records || [];
+
+    // Flow calls between flows are not reliably reported by MetadataComponentDependency
+    if (type === "Flow" || type === "FlowDefinition") {
+      const flowRecords = await this.getFlowSubflowRecordsCached();
+      records = records.concat(flowRecords.filter(rec => rec[filterField] === componentId));
+    }
+
+    const deps = direction === "parent" ? records : records.map(rec => ({
+      ...rec,
+      MetadataComponentId: rec.RefMetadataComponentId,
+      MetadataComponentName: rec.RefMetadataComponentName,
+      MetadataComponentType: rec.RefMetadataComponentType,
+      RefMetadataComponentId: rec.MetadataComponentId,
+      RefMetadataComponentName: rec.MetadataComponentName,
+      RefMetadataComponentType: rec.MetadataComponentType
+    }));
+    // A flow call may be reported both by MetadataComponentDependency and by the flow scan
+    const seen = new Set();
+    return deps.filter(dep => {
+      const key = `${dep.MetadataComponentType}:${dep.MetadataComponentId || dep.MetadataComponentName}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  async fetchDependenciesInternal(type, name, dependencyType = "child") {
     if (!type || !name) {
       this.error = "Please select both Type and enter Name";
       this.didUpdate();
       return;
     }
 
-    // Reset data on initial call
-    if (!parentId) {
-      this.error = null;
-      this.processedIds.clear();
-    }
+    this.error = null;
+    this.direction = dependencyType;
+    this.processedIds.clear();
+    this.dependenciesByType = {};
+    this.expandedItems.clear();
+    this.childDependencies.clear();
+    this.flowSubflowRecordsPromise = null;
 
     try {
-      // First, get the component ID by querying the type
       const componentId = await this.getComponentId(type, name);
       if (!componentId) {
-        if (!parentId) {
-          this.error = `Component not found: ${type} with name ${name}`;
-          this.didUpdate();
-        }
-        return;
-      }
-
-      // Check if we've already processed this ID (prevent infinite loops)
-      if (this.processedIds.has(componentId)) {
+        this.error = `Component not found: ${type} with name ${name}`;
+        this.didUpdate();
         return;
       }
       this.processedIds.add(componentId);
 
-      // Escape the ID for SOQL
-      const escapedId = componentId.replace(/'/g, "\\'");
-
-      // Query MetadataComponentDependency
-      // dependencyType === "parent" means: find components that reference this one (RefMetadataComponentId)
-      // dependencyType === "child" means: find components that this one references (MetadataComponentId)
-      let query;
-      if (dependencyType === "parent") {
-        query = `SELECT MetadataComponentId,MetadataComponentName,MetadataComponentType,RefMetadataComponentName,RefMetadataComponentType,RefMetadataComponentId FROM MetadataComponentDependency WHERE RefMetadataComponentId = '${escapedId}'`;
-      } else {
-        query = `SELECT MetadataComponentId,MetadataComponentName,MetadataComponentType,RefMetadataComponentName,RefMetadataComponentType,RefMetadataComponentId FROM MetadataComponentDependency WHERE MetadataComponentId = '${escapedId}'`;
-      }
-
-      const res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
-      const records = res.records || [];
-
-      // Group dependencies by type
-      if (!parentId) {
-        this.dependenciesByType = {};
-      }
-
-      if (records.length > 0) {
-        const processedDeps = [];
-        records.forEach(rec => {
-          // For parent dependencies: rec.MetadataComponentId/Name/Type are the components that reference our component
-          // For child dependencies: rec.RefMetadataComponentId/Name/Type are the components that our component references
-          const depType = dependencyType === "parent" ? rec.MetadataComponentType : (rec.RefMetadataComponentType || "Unknown");
-          if (!this.dependenciesByType[depType]) {
-            this.dependenciesByType[depType] = [];
-          }
-          // For parent dependencies, we want to show the components that reference our component
-          // For child dependencies, we want to show the components that our component references
-          let dependency;
-          if (dependencyType === "parent") {
-            dependency = rec;
-          } else {
-            // For child dependencies, swap so MetadataComponent* shows the referenced component
-            dependency = {
-              ...rec,
-              MetadataComponentId: rec.RefMetadataComponentId,
-              MetadataComponentName: rec.RefMetadataComponentName,
-              MetadataComponentType: rec.RefMetadataComponentType,
-              RefMetadataComponentId: rec.MetadataComponentId,
-              RefMetadataComponentName: rec.MetadataComponentName,
-              RefMetadataComponentType: rec.MetadataComponentType
-            };
-          }
-          this.dependenciesByType[depType].push(dependency);
-          processedDeps.push(dependency);
-        });
-        // Enrich dependencies with additional information (e.g., objectName for CustomField)
-        await this.enrichDependencies(processedDeps);
-        this.didUpdate();
-      }
-
-      // Special handling for Flow types - Flow do not worked well with MetadataComponentDependency
-      if ((type === "Flow" || type === "FlowDefinition") && !parentId) {
-        const flowSubflowRecords = await this.getFlowSubflowRecords();
-        // parent: flows that call this flow (RefMetadataComponentId is the callee, kept as-is)
-        // child: flows that this flow calls (MetadataComponentId is the caller, swapped so Metadata* shows the callee)
-        const matchingRecords = dependencyType === "parent"
-          ? flowSubflowRecords.filter(rec => rec.RefMetadataComponentId === componentId)
-          : flowSubflowRecords.filter(rec => rec.MetadataComponentId === componentId).map(rec => ({
-            ...rec,
-            MetadataComponentId: rec.RefMetadataComponentId,
-            MetadataComponentName: rec.RefMetadataComponentName,
-            MetadataComponentType: rec.RefMetadataComponentType,
-            RefMetadataComponentId: rec.MetadataComponentId,
-            RefMetadataComponentName: rec.MetadataComponentName,
-            RefMetadataComponentType: rec.MetadataComponentType
-          }));
-        if (matchingRecords.length > 0) {
-          const depType = "Flow";
-          if (!this.dependenciesByType[depType]) {
-            this.dependenciesByType[depType] = [];
-          }
-          this.dependenciesByType[depType].push(...matchingRecords);
-          await this.enrichDependencies(matchingRecords);
+      const deps = await this.queryDependencies(componentId, type, dependencyType);
+      deps.forEach(dep => {
+        const depType = dep.MetadataComponentType || "Unknown";
+        if (!this.dependenciesByType[depType]) {
+          this.dependenciesByType[depType] = [];
         }
-        this.didUpdate();
-      }
+        this.dependenciesByType[depType].push(dep);
+      });
+      // Enrich dependencies with additional information (e.g., objectName for CustomField)
+      await this.enrichDependencies(deps);
+      this.didUpdate();
     } catch (err) {
       console.error("Error fetching dependencies:", err);
-      if (!parentId) {
-        this.error = "Error fetching dependencies: " + (err.message || JSON.stringify(err));
-        this.didUpdate();
-      }
+      this.error = "Error fetching dependencies: " + (err.message || JSON.stringify(err));
+      this.didUpdate();
     }
   }
 
@@ -378,43 +372,34 @@ class Model {
     this.didUpdate();
   }
 
-  async fetchChildDependencies(itemKey, componentType, componentName) {
+  // Expands an item in the same direction as the search: up to the components using it
+  // after a parent search, down to the components it uses after a child search.
+  async fetchSubDependencies(itemKey, dependency) {
     if (this.childDependencies.has(itemKey)) {
       // Already fetched, just toggle
       this.toggleItemExpanded(itemKey);
       return;
     }
 
-    // Fetch child dependencies for this component (what this component references)
     try {
-      const componentId = await this.getComponentId(componentType, componentName);
+      const componentType = dependency.MetadataComponentType;
+      let componentId = dependency.MetadataComponentId;
+      // The flow scan records use the id of the active version
+      if (componentType === "Flow" || componentType === "FlowDefinition") {
+        componentId = (await this.getComponentId(componentType, dependency.MetadataComponentName)) || componentId;
+      }
       if (!componentId || this.processedIds.has(componentId)) {
         this.toggleItemExpanded(itemKey);
         return;
       }
 
       this.processedIds.add(componentId);
-      const escapedId = componentId.replace(/'/g, "\\'");
-      // Get child dependencies (components that this component references)
-      const query = `SELECT MetadataComponentId,MetadataComponentName,MetadataComponentType,RefMetadataComponentName,RefMetadataComponentType,RefMetadataComponentId FROM MetadataComponentDependency WHERE MetadataComponentId = '${escapedId}'`;
-      const res = await sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=" + encodeURIComponent(query), {method: "GET"});
-      const records = res.records || [];
-      // Transform to show referenced components
-      const children = records.map(rec => ({
-        ...rec,
-        MetadataComponentId: rec.RefMetadataComponentId,
-        MetadataComponentName: rec.RefMetadataComponentName,
-        MetadataComponentType: rec.RefMetadataComponentType,
-        RefMetadataComponentId: rec.MetadataComponentId,
-        RefMetadataComponentName: rec.MetadataComponentName,
-        RefMetadataComponentType: rec.MetadataComponentType
-      }));
-      await this.enrichDependencies(children);
-      // Store children separately
-      this.childDependencies.set(itemKey, children);
+      const subDeps = await this.queryDependencies(componentId, componentType, this.direction || "child");
+      await this.enrichDependencies(subDeps);
+      this.childDependencies.set(itemKey, subDeps);
       this.toggleItemExpanded(itemKey);
     } catch (err) {
-      console.error("Error fetching child dependencies:", err);
+      console.error("Error fetching sub dependencies:", err);
     }
   }
   async enrichDependencies(dependencies) {
@@ -655,7 +640,7 @@ class DependencyItem extends React.Component {
     e.stopPropagation();
     const {model, dependency} = this.props;
     const itemKey = `${dependency.MetadataComponentType}:${dependency.MetadataComponentName}`;
-    model.fetchChildDependencies(itemKey, dependency.MetadataComponentType, dependency.MetadataComponentName);
+    model.fetchSubDependencies(itemKey, dependency);
   }
 
   render() {
@@ -689,7 +674,8 @@ class DependencyItem extends React.Component {
         className: "slds-button slds-button_icon slds-m-right_x-small slds-button_icon-small",
         disabled: !dependency.MetadataComponentId,
         onClick: this.onExpandClick,
-        hidden: !dependency.MetadataComponentId
+        hidden: !dependency.MetadataComponentId,
+        title: model.direction === "parent" ? "Show the components using it" : "Show the components it uses"
       },
       h("svg", {
         className: "slds-button__icon slds-button__icon_small",
@@ -737,6 +723,37 @@ class DependencyItem extends React.Component {
   }
 }
 
+// Visible loading state in the results area: the header spinner alone is easy to miss,
+// and the first flow scan can take a while (one Tooling API query per active flow).
+function DependencyLoading({model}) {
+  const progress = model.flowScanProgress;
+  const percent = progress && progress.total ? Math.round((progress.done / progress.total) * 100) : null;
+  return h("div", {className: "slds-p-around_large", role: "status", style: {textAlign: "center"}},
+    h("div", {style: {position: "relative", height: "2rem", marginBottom: "0.75rem"}},
+      h("div", {className: "slds-spinner slds-spinner_small slds-spinner_brand"},
+        h("div", {className: "slds-spinner__dot-a"}),
+        h("div", {className: "slds-spinner__dot-b"})
+      )
+    ),
+    percent == null
+      ? h("p", {}, "Searching dependencies...")
+      : h("div", {style: {maxWidth: "30rem", margin: "0 auto"}},
+        h("p", {}, `Scanning flows for calls to other flows: ${percent}% (${progress.done}/${progress.total} flows)`),
+        h("div", {
+          role: "progressbar",
+          "aria-valuemin": 0,
+          "aria-valuemax": 100,
+          "aria-valuenow": percent,
+          style: {height: "0.5rem", marginTop: "0.5rem", borderRadius: "0.25rem", backgroundColor: "#DDDBDA", overflow: "hidden"}
+        },
+        h("div", {style: {width: percent + "%", height: "100%", backgroundColor: "#0176D3", transition: "width 0.2s"}})
+        ),
+        h("p", {className: "slds-text-body_small slds-text-color_weak", style: {marginTop: "0.5rem"}},
+          "Only the first scan is long: next searches only rescan flows modified since.")
+      )
+  );
+}
+
 class DependencyAccordion extends React.Component {
   constructor(props) {
     super(props);
@@ -750,6 +767,10 @@ class DependencyAccordion extends React.Component {
   render() {
     const {model} = this.props;
     const types = Object.keys(model.dependenciesByType).sort();
+
+    if (model.spinnerCount > 0) {
+      return h(DependencyLoading, {model});
+    }
 
     if (types.length === 0) {
       return h("div", {className: "slds-text-align_center slds-p-around_large"},
@@ -1167,8 +1188,8 @@ class App extends React.Component {
 
     return h("div", {},
       h(PageHeader, {sfHost: model.sfHost, title: "Dependencies", spinning: model.spinnerCount != 0, options: 3},
-        model.flowScanProgress && h("span", {className: "slds-text-body_small slds-m-right_x-small", title: "Scanning flows for subflow dependencies"},
-          Math.round((model.flowScanProgress.done / model.flowScanProgress.total) * 100) + "% (" + model.flowScanProgress.done + "/" + model.flowScanProgress.total + " flows)"
+        model.flowScanProgress && h("span", {className: "slds-text-body_small slds-m-right_x-small", title: "Scanning flows for calls to other flows"},
+          Math.round((model.flowScanProgress.done / model.flowScanProgress.total) * 100) + "%"
         )
       ),
       h(DependencyForm, {model}),

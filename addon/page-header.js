@@ -51,6 +51,7 @@ export class PageHeader extends React.Component {
       h("h1", {}, title),
       h("span", {}, " / " + userInfo),
       h("div", {className: "flex-right"},
+        this.props.children,
         spinner ? h(Spinner, {hidden: !spinning && !loadingUserInfo}) : null,
         options ? h("a", {href: "options.html?" + optionsArgs, className: "top-btn", id: "options-btn", title: "Option", target: "_blank"},
           h("div", {className: "icon"})
