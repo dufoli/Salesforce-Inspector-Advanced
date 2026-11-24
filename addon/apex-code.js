@@ -2,7 +2,9 @@
 import {sfConn, apiVersion} from "./inspector.js";
 import {PageHeader} from "./page-header.js";
 /* global initButton */
-import {tokenizeCode} from "./editor.js";
+import {tokenizeCode, Editor} from "./editor.js";
+import {DescribeInfo} from "./data-load.js";
+import {ApexAutocompleteModel} from "./apex-autocomplete.js";
 
 const apexKeywordColor = new Map([
   "abstract", "class", "enum", "extends", "final", "global", "implements", "interface", "override", "private", "protected", "public",
@@ -17,6 +19,7 @@ const pollDelay = 2000;
 const testSetsStorageKey = "insextApexTestSets";
 const debugLogsStorageKey = "insextApexTestDebugLogs";
 const finalTestStatuses = ["Completed", "Failed", "Aborted"];
+const editorLineHeight = 18; // px, see .code-area.editing in apex-code.css
 
 function soqlString(value) {
   return "'" + value.replace(/([\\'])/g, "\\$1") + "'";
@@ -155,8 +158,29 @@ export function parseStackTrace(stackTrace) {
   });
 }
 
-export class Model {
+/**
+ * Errors of a ContainerAsyncRequest (Tooling API save of Apex code): compile errors with their line,
+ * or the error message of the request. Empty when the code was saved.
+ * @returns {Array<{line: number|null, column: number|null, problem: string}>}
+ */
+export function saveErrors(request) {
+  if (request.State == "Completed") {
+    return [];
+  }
+  let failures = (request.DeployDetails && request.DeployDetails.componentFailures) || [];
+  if (failures.length) {
+    return failures.map(f => ({line: f.lineNumber || null, column: f.columnNumber || null, problem: f.problem}));
+  }
+  return [{line: null, column: null, problem: request.ErrorMsg || "Save " + request.State}];
+}
+
+function codeKind(code) {
+  return code.type == "ApexTrigger" ? "trigger" : "class";
+}
+
+export class Model extends ApexAutocompleteModel {
   constructor({sfHost, args}) {
+    super();
     this.sfHost = sfHost;
     this.sfLink = "https://" + sfHost;
     this.spinnerCount = 0;
@@ -178,6 +202,18 @@ export class Model {
     this.failedTestsOnly = false;
     this.debugLogs = localStorage.getItem(debugLogsStorageKey) == "true";
     this.pollTimer = null;
+    this.editing = false;
+    this.saving = false;
+    this.compileErrors = [];
+    // Editor component of the edit mode, see ApexAutocompleteModel for the autocomplete
+    this.editorMirror = null;
+    this.winInnerHeight = 0;
+    this.describeInfo = new DescribeInfo(this.spinFor.bind(this), () => {
+      if (this.editor) {
+        this.editorAutocompleteHandler({newDescribe: true});
+      }
+      this.didUpdate();
+    });
 
     this.spinFor(this.loadAllCode());
     this.spinFor(this.loadTestClasses());
@@ -225,6 +261,7 @@ export class Model {
       this.queryAll("SELECT Id, Name, NamespacePrefix FROM ApexTrigger ORDER BY Name"),
       this.loadLockedNamespaces()
     ]);
+    this.apexClasses.addToTable(classes); // suggested by the autocomplete
     let visible = r => !r.NamespacePrefix || !lockedNamespaces.has(r.NamespacePrefix);
     let toEntry = type => r => ({Id: r.Id, label: (r.NamespacePrefix ? r.NamespacePrefix + "." : "") + r.Name, type});
     this.allCode = classes.filter(visible).map(toEntry("ApexClass")).concat(triggers.filter(visible).map(toEntry("ApexTrigger")));
@@ -316,21 +353,15 @@ export class Model {
     } else {
       where = "Name = " + soqlString(name);
     }
-    let records = await this.queryAll("SELECT Id, Name, NamespacePrefix, Body FROM " + type + " WHERE " + where);
+    let records = await this.queryAll("SELECT Id, Name, NamespacePrefix, Body, LastModifiedDate FROM " + type + " WHERE " + where);
     if (records.length == 0) {
       throw new Error(type + " not found: " + (id || name));
     }
     let record = records[0];
     this.stopPolling();
     this.error = null;
-    this.code = {
-      Id: record.Id,
-      Name: record.Name,
-      label: (record.NamespacePrefix ? record.NamespacePrefix + "." : "") + record.Name,
-      type,
-      hidden: record.Body == "(hidden)",
-      lines: splitTokensByLine(tokenizeCode(record.Body || "", {keywordColor: apexKeywordColor}))
-    };
+    this.code = this.toCode(record, type);
+    this.cancelEdit();
     this.coverageMode = "org";
     this.coverage = null;
     this.suggestedTests = [];
@@ -351,6 +382,123 @@ export class Model {
       return;
     }
     await Promise.all([this.loadCoverage(), this.loadSuggestedTests()]);
+  }
+
+  toCode(record, type) {
+    return {
+      Id: record.Id,
+      Name: record.Name,
+      label: (record.NamespacePrefix ? record.NamespacePrefix + "." : "") + record.Name,
+      type,
+      hidden: record.Body == "(hidden)",
+      body: record.Body || "",
+      lastModifiedDate: record.LastModifiedDate,
+      lines: splitTokensByLine(tokenizeCode(record.Body || "", {keywordColor: apexKeywordColor}))
+    };
+  }
+
+  startEdit() {
+    this.editing = true;
+    this.compileErrors = [];
+    // sObjects for the autocomplete, loaded once
+    this.describeInfo.describeGlobal(false);
+  }
+
+  cancelEdit() {
+    this.editing = false;
+    this.editor = null;
+    this.editorMirror = null;
+    this.autocompleteState = "";
+    this.compileErrors = [];
+  }
+
+  isDirty() {
+    return this.editing && this.editor != null && this.editor.value != this.code.body;
+  }
+
+  // Editor component interface
+  setEditor(editor) {
+    this.editor = editor;
+    editor.value = this.code.body;
+    this.editHistory.attach(editor);
+  }
+  recalculateSize() {
+    // the size of the page content does not depend on the viewport
+  }
+
+  // Saves the edited code like the Developer Console, Salesforce refuses it in production orgs
+  async saveCode() {
+    let code = this.code;
+    let editor = this.editor;
+    let body = editor.value;
+    this.saving = true;
+    editor.readOnly = true;
+    this.compileErrors = [];
+    this.didUpdate();
+    try {
+      let [current] = await this.queryAll("SELECT LastModifiedDate, LastModifiedBy.Name FROM " + code.type + " WHERE Id = " + soqlString(code.Id));
+      if (current && current.LastModifiedDate != code.lastModifiedDate
+        && !confirm("This " + codeKind(code) + " was modified by " + (current.LastModifiedBy ? current.LastModifiedBy.Name : "someone") + " since you opened it. Overwrite these changes?")) {
+        return;
+      }
+      let errors = await this.deployCode(code, body);
+      if (this.code != code) {
+        return; // another class was opened
+      }
+      if (errors.length) {
+        this.compileErrors = errors;
+        return;
+      }
+      let [record] = await this.queryAll("SELECT Id, Name, NamespacePrefix, Body, LastModifiedDate FROM " + code.type + " WHERE Id = " + soqlString(code.Id));
+      if (this.code != code) {
+        return;
+      }
+      // keep the tests to run, but the coverage of the previous code no longer applies
+      this.code = this.toCode(record, code.type);
+      this.cancelEdit();
+      this.targetLine = null;
+      this.lastRunTestIds = [];
+      this.coverageMode = "org";
+      this.coverage = null;
+      this.didUpdate();
+      await this.loadCoverage();
+    } finally {
+      this.saving = false;
+      editor.readOnly = false;
+    }
+  }
+
+  // Compiles and saves the body with the Tooling API, returns the errors (see saveErrors)
+  async deployCode(code, body) {
+    let tooling = "/services/data/v" + apiVersion + "/tooling/sobjects/";
+    // the name is unique and limited to 32 characters
+    let container = await sfConn.rest(tooling + "MetadataContainer/", {method: "POST", body: {Name: "SFIA" + Date.now()}});
+    try {
+      await sfConn.rest(tooling + (code.type == "ApexTrigger" ? "ApexTriggerMember" : "ApexClassMember") + "/", {method: "POST",
+        body: {MetadataContainerId: container.id, ContentEntityId: code.Id, Body: body}});
+      let request = await sfConn.rest(tooling + "ContainerAsyncRequest/", {method: "POST", body: {MetadataContainerId: container.id, IsCheckOnly: false}});
+      let result;
+      do {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        result = await sfConn.rest(tooling + "ContainerAsyncRequest/" + request.id);
+      } while (result.State == "Queued");
+      return saveErrors(result);
+    } finally {
+      sfConn.rest(tooling + "MetadataContainer/" + container.id, {method: "DELETE"}).catch(err => console.warn("Failed to delete the metadata container", err));
+    }
+  }
+
+  // Selects a line in the edit mode textarea
+  goToEditorLine(line) {
+    let textarea = this.editor;
+    if (!textarea) {
+      return;
+    }
+    let lines = textarea.value.split("\n");
+    let start = lines.slice(0, line - 1).reduce((sum, l) => sum + l.length + 1, 0);
+    textarea.focus();
+    textarea.setSelectionRange(start, start + (lines[line - 1] || "").length);
+    textarea.scrollTop = Math.max(0, ((line - 1) * editorLineHeight) - (textarea.clientHeight / 2));
   }
 
   async loadCoverage() {
@@ -521,6 +669,10 @@ export class Model {
   }
 
   goToLine(line) {
+    if (this.editing) {
+      this.goToEditorLine(line);
+      return;
+    }
     this.targetLine = line;
     this.didUpdate(() => {
       let element = document.getElementById("code-line-" + line);
@@ -710,8 +862,22 @@ class TestPanel extends React.Component {
 }
 
 class App extends React.Component {
+  constructor(props) {
+    super(props);
+    this.onBeforeUnload = this.onBeforeUnload.bind(this);
+  }
+  componentDidMount() {
+    addEventListener("beforeunload", this.onBeforeUnload);
+  }
   componentWillUnmount() {
     this.props.model.stopPolling();
+    removeEventListener("beforeunload", this.onBeforeUnload);
+  }
+  onBeforeUnload(e) {
+    if (this.props.model.isDirty()) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
   }
   render() {
     let {model} = this.props;
@@ -721,20 +887,63 @@ class App extends React.Component {
     return h("div", {className: "apex-code-page"},
       h(PageHeader, {sfHost: model.sfHost, title: "Apex Code", spinning: model.spinnerCount != 0, options: true}),
       h("div", {className: "area code-header"},
-        h(CodePicker, {options: model.allCode, id: "all-code", placeholder: "Open an Apex class or trigger", onPick: c => model.spinFor(model.openCode({id: c.Id, type: c.type}))}),
-        code ? h("h2", {}, code.label + (code.type == "ApexTrigger" ? ".trigger" : ".cls")) : null,
+        h(CodePicker, {options: model.allCode,
+          id: "all-code",
+          placeholder: "Open an Apex class or trigger",
+          onPick: c => {
+            if (!model.isDirty() || confirm("Discard your changes to " + code.label + "?")) {
+              model.spinFor(model.openCode({id: c.Id, type: c.type}));
+            }
+          }}),
+        code ? h("h2", {}, code.label + (code.type == "ApexTrigger" ? ".trigger" : ".cls") + (model.isDirty() ? " *" : "")) : null,
         code ? h("a", {href: model.setupLink(), target: "_blank", title: "View in Setup"}, "Setup") : null,
-        code && !code.hidden ? h("span", {className: "coverage-mode"},
+        code && !code.hidden && !model.editing ? h("button", {title: "Edit the code, then save it like the Developer Console (not allowed in production orgs)", onClick: () => { model.startEdit(); model.didUpdate(); }}, "Edit") : null,
+        model.editing ? h("button", {className: "highlighted", disabled: model.saving, title: "Compile and save (Ctrl+S). While editing, Ctrl+Space shows or picks a suggestion, Esc hides them", onClick: () => model.spinFor(model.saveCode())}, model.saving ? "Saving..." : "Save") : null,
+        model.editing ? h("button", {disabled: model.saving,
+          onClick: () => {
+            if (!model.isDirty() || confirm("Discard your changes?")) {
+              model.cancelEdit();
+              model.didUpdate();
+            }
+          }}, "Cancel") : null,
+        code && !code.hidden && !model.editing ? h("span", {className: "coverage-mode"},
           h("label", {}, h("input", {type: "radio", name: "coverageMode", checked: model.coverageMode == "org", onChange: () => model.setCoverageMode("org")}), " Org coverage"),
           h("label", {title: model.lastRunTestIds.length ? "Lines executed by the tests of the last run" : "Run tests first"},
             h("input", {type: "radio", name: "coverageMode", checked: model.coverageMode == "lastRun", disabled: model.lastRunTestIds.length == 0, onChange: () => model.setCoverageMode("lastRun")}), " Last run")
         ) : null,
-        percent != null ? h("span", {className: "coverage-percent" + (percent < 75 ? " low" : "")}, percent + "% (" + coverage.covered.size + "/" + total + " lines)") : null
+        percent != null && !model.editing ? h("span", {className: "coverage-percent" + (percent < 75 ? " low" : "")}, percent + "% (" + coverage.covered.size + "/" + total + " lines)") : null
       ),
       model.error ? h("div", {className: "area error-message"}, model.error) : null,
       code && code.hidden ? h("div", {className: "area coverage-message"}, "This " + (code.type == "ApexTrigger" ? "trigger" : "class") + " belongs to an installed managed package: Salesforce hides its source code and records no code coverage for it.")
       : code ? h("div", {className: "code-body"},
-        h("div", {className: "area code-area"},
+        model.editing ? h("div", {className: "area code-area editing"},
+          model.compileErrors.length ? h("div", {className: "compile-errors"},
+            model.compileErrors.map((e, i) => e.line
+              ? h("a", {key: i, href: "#", className: "compile-error", title: "Go to line", onClick: ev => { ev.preventDefault(); model.goToEditorLine(e.line); }},
+                "Line " + e.line + (e.column ? ", column " + e.column : "") + ": " + e.problem)
+              : h("div", {key: i, className: "compile-error"}, e.problem))
+          ) : null,
+          h("div", {className: "code-editor",
+            onKeyDown: e => {
+              // the key events of the Editor textarea bubble up here
+              if ((e.ctrlKey || e.metaKey) && e.key == "s") {
+                e.preventDefault();
+                if (!model.saving) {
+                  model.spinFor(model.saveCode());
+                }
+              }
+            }},
+          h(Editor, {model, keywordColor: apexKeywordColor, keywordCaseSensitive: false, maxHighlightSegments: Infinity})),
+          h("div", {ref: el => { model.autocompleteResultBox = el; },
+            className: "autocomplete-results autocomplete-results-over",
+            hidden: !model.displaySuggestion || model.autocompleteResults.results.length == 0,
+            style: {top: model.suggestionTop + "px", left: model.suggestionLeft + "px"}},
+          model.autocompleteResults.results.map((r, ri) =>
+            h("div", {className: "autocomplete-result" + (ri == model.activeSuggestion ? " active" : ""), key: r.key ? r.key : r.value},
+              h("a", {tabIndex: 0, title: r.title, href: "#", className: r.autocompleteType + " " + r.dataType, onMouseDown: e => { e.preventDefault(); model.autocompleteClick(r); model.didUpdate(); }},
+                h("div", {className: "autocomplete-icon"}), r.title))
+          ))
+        ) : h("div", {className: "area code-area"},
           coverage && coverage.message ? h("div", {className: "coverage-message"}, coverage.message) : null,
           h(CodeViewer, {code, coverage, targetLine: model.targetLine})
         ),
@@ -756,7 +965,7 @@ class App extends React.Component {
     };
     ReactDOM.render(h(App, {model}), root);
     if (parent && parent.isUnitTest) { // for unit tests
-      parent.insextTestLoaded({Model, model, sfConn, traceFlagChange, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode});
+      parent.insextTestLoaded({Model, model, sfConn, traceFlagChange, failedTestsToRun, saveErrors, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode});
     }
   });
 }

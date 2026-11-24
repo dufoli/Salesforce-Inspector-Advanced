@@ -1,8 +1,10 @@
 /* eslint quotes: ["error", "single", {"avoidEscape": true}] */
+import {analyzeApex, maskApex} from './apex-autocomplete.js';
+
 export async function apexCodeTest(test) {
   console.log('TEST apexCode');
   let {assertEquals, assertThrows, loadPage} = test;
-  let {traceFlagChange, failedTestsToRun, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode} = await loadPage('apex-code.html');
+  let {model, traceFlagChange, failedTestsToRun, saveErrors, mergeCoverage, splitTokensByLine, parseStackTrace, parseTestClassesResponse, upsertTestSet, resolveTestSet, tokenizeCode} = await loadPage('apex-code.html');
 
   // Coverage: a line covered by one test is covered, even if another test leaves it uncovered
   let merged = mergeCoverage([
@@ -22,6 +24,52 @@ export async function apexCodeTest(test) {
     {ApexClassId: '01p000000000002', MethodName: 'd', Outcome: 'Fail'}
   ]));
   assertEquals([], failedTestsToRun([{ApexClassId: '01p000000000001', MethodName: 'a', Outcome: 'Pass'}]));
+
+  // Save: compile errors with their line, otherwise the error message of the request
+  assertEquals([], saveErrors({State: 'Completed'}));
+  assertEquals([{line: 3, column: 5, problem: 'Variable does not exist: x'}, {line: null, column: null, problem: 'Other'}], saveErrors({State: 'Failed',
+    DeployDetails: {componentFailures: [{lineNumber: 3, columnNumber: 5, problem: 'Variable does not exist: x'}, {problem: 'Other'}]}}));
+  assertEquals([{line: null, column: null, problem: 'Not allowed in production'}], saveErrors({State: 'Error', ErrorMsg: 'Not allowed in production', DeployDetails: null}));
+  assertEquals([{line: null, column: null, problem: 'Save Aborted'}], saveErrors({State: 'Aborted'}));
+
+  // Autocomplete: comments and strings masked with the same length
+  assertEquals('a       \nb      ;', maskApex("a // x;{\nb 'c;}';"));
+  // Variables visible at the caret: parameters, locals and loop variables of the enclosing blocks only
+  let code = 'public class A extends B {\n'
+    + '  /** doc; { */\n'
+    + '  private static final String PREFIX = \'a;{\';\n'
+    + '  public List<Account> accounts { get; set; }\n'
+    + '  public enum Status { ACTIVE, INACTIVE }\n'
+    + '  public class Result { public Boolean success; }\n'
+    + '  @AuraEnabled(cacheable=true)\n'
+    + '  public static Result run(Map<Id, List<Contact>> byId, final String mode) {\n'
+    + '    Result res = new Result();\n'
+    + '    for (Integer i = 0; i < 2; i++) { String s; }\n'
+    + '    for (Account acc : accounts) {\n'
+    + '      // caret\n'
+    + '    }\n'
+    + '    return res;\n'
+    + '  }\n'
+    + '}';
+  let analysis = analyzeApex(code, code.indexOf('// caret'));
+  assertEquals([{name: 'byId', type: 'Map<Id,List<Contact>>'}, {name: 'mode', type: 'String'}, {name: 'res', type: 'Result'}, {name: 'acc', type: 'Account'}], analysis.variables);
+  assertEquals(['A'], analysis.classNames);
+  // Members of the classes: fields, properties, inner classes and enums, methods with their parameters (not the local variables)
+  let a = analysis.classes.get('a');
+  assertEquals('B', a.parent);
+  assertEquals([['field', 'PREFIX', 'String', true, 'private'], ['property', 'accounts', 'List<Account>', false, 'public'], ['class', 'Status', 'Status', true, 'public'],
+    ['class', 'Result', 'Result', true, 'public'], ['method', 'run', 'Result', true, 'public']], a.members.map(m => [m.kind, m.name, m.type, m.isStatic, m.visibility]));
+  assertEquals(['byId', 'mode'], a.members.find(m => m.name == 'run').params.map(p => p.name));
+  assertEquals(['ACTIVE', 'INACTIVE'], analysis.classes.get('status').members.map(m => m.name));
+  assertEquals(['success'], analysis.classes.get('result').members.map(m => m.name));
+  // Interface methods are public
+  assertEquals([['area', 'public']], Array.from(analyzeApex('public interface Shape { Decimal area(); }').classes.values())[0].members.map(m => [m.name, m.visibility]));
+  // Anonymous Apex, the declaration being typed is not visible yet
+  assertEquals([{name: 'a', type: 'Account'}], analyzeApex('Account a = [SELECT Id FROM Account];\nContact c').variables);
+  // Suggestions: methods with their signature, those without parameters are completed
+  assertEquals({key: 'res.log(String m): void', value: 'res.log(', title: 'log(String m): void', suffix: '', rank: 1, autocompleteType: 'variable', dataType: ''},
+    model.memberSuggestion({name: 'log', kind: 'method', type: 'void', params: [{type: 'String', name: 'm'}]}, 'res.'));
+  assertEquals(')', model.memberSuggestion({name: 'size', kind: 'method', type: 'Integer', params: []}, '').suffix);
 
   // Debug logs: an active trace flag lasting until the end is kept, otherwise the developer log one is extended or inserted
   let now = new Date('2026-01-01T10:00:00.000Z');
@@ -46,6 +94,8 @@ export async function apexCodeTest(test) {
     {value: ' ', color: 'black'},
     {value: '// public', color: 'green'}
   ], tokenizeCode("public x = ''; 'a\\'b' // public", {keywordColor}));
+  // Past the segment limit, the rest of the code is one black segment
+  assertEquals([{value: 'public', color: 'blue'}, {value: ' x return y', color: 'black'}], tokenizeCode('public x return y', {keywordColor}, 0));
   // Case insensitive by default, like Apex
   assertEquals([{value: 'RETURN', color: 'violet'}], tokenizeCode('RETURN', {keywordColor}));
 

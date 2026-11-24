@@ -59,6 +59,82 @@
   overflow: auto;
 }
 
+.code-area.editing {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.compile-errors {
+  max-height: 30%;
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.compile-error {
+  display: block;
+  color: #ba0517;
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 12px;
+}
+
+/* Editor component (editor.js, styles in data-export.css) filling the code area, without line wrapping */
+.code-editor {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.code-editor .editor_container {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  max-height: none !important;
+}
+
+.code-editor .editor-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.code-editor .editor-wrapper {
+  min-width: 0;
+}
+
+.code-editor .editor_textarea {
+  height: 100%;
+  resize: none;
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+  tab-size: 2;
+}
+
+.code-editor .line-numbers span::before {
+  font-size: 12px;
+}
+
+/* the Editor places the suggestions at the caret position in the viewport */
+.apex-code-page .autocomplete-results-over {
+  position: fixed;
+  margin-top: 0;
+  border: 1px solid #DDDBDA;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.class .autocomplete-icon {
+  -webkit-mask-image: url(images/relate.svg);
+  background-color: #04844B;
+}
+
+.namespace .autocomplete-icon {
+  -webkit-mask-image: url(images/textarea.svg);
+  background-color: #04844B;
+}
+
 .code-viewer {
   font-family: Consolas, Monaco, "Courier New", monospace;
   font-size: 12px;

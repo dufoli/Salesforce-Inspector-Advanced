@@ -60,17 +60,17 @@ function readToken(match, src, ctx) {
 }
 
 /**
- * Splits source code into colored segments, using the same rules as the Editor highlighting
- * but without caret handling nor segment limit, for read-only display of whole files.
+ * Splits source code into colored segments, the Editor highlighting rules.
+ * @param {number} maxSegments past this number of segments, the rest of the code is one black segment
  * @returns {Array<{value: string, color: string}>}
  */
-export function tokenizeCode(src, {keywordColor, keywordCaseSensitive = false, stringDelimiter = "'", enableComments = true}) {
+export function tokenizeCode(src, {keywordColor, keywordCaseSensitive = false, stringDelimiter = "'", enableComments = true}, maxSegments = Infinity) {
   let ctx = {keywordColor, stringDelimiter, enableComments, bracketIndex: 0};
   let regex = buildTokenRegex({keywordColor, keywordCaseSensitive, stringDelimiter, enableComments});
   let segments = [];
   let pos = 0;
   let match;
-  while ((match = regex.exec(src)) !== null) {
+  while (segments.length <= maxSegments && (match = regex.exec(src)) !== null) {
     let {sentence, color} = readToken(match, src, ctx);
     if (match.index > pos) {
       segments.push({value: src.substring(pos, match.index), color: "black"});
@@ -244,6 +244,7 @@ export class Editor extends React.Component {
     let {model} = this.props;
     if (model.editorMirror && model.editor) {
       model.editorMirror.scrollTop = model.editor.scrollTop;
+      model.editorMirror.scrollLeft = model.editor.scrollLeft;
     }
     this.setState({scrolltop: model.editor.scrollTop});
   }
@@ -487,58 +488,31 @@ export class Editor extends React.Component {
       model.displaySuggestion = false;
     }
   }
+  // Colored segments of the text, with an empty caret segment at the selection start (used to place the suggestions)
   processText(src) {
-    let {keywordColor, keywordCaseSensitive, model} = this.props;
-    let remaining = src;
-    let keywordMatch;
-    let highlighted = [];
+    let {keywordColor, keywordCaseSensitive, model, maxHighlightSegments = 1000} = this.props;
     let numberOfLines = src ? src.split("\n").length : 1;
     let selStart = model.editor ? model.editor.selectionStart : 0;
-    let tokenOptions = {keywordColor, keywordCaseSensitive, stringDelimiter: this.stringDelimiter, enableComments: this.enableComments};
-    let ctx = {keywordColor, stringDelimiter: this.stringDelimiter, enableComments: this.enableComments, bracketIndex: 0};
-    let keywordRegEx = buildTokenRegex(tokenOptions);
-    while ((keywordMatch = keywordRegEx.exec(remaining)) !== null) {
-      let {sentence, color} = readToken(keywordMatch, remaining, ctx);
-      if (selStart <= keywordMatch.index && selStart > 0) { // sel before keyword
-        if (selStart > 0) {
-          highlighted.push({value: remaining.substring(0, selStart), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
+    let segments = tokenizeCode(src, {keywordColor, keywordCaseSensitive, stringDelimiter: this.stringDelimiter, enableComments: this.enableComments}, maxHighlightSegments);
+    let highlighted = [];
+    let push = (value, attributes) => highlighted.push({value, attributes: Object.assign({key: "hl" + highlighted.length}, attributes)});
+    let pos = 0;
+    let caretDone = selStart <= 0;
+    for (let {value, color} of segments) {
+      let end = pos + value.length;
+      if (!caretDone && selStart <= end) {
+        if (selStart > pos) {
+          push(value.substring(0, selStart - pos), {style: {color}});
         }
-        highlighted.push({value: "", attributes: {className: "editor_caret", key: "hl" + highlighted.length}});
-        if (selStart < keywordMatch.index) {
-          highlighted.push({value: remaining.substring(selStart, keywordMatch.index), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
+        push("", {className: "editor_caret"});
+        if (selStart < end) {
+          push(value.substring(selStart - pos), {style: {color}});
         }
-        highlighted.push({value: sentence, attributes: {style: {color}, key: "hl" + highlighted.length}});
-      } else if (selStart <= keywordMatch.index + sentence.length && selStart > 0) { // sel on keyword
-        if (keywordMatch.index != 0) {
-          highlighted.push({value: remaining.substring(0, keywordMatch.index), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
-        }
-        if (keywordMatch.index < selStart) {
-          highlighted.push({value: remaining.substring(keywordMatch.index, selStart), attributes: {style: {color}, key: "hl" + highlighted.length}});
-        }
-        highlighted.push({value: "", attributes: {className: "editor_caret", key: "hl" + highlighted.length}});
-        if (selStart < keywordMatch.index + sentence.length) {
-          highlighted.push({value: remaining.substring(selStart, keywordMatch.index + sentence.length), attributes: {style: {color}, key: "hl" + highlighted.length}});
-        }
-      } else { //sel after keyword
-        if (keywordMatch.index != 0) {
-          highlighted.push({value: remaining.substring(0, keywordMatch.index), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
-        }
-        highlighted.push({value: sentence, attributes: {style: {color}, key: "hl" + highlighted.length}});
+        caretDone = true;
+      } else {
+        push(value, {style: {color}});
       }
-      remaining = remaining.substring(keywordMatch.index + sentence.length);
-      selStart -= keywordMatch.index + sentence.length;
-      keywordRegEx = buildTokenRegex(tokenOptions);
-      if (highlighted.length > 1000) {
-        break;
-      }
-    }
-    if (selStart > 0) {
-      highlighted.push({value: remaining.substring(0, selStart), attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
-      highlighted.push({value: "", attributes: {className: "editor_caret", key: "hl" + highlighted.length}});
-      remaining = remaining.substring(selStart);
-    }
-    if (remaining) {
-      highlighted.push({value: remaining, attributes: {style: {color: "black"}, key: "hl" + highlighted.length}});
+      pos = end;
     }
     return {highlighted, numberOfLines};
   }

@@ -50,6 +50,8 @@ To run the tests of a module again, type a name and click **Save set**: the test
 
 Check **Debug logs** to log the test runs: before running tests, the page sets a trace flag on the current user, with the debug level and the duration (minutes) of the options (`SFDC_DevConsole` and 15 minutes by default), or extends the existing one. A **Log** link next to each test result opens the debug log of its test class in the log viewer.
 
+Click **Edit** to edit the code, with the same autocomplete as Apex Runner (variables visible at the caret, classes, objects, and after a dot the fields, properties and methods of a variable, a class or an object, inline SOQL; Ctrl+Space shows or picks a suggestion, Esc hides them), then **Save** (or Ctrl+S) to compile and save it, as the Developer Console does: compile errors are listed above the code, click one to go to its line. If someone else saved the class or trigger since you opened it, you are asked before overwriting their changes. After saving, the org coverage is loaded again and the tests to run are kept. Salesforce does not allow saving Apex this way in production orgs: deploy it instead. The code of installed managed packages cannot be edited.
+
 The **Last run** coverage needs the coverage per test, so it is empty when the org stores only aggregated code coverage (Apex Test Execution options in Setup).
 
 ## Clone a User
