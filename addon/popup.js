@@ -1415,7 +1415,7 @@ class AllDataBoxSObject extends React.PureComponent {
     sfConn.rest("/services/data/v" + apiVersion + "/tooling/query/?q=SELECT+Definition.DeveloperName+FROM+Flow+WHERE+Id='" + flowId + "'", {method: "GET"}).then(res => {
       res.records.forEach(recentItem => {
         let flowName = recentItem.Definition.DeveloperName;
-        window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/dependency.html?name=${flowName}&type=Flow&host=${this.props.sfHost}`, "_blank");
+        window.open(browser + "-extension://" + chrome.i18n.getMessage("@@extension_id") + `/dependency.html?name=${encodeURIComponent(flowName)}&type=Flow&direction=parent&host=${this.props.sfHost}`, "_blank");
       });
     });
   }

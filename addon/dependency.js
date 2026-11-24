@@ -69,7 +69,7 @@ class Model {
 
     // If both name and type are provided in URL, fetch dependencies automatically
     if (this.name && this.type) {
-      this.fetchDependencies(this.type, this.name);
+      this.fetchDependencies(this.type, this.name, args.get("direction") === "parent" ? "parent" : "child");
     }
   }
 
@@ -1089,6 +1089,7 @@ class DependencyForm extends React.Component {
     args.set("host", model.sfHost);
     if (model.type) args.set("type", model.type);
     if (model.name) args.set("name", model.name);
+    args.set("direction", "parent");
     window.history.pushState({}, "", "dependency.html?" + args);
     model.fetchDependencies(model.type, model.name, "parent");
   }
@@ -1100,6 +1101,7 @@ class DependencyForm extends React.Component {
     args.set("host", model.sfHost);
     if (model.type) args.set("type", model.type);
     if (model.name) args.set("name", model.name);
+    args.set("direction", "child");
     window.history.pushState({}, "", "dependency.html?" + args);
     model.fetchDependencies(model.type, model.name, "child");
   }
