@@ -427,6 +427,16 @@ class Model {
     }
   }
 
+  // Name shown in the results and used in package.xml. A custom field is given as Object.Field__c
+  // (the dependency only gives the field developer name, the object comes from enrichDependencies).
+  static getDisplayName(dep) {
+    const name = dep.MetadataComponentName;
+    if (dep.MetadataComponentType === "CustomField" && name && !name.includes(".") && dep.objectName) {
+      return `${dep.objectName}.${name}${name.endsWith("__c") ? "" : "__c"}`;
+    }
+    return name;
+  }
+
   static componentKey(type, name) {
     return `${type}:${name}`;
   }
@@ -487,11 +497,7 @@ class Model {
         if (!name) {
           return;
         }
-        // A CustomField member must be Object.Field__c; the dependency only gives the field developer name
-        if (type === "CustomField" && !name.includes(".") && dep.objectName) {
-          name = `${dep.objectName}.${name}${name.endsWith("__c") ? "" : "__c"}`;
-        }
-        uniqueNames.add(name);
+        uniqueNames.add(Model.getDisplayName(dep));
       });
 
       if (uniqueNames.size > 0) {
@@ -706,8 +712,8 @@ class DependencyItem extends React.Component {
             href: link,
             target: "_blank",
             className: "slds-truncate",
-            title: dependency.MetadataComponentName
-          }, dependency.MetadataComponentName),
+            title: Model.getDisplayName(dependency)
+          }, Model.getDisplayName(dependency)),
           h("span", {className: "slds-text-body_small slds-m-left_small slds-text-color_weak"},
             dependency.MetadataComponentType
           ),
