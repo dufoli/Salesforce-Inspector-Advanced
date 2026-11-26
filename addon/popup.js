@@ -179,7 +179,7 @@ class App extends React.PureComponent {
       apexRunnerHref: "apex-runner.html?" + hostArg,
       streamingHref: "streaming.html?" + hostArg,
       limitsHref: "limits.html?" + hostArg,
-      formulaHelperHref: "formula-helper.html?" + hostArg,
+      apexCodeHref: "apex-code.html?" + hostArg,
       dependencyHref: "dependency.html?" + hostArg,
       latestNotesViewed: localStorage.getItem("latestReleaseNotesVersionViewed") === this.props.addonVersion,
       buttonTooltip: ""
@@ -385,7 +385,7 @@ class App extends React.PureComponent {
       apexRunnerHref: "apex-runner.html?" + limitsArg,
       streamingHref: "streaming.html?" + limitsArg,
       limitsHref: "limits.html?" + limitsArg,
-      formulaHelperHref: "formula-helper.html?" + limitsArg,
+      apexCodeHref: "apex-code.html?" + limitsArg,
       dependencyHref: "dependency.html?" + limitsArg
     });
   }
@@ -466,7 +466,7 @@ class App extends React.PureComponent {
       "e": ["click", "dataExportBtn"],
       "i": ["click", "dataImportBtn"],
       "l": ["click", "limitsBtn"],
-      "y": ["click", "formulaHelperBtn"],
+      "c": ["click", "apexCodeBtn"],
       "d": ["click", "metaRetrieveBtn"],
       "x": ["click", "apiExploreBtn"],
       "h": ["click", "homeBtn"],
@@ -659,7 +659,7 @@ class App extends React.PureComponent {
       inInspector,
       addonVersion
     } = this.props;
-    let {isInSetup, contextUrl, apiVersionInput, exportHref, importHref, apexRunnerHref, streamingHref, limitsHref, formulaHelperHref, dependencyHref, isFieldsPresent, latestNotesViewed, buttonTooltip} = this.state;
+    let {isInSetup, contextUrl, apiVersionInput, exportHref, importHref, apexRunnerHref, streamingHref, limitsHref, apexCodeHref, dependencyHref, isFieldsPresent, latestNotesViewed, buttonTooltip} = this.state;
     let hostArg = new URLSearchParams();
     hostArg.set("host", sfHost);
     let linkInNewTab = JSON.parse(localStorage.getItem("openLinksInNewTab"));
@@ -782,6 +782,19 @@ class App extends React.PureComponent {
             ),
             h("a",
               {
+                ref: "apexCodeBtn",
+                href: apexCodeHref,
+                target: linkTarget,
+                className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
+                title: "Apex Code & Coverage",
+                onMouseEnter: () => { this.setButtonTooltip("Apex Code & Coverage - Shortcut [c]"); },
+                onMouseLeave: () => { this.setButtonTooltip(""); }
+              },
+              h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#file", style: {fill: "#706E6B"}})),
+              h("span", {className: "slds-assistive-text"}, "Apex Code & Coverage"),
+            ),
+            h("a",
+              {
                 ref: "streamingBtn",
                 href: streamingHref,
                 target: linkTarget,
@@ -818,19 +831,6 @@ class App extends React.PureComponent {
               },
               h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#metrics", style: {fill: "#706E6B"}})),
               h("span", {className: "slds-assistive-text"}, "Limits"),
-            ),
-            h("a",
-              {
-                ref: "formulaHelperBtn",
-                href: formulaHelperHref,
-                target: linkTarget,
-                className: "slds-button slds-button_icon slds-button_icon-border-filled slds-button_icon-large",
-                title: "Formula Helper",
-                onMouseEnter: () => { this.setButtonTooltip("Formula Helper - Shortcut [y]"); },
-                onMouseLeave: () => { this.setButtonTooltip(""); }
-              },
-              h("svg", {className: "slds-button__icon_large"}, h("use", {xlinkHref: "symbols.svg#insert_tag_field", style: {fill: "#706E6B"}})),
-              h("span", {className: "slds-assistive-text"}, "Formula Helper"),
             ),
             h("a",
               {
@@ -3326,7 +3326,7 @@ function isSalesforceId(value) {
     return false;
   }
   if (value.startsWith("000")) {
-      return false;
+    return false;
   }
   if (/^[a-zA-Z0-9]{18}$/.test(value)) {
     let checksum = "";

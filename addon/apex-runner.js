@@ -1410,7 +1410,6 @@ class App extends React.Component {
             h("button", {onClick: this.openEmptyLog}, "Open empty logs"),
             h("button", {onClick: this.deleteAllLog, className: "delete-btn"}, "Delete all logs"),
             h("button", {onClick: this.runTests, disabled: (model.testStatus == "STARTED")}, model.runningTestId ? "Stop Unit Tests" : "Run All Unit Tests"),
-            h("a", {href: "apex-code.html?" + new URLSearchParams({host: model.sfHost}), target: "_blank", className: "button", title: "View the code and the code coverage of an Apex class or trigger, and run its tests"}, "Open Apex Code"),
           ),
         ),
         h("textarea", {className: "result-text", readOnly: true, value: model.executeError || "", hidden: model.executeError == null}),

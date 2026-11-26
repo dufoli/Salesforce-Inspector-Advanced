@@ -34,13 +34,13 @@ The results area has 4 tabs: **Logs** (executed scripts and their logs), **Jobs*
 
 - Use **Delete all logs** to clear old ApexLogs from the org, and **Open empty logs** to open the log viewer without running anything.
 - Click **Run All Unit Tests** to run all tests in the org (confirmation required); results appear in the Tests tab and code coverage per class in the Coverage tab, with lines highlighted in red where coverage is below 75%.
-- Click **Open Apex Code** to view the code and the line coverage of a class or trigger, see below.
+- To view the code and the line coverage of a class or trigger, open **Apex Code** from the popup, see below.
 
 ## Apex code and code coverage
 
 The Apex Code page shows the code of an Apex class or trigger, with each line colored by its code coverage: green when tests executed it, red when no test did. Open it with:
 
-- **Open Apex Code** in Apex Runner, then pick a class or trigger,
+- the **Apex Code & Coverage** button of the popup (shortcut `c`), then pick a class or trigger,
 - **View Code & Coverage** in the menu of an Apex class or trigger Id in a results table (e.g. the Id column of the Coverage and Tests tabs of Apex Runner, or a Data Export query on `ApexClass`),
 - **View Code & Coverage** in the popup, on the Setup page of an Apex class or trigger.
 
@@ -493,7 +493,7 @@ Open it from the popup ("Download Metadata" button, shortcut `d`). The page is n
 
 A standalone tool for writing and cleaning up Salesforce formulas: syntax highlighting, line numbers, autocompletion of field names, objects and formula functions, and real-time error checks.
 
-- Open it from the floating Inspector button's toolbar (shortcut `y`).
+- Open it from the **Salesforce Inspector Advanced Editor** toggle on the Setup page of a formula field or a validation rule (see below); it is no longer in the popup toolbar.
 - Pick an object at the top of the page to get field autocompletion (including relationship fields, e.g. typing `Owner.` suggests `User` fields) in addition to function/operator suggestions. Press `Ctrl+Space` to bring up suggestions.
 - The **Problems** panel below the editor lists client-side issues found as you type: unclosed/unmatched parentheses, unterminated strings, missing or misplaced commas, and function argument count mismatches. Click a problem to jump to its location in the editor. This is a local, best-effort check that complements — it does not call or replace — Salesforce's own "Check Syntax" button in Setup.
 - Click **Format** to pretty-print a nested formula (line breaks and indentation for deeply nested function calls); `Ctrl+Z` undoes it like any other edit.

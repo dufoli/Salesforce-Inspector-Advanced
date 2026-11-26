@@ -40,9 +40,6 @@
     "dependency": {
       "description": "Explore dependencies"
     },
-    "formula-helper": {
-      "description": "Formula helper"
-    },
     "explore-api": {
       "description": "Explore API"
     },
